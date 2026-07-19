@@ -26,6 +26,10 @@ leads to a different set of features**. Style: clay morphism + Liquid Glass, pro
 - Overview (dashboard) always present.
 
 ## Implemented (2026-07-19)
+- **Email/Password (JWT) auth** added alongside Google OAuth: register/login/logout, bcrypt hashing,
+  7-day httpOnly access_token cookie, unified get_current_user (accepts Google session OR JWT),
+  brute-force lockout (5 fails/15 min, client IP from X-Forwarded-For). Login page has Sign in /
+  Create account tabs + Continue with Google. Tests: 10/10 email-auth + 22/22 core pass.
 - Google OAuth login, session cookie, /auth/me, logout, protected routes
 - Focus selector screen (persists user.focus); focus-gated sidebar nav + route guard
 - Booking: trainers, date/slot picker, create/list/cancel, duplicate-slot 409

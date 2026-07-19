@@ -70,6 +70,17 @@ def set_access_cookie(response: Response, token: str):
     )
 
 
+def get_client_ip(request: Request) -> str:
+    # Behind the K8s ingress the TCP peer is a rotating proxy pod, so trust X-Forwarded-For.
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()
+    cf = request.headers.get("cf-connecting-ip")
+    if cf:
+        return cf.strip()
+    return request.client.host if request.client else "unknown"
+
+
 # ───────────────────────────── Models ─────────────────────────────
 class User(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -290,7 +301,7 @@ async def register(payload: RegisterRequest, response: Response):
 @api_router.post("/auth/login", response_model=User)
 async def login(payload: LoginRequest, request: Request, response: Response):
     email = payload.email.lower().strip()
-    ip = request.client.host if request.client else "unknown"
+    ip = get_client_ip(request)
     identifier = f"{ip}:{email}"
 
     attempt = await db.login_attempts.find_one({"identifier": identifier})

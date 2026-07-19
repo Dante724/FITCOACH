@@ -110,16 +110,6 @@ class TestLogin:
         })
         assert r.status_code == 401, r.text
 
-    @pytest.mark.xfail(
-        reason=(
-            "Backend brute-force keys on request.client.host (ingress/proxy pod IP). "
-            "Behind K8s ingress the client host rotates across multiple pod IPs "
-            "(e.g. 10.211.11.70 / 10.211.11.90), so the per-identifier counter "
-            "never reaches MAX_LOGIN_ATTEMPTS. Backend needs to trust "
-            "X-Forwarded-For (first value) instead of request.client.host."
-        ),
-        strict=False,
-    )
     def test_brute_force_lockout_returns_429(self, anon):
         # Use a UNIQUE email so parallel test workers don't interfere with the
         # login_attempts counter. Any 5 wrong attempts for the same (ip,email)
