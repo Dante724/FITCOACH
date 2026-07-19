@@ -34,7 +34,10 @@ leads to a different set of features**. Style: clay morphism + Liquid Glass, pro
 - **Booking v2**: real trainers (3 seeded) + per-trainer availability; slots endpoint; **double-booking
   prevented globally** (trainer+date+time); each session gets a **Jitsi video room** + Join Call button
   (client & trainer). Verified 15/15 backend + 100% frontend.
-- **DEFERRED — email reminders**: needs an email provider (SendGrid/Resend) + API keys + a scheduler; not yet built.
+- **DEFERRED — email reminders**: replaced with a keyless **in-app notification & reminder center** (bell
+  with badge, event notifications for booking/role/membership, live upcoming-session reminders within 48h,
+  mark-as-read). Real email still needs a provider (SendGrid/Resend) + key + scheduler if desired later.
+  Verified 7/7 frontend scenarios pass.
 - **Razorpay payments** (BOTH membership plans + per-session): backend order/verify/history + config,
   membership plans Monthly ₹10k / Quarterly ₹30k / Annual ₹50k, per-session ₹1000; Membership page
   (always in nav) with plan cards + status + history; pay button on unpaid bookings. Signature verified

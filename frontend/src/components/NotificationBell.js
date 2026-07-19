@@ -2,9 +2,11 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
 import { api } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 
 export default function NotificationBell() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [data, setData] = useState({ notifications: [], reminders: [], unread: 0, badge: 0 });
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -12,10 +14,11 @@ export default function NotificationBell() {
   const load = useCallback(() => api.get("/notifications").then((r) => setData(r.data)).catch(() => {}), []);
 
   useEffect(() => {
+    if (!user) return;
     load();
     const t = setInterval(load, 60000);
     return () => clearInterval(t);
-  }, [load]);
+  }, [load, user]);
 
   useEffect(() => {
     const onClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
