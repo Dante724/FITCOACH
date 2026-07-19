@@ -556,8 +556,8 @@ async def admin_set_role(target_id: str, payload: RoleUpdate, user: User = Depen
         raise HTTPException(status_code=404, detail="User not found")
     update = {"role": payload.role}
     if payload.role == "trainer" and not target.get("available_times"):
-        update["available_days"] = DEFAULT_DAYS
-        update["available_times"] = DEFAULT_TIMES
+        update["available_days"] = list(DEFAULT_DAYS)
+        update["available_times"] = list(DEFAULT_TIMES)
         update["specialty"] = target.get("specialty") or "Personal Trainer"
     await db.users.update_one({"user_id": target_id}, {"$set": update})
     return {"ok": True, "role": payload.role}
@@ -950,7 +950,7 @@ async def seed_roles():
             await db.users.insert_one({
                 "user_id": f"user_{uuid.uuid4().hex[:12]}", "email": t["email"], "name": t["name"],
                 "role": "trainer", "specialty": t["specialty"], "bio": f"Certified coach specialising in {t['specialty']}.",
-                "available_days": DEFAULT_DAYS, "available_times": DEFAULT_TIMES, "picture": None, "focus": None,
+                "available_days": list(DEFAULT_DAYS), "available_times": list(DEFAULT_TIMES), "picture": None, "focus": None,
                 "password_hash": hash_password("Trainer@123"), "created_at": datetime.now(timezone.utc).isoformat(),
             })
 

@@ -26,6 +26,15 @@ leads to a different set of features**. Style: clay morphism + Liquid Glass, pro
 - Overview (dashboard) always present.
 
 ## Implemented (2026-07-19)
+- **Public landing page** (`/`) — hero, 4 programmes (Yoga / Strength & Conditioning / Muscle Building /
+  Fat Loss), how-it-works, pricing, sign-up CTAs → /login. Clay + Liquid Glass, professional.
+- **Roles (client/trainer/admin)** + admin seeding (env ADMIN_EMAIL/PASSWORD) + require_role. **Admin Console**
+  (assign roles, grant/revoke subscriptions, stats). **Trainer Dashboard** (set availability, view booked
+  sessions, join video).
+- **Booking v2**: real trainers (3 seeded) + per-trainer availability; slots endpoint; **double-booking
+  prevented globally** (trainer+date+time); each session gets a **Jitsi video room** + Join Call button
+  (client & trainer). Verified 15/15 backend + 100% frontend.
+- **DEFERRED — email reminders**: needs an email provider (SendGrid/Resend) + API keys + a scheduler; not yet built.
 - **Razorpay payments** (BOTH membership plans + per-session): backend order/verify/history + config,
   membership plans Monthly ₹10k / Quarterly ₹30k / Annual ₹50k, per-session ₹1000; Membership page
   (always in nav) with plan cards + status + history; pay button on unpaid bookings. Signature verified
