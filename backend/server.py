@@ -33,6 +33,17 @@ ACCESS_TOKEN_DAYS = 7
 MAX_LOGIN_ATTEMPTS = 5
 LOCKOUT_MINUTES = 15
 
+RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID', '').strip()
+RAZORPAY_KEY_SECRET = os.environ.get('RAZORPAY_KEY_SECRET', '').strip()
+PAYMENTS_ENABLED = bool(RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET)
+
+MEMBERSHIP_PLANS = [
+    {"id": "monthly", "name": "Monthly", "price_inr": 10000, "days": 30, "blurb": "Full access, billed monthly"},
+    {"id": "quarterly", "name": "Quarterly", "price_inr": 30000, "days": 90, "blurb": "Save with a 3-month commitment"},
+    {"id": "annual", "name": "Annual", "price_inr": 50000, "days": 365, "blurb": "Best value — a full year of training"},
+]
+SESSION_PRICE_INR = 1000
+
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
@@ -89,6 +100,8 @@ class User(BaseModel):
     name: str
     picture: Optional[str] = None
     focus: Optional[str] = None
+    membership_plan: Optional[str] = None
+    membership_expires_at: Optional[str] = None
     created_at: Optional[str] = None
 
 
@@ -116,6 +129,7 @@ class Booking(BaseModel):
     specialty: str
     date: str
     time: str
+    paid: bool = False
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -589,6 +603,131 @@ async def analyze_body(payload: BodyScanRequest, user: User = Depends(get_curren
 @api_router.get("/bodyscan/history")
 async def body_history(user: User = Depends(get_current_user)):
     docs = await db.body_scans.find({"user_id": user.user_id}, {"_id": 0}).to_list(100)
+    docs.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return docs
+
+
+class PaymentOrderRequest(BaseModel):
+    type: str  # "plan" or "session"
+    plan_id: Optional[str] = None
+    booking_id: Optional[str] = None
+
+
+class PaymentVerifyRequest(BaseModel):
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
+
+
+def _razorpay_client():
+    import razorpay
+    return razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+
+
+@api_router.get("/payments/config")
+async def payments_config(user: User = Depends(get_current_user)):
+    return {
+        "enabled": PAYMENTS_ENABLED,
+        "key_id": RAZORPAY_KEY_ID if PAYMENTS_ENABLED else None,
+        "plans": MEMBERSHIP_PLANS,
+        "session_price_inr": SESSION_PRICE_INR,
+        "currency": "INR",
+    }
+
+
+@api_router.post("/payments/order")
+async def create_payment_order(payload: PaymentOrderRequest, user: User = Depends(get_current_user)):
+    if not PAYMENTS_ENABLED:
+        raise HTTPException(status_code=503, detail="Payments are not configured yet. Add Razorpay keys to enable checkout.")
+
+    if payload.type == "plan":
+        plan = next((p for p in MEMBERSHIP_PLANS if p["id"] == payload.plan_id), None)
+        if not plan:
+            raise HTTPException(status_code=400, detail="Invalid plan")
+        amount_inr = plan["price_inr"]
+        ref = {"plan_id": plan["id"], "plan_name": plan["name"]}
+    elif payload.type == "session":
+        booking = await db.bookings.find_one({"id": payload.booking_id, "user_id": user.user_id}, {"_id": 0})
+        if not booking:
+            raise HTTPException(status_code=400, detail="Booking not found")
+        if booking.get("paid"):
+            raise HTTPException(status_code=409, detail="This session is already paid")
+        amount_inr = SESSION_PRICE_INR
+        ref = {"booking_id": payload.booking_id}
+    else:
+        raise HTTPException(status_code=400, detail="Invalid payment type")
+
+    amount_paise = amount_inr * 100
+    receipt = f"fc_{uuid.uuid4().hex[:16]}"
+    try:
+        order = _razorpay_client().order.create({
+            "amount": amount_paise,
+            "currency": "INR",
+            "receipt": receipt,
+            "payment_capture": 1,
+        })
+    except Exception as e:
+        logger.exception("razorpay order failed")
+        raise HTTPException(status_code=502, detail=f"Could not create payment order: {e}")
+
+    await db.transactions.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user.user_id,
+        "order_id": order["id"],
+        "type": payload.type,
+        "ref": ref,
+        "amount_inr": amount_inr,
+        "status": "created",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+    return {"order_id": order["id"], "amount": amount_paise, "currency": "INR", "key_id": RAZORPAY_KEY_ID, "receipt": receipt}
+
+
+@api_router.post("/payments/verify")
+async def verify_payment(payload: PaymentVerifyRequest, user: User = Depends(get_current_user)):
+    if not PAYMENTS_ENABLED:
+        raise HTTPException(status_code=503, detail="Payments are not configured")
+
+    txn = await db.transactions.find_one({"order_id": payload.razorpay_order_id, "user_id": user.user_id}, {"_id": 0})
+    if not txn:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    try:
+        _razorpay_client().utility.verify_payment_signature({
+            "razorpay_order_id": payload.razorpay_order_id,
+            "razorpay_payment_id": payload.razorpay_payment_id,
+            "razorpay_signature": payload.razorpay_signature,
+        })
+    except Exception:
+        await db.transactions.update_one({"order_id": payload.razorpay_order_id}, {"$set": {"status": "failed"}})
+        raise HTTPException(status_code=400, detail="Payment signature verification failed")
+
+    await db.transactions.update_one(
+        {"order_id": payload.razorpay_order_id},
+        {"$set": {"status": "paid", "payment_id": payload.razorpay_payment_id, "paid_at": datetime.now(timezone.utc).isoformat()}},
+    )
+
+    if txn["type"] == "plan":
+        plan = next((p for p in MEMBERSHIP_PLANS if p["id"] == txn["ref"].get("plan_id")), None)
+        if plan:
+            expires = datetime.now(timezone.utc) + timedelta(days=plan["days"])
+            await db.users.update_one(
+                {"user_id": user.user_id},
+                {"$set": {"membership_plan": plan["id"], "membership_expires_at": expires.isoformat()}},
+            )
+    elif txn["type"] == "session":
+        await db.bookings.update_one(
+            {"id": txn["ref"].get("booking_id"), "user_id": user.user_id},
+            {"$set": {"paid": True}},
+        )
+
+    return {"status": "success"}
+
+
+@api_router.get("/payments/history")
+async def payment_history(user: User = Depends(get_current_user)):
+    docs = await db.transactions.find({"user_id": user.user_id}, {"_id": 0}).to_list(200)
     docs.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     return docs
 

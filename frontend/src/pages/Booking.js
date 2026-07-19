@@ -2,11 +2,14 @@ import { useEffect, useState, useCallback } from "react";
 import * as Icons from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { api } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
+import { payWithRazorpay } from "@/lib/payments";
 
 function todayISO() { return new Date().toISOString().slice(0, 10); }
 
 export default function Booking() {
+  const { user } = useAuth();
   const { push } = useToast();
   const [trainers, setTrainers] = useState([]);
   const [slots, setSlots] = useState([]);
@@ -15,6 +18,8 @@ export default function Booking() {
   const [date, setDate] = useState(todayISO());
   const [time, setTime] = useState("");
   const [saving, setSaving] = useState(false);
+  const [pay, setPay] = useState({ enabled: false, price: 0 });
+  const [payingId, setPayingId] = useState(null);
 
   const load = useCallback(() => api.get("/bookings").then((r) => setBookings(r.data)).catch(() => {}), []);
 
@@ -24,8 +29,19 @@ export default function Booking() {
       setSlots(r.data.slots);
       setTrainerId(r.data.trainers[0]?.trainer_id || "");
     }).catch(() => {});
+    api.get("/payments/config").then((r) => setPay({ enabled: r.data.enabled, price: r.data.session_price_inr })).catch(() => {});
     load();
   }, [load]);
+
+  const paySession = (b) => {
+    setPayingId(b.id);
+    payWithRazorpay({
+      orderPayload: { type: "session", booking_id: b.id },
+      user,
+      onSuccess: () => { setPayingId(null); push("Session payment successful.", "success"); load(); },
+      onError: (e) => { setPayingId(null); push(e?.response?.data?.detail || e.message || "Payment failed.", "error"); },
+    });
+  };
 
   const book = async () => {
     if (!trainerId || !date || !time) { push("Pick a trainer, date and time.", "error"); return; }
@@ -117,6 +133,15 @@ export default function Booking() {
                     <div style={{ fontSize: 14, fontWeight: 700 }}>{b.trainer_name} · {b.time}</div>
                     <div style={{ fontSize: 12, color: "var(--text-3)" }}>{b.specialty}</div>
                   </div>
+                  {b.paid ? (
+                    <span className="chip chip-teal" data-testid={`paid-${b.id}`}><Icons.Check size={13} /> Paid</span>
+                  ) : pay.enabled ? (
+                    <button data-testid={`pay-${b.id}`} className="btn btn-primary" disabled={payingId === b.id} onClick={() => paySession(b)} style={{ padding: "8px 14px", fontSize: 12.5 }}>
+                      {payingId === b.id ? "..." : `Pay ₹${pay.price}`}
+                    </button>
+                  ) : (
+                    <span className="chip chip-neutral">Unpaid</span>
+                  )}
                   <Icons.Trash2 size={17} data-testid={`cancel-${b.id}`} style={{ cursor: "pointer", color: "var(--text-3)" }} onClick={() => cancel(b.id)} />
                 </div>
               ))}

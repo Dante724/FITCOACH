@@ -12,6 +12,7 @@ import Progress from "@/pages/Progress";
 import FoodTrack from "@/pages/FoodTrack";
 import BodyScan from "@/pages/BodyScan";
 import Workouts from "@/pages/Workouts";
+import Membership from "@/pages/Membership";
 
 function Loader() {
   return (
@@ -44,6 +45,7 @@ function AppRouter() {
         <Route path="/progress" element={<Progress />} />
         <Route path="/food" element={<FoodTrack />} />
         <Route path="/bodyscan" element={<BodyScan />} />
+        <Route path="/membership" element={<Membership />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

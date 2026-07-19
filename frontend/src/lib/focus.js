@@ -37,22 +37,23 @@ export const FEATURE_META = {
   progress: { path: "/progress", label: "Progress", icon: "TrendingUp" },
   food: { path: "/food", label: "AI Food Track", icon: "Utensils" },
   bodyscan: { path: "/bodyscan", label: "AI Body Scan", icon: "ScanLine" },
+  membership: { path: "/membership", label: "Membership", icon: "CreditCard" },
 };
 
 export function getFocus(key) {
   return FOCUS_OPTIONS.find((f) => f.key === key) || null;
 }
 
-// Ordered nav for a given focus: Overview first, then focus-specific features.
+// Ordered nav for a given focus: Overview first, then focus-specific features, then Membership.
 export function navForFocus(key) {
   const focus = getFocus(key);
   const feats = focus ? focus.features : [];
-  const items = ["dashboard", ...feats];
+  const items = ["dashboard", ...feats, "membership"];
   return items.map((f) => ({ feature: f, ...FEATURE_META[f] }));
 }
 
 export function focusAllowsPath(key, pathname) {
-  if (pathname.startsWith("/dashboard")) return true;
+  if (pathname.startsWith("/dashboard") || pathname.startsWith("/membership")) return true;
   const focus = getFocus(key);
   if (!focus) return false;
   return focus.features.some((f) => pathname.startsWith(FEATURE_META[f].path));
