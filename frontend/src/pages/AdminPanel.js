@@ -25,12 +25,27 @@ export default function AdminPanel() {
   const [users, setUsers] = useState([]);
   const [query, setQuery] = useState("");
   const [membershipFor, setMembershipFor] = useState(null);
+  const [emailStatus, setEmailStatus] = useState(null);
+  const [testEmail, setTestEmail] = useState("");
+  const [sendingTest, setSendingTest] = useState(false);
 
   const load = useCallback(() => {
     api.get("/admin/stats").then((r) => setStats(r.data)).catch(() => {});
     api.get("/admin/users").then((r) => setUsers(r.data)).catch(() => {});
+    api.get("/admin/email/status").then((r) => setEmailStatus(r.data)).catch(() => {});
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  const sendTest = async () => {
+    if (!testEmail) { push("Enter an email address.", "error"); return; }
+    setSendingTest(true);
+    try {
+      await api.post("/admin/email/test", { to: testEmail });
+      push("Test email sent. Check the inbox.", "success");
+    } catch (e) {
+      push(e?.response?.data?.detail || "Could not send test email.", "error");
+    } finally { setSendingTest(false); }
+  };
 
   const setRole = async (u, role) => {
     try {
@@ -61,6 +76,30 @@ export default function AdminPanel() {
         <Stat icon={Icons.Dumbbell} label="Trainers" value={stats?.trainers ?? "—"} accent="var(--teal)" delay={60} />
         <Stat icon={Icons.CalendarDays} label="Bookings" value={stats?.bookings ?? "—"} accent="#7c6bd6" delay={120} />
         <Stat icon={Icons.BadgeCheck} label="Active members" value={stats?.active_members ?? "—"} accent="var(--amber)" delay={180} />
+      </div>
+
+      <div className="clay fade-up" data-testid="email-status-card" style={{ padding: 22, marginBottom: 22 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 42, height: 42, borderRadius: 12, background: emailStatus?.enabled ? "var(--teal-soft)" : "rgba(139,150,172,0.14)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Icons.Mail size={20} color={emailStatus?.enabled ? "var(--teal)" : "var(--text-3)"} />
+            </div>
+            <div>
+              <div style={{ fontSize: 14.5, fontWeight: 700 }}>Email delivery (Gmail)</div>
+              <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>
+                {emailStatus?.enabled ? `Active · sending from ${emailStatus.from_address} · reminders ${emailStatus.reminder_hours_before}h before` : "Not configured — add GMAIL_ADDRESS and GMAIL_APP_PASSWORD to the backend, then restart."}
+              </div>
+            </div>
+          </div>
+          {emailStatus?.enabled ? (
+            <div style={{ display: "flex", gap: 8 }}>
+              <input className="field" data-testid="test-email-input" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} placeholder="you@example.com" style={{ width: 200 }} />
+              <button className="btn btn-primary" data-testid="send-test-email-btn" disabled={sendingTest} onClick={sendTest} style={{ padding: "11px 18px", fontSize: 13.5 }}>{sendingTest ? "Sending..." : "Send test"}</button>
+            </div>
+          ) : (
+            <span className="chip chip-neutral">Awaiting credentials</span>
+          )}
+        </div>
       </div>
 
       <div className="clay fade-up" style={{ padding: 24 }}>

@@ -26,6 +26,10 @@ leads to a different set of features**. Style: clay morphism + Liquid Glass, pro
 - Overview (dashboard) always present.
 
 ## Implemented (2026-07-19)
+- **Email (Gmail SMTP)**: booking confirmation emails (client + trainer) on booking, and reminder emails
+  ~24h before each session via APScheduler (runs every 5 min). Admin Console shows email status + "Send
+  test". **INACTIVE until GMAIL_ADDRESS + GMAIL_APP_PASSWORD set in backend/.env** (needs 2FA + App
+  Password); degrades gracefully (status disabled, /email/test 503, bookings still succeed).
 - **Public landing page** (`/`) — hero, 4 programmes (Yoga / Strength & Conditioning / Muscle Building /
   Fat Loss), how-it-works, pricing, sign-up CTAs → /login. Clay + Liquid Glass, professional.
 - **Roles (client/trainer/admin)** + admin seeding (env ADMIN_EMAIL/PASSWORD) + require_role. **Admin Console**

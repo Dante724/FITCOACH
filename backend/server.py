@@ -1,13 +1,17 @@
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, Request, Response, Cookie, Header
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, Request, Response, Cookie, Header, BackgroundTasks
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import re
 import json
+import ssl
+import smtplib
+import asyncio
 import logging
 import uuid
 import secrets
+from email.message import EmailMessage
 from pathlib import Path
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
@@ -42,6 +46,13 @@ ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'Admin@12345')
 
 DEFAULT_DAYS = [0, 1, 2, 3, 4]
 DEFAULT_TIMES = ["07:00", "08:00", "09:00", "17:00", "18:00", "19:00"]
+
+GMAIL_ADDRESS = os.environ.get('GMAIL_ADDRESS', '').strip()
+GMAIL_APP_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD', '').replace(' ', '').strip()
+SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
+SMTP_PORT = int(os.environ.get('SMTP_PORT', '465'))
+EMAIL_ENABLED = os.environ.get('EMAIL_ENABLED', 'true').lower() == 'true'
+REMINDER_HOURS_BEFORE = int(os.environ.get('REMINDER_HOURS_BEFORE', '24'))
 
 MEMBERSHIP_PLANS = [
     {"id": "monthly", "name": "Monthly", "price_inr": 10000, "days": 30, "blurb": "Full access, billed monthly"},
@@ -151,13 +162,17 @@ class Booking(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     user_id: str = ""
     client_name: str = ""
+    client_email: str = ""
     trainer_id: str
     trainer_name: str
+    trainer_email: str = ""
     specialty: str
     date: str
     time: str
     room: str = ""
     paid: bool = False
+    reminder_at: str = ""
+    reminder_email_sent: bool = False
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -274,6 +289,105 @@ async def push_notification(user_id: str, title: str, body: str, link: str = "")
         "id": str(uuid.uuid4()), "user_id": user_id, "title": title, "body": body,
         "link": link, "read": False, "created_at": datetime.now(timezone.utc).isoformat(),
     })
+
+
+def email_configured() -> bool:
+    return bool(GMAIL_ADDRESS and GMAIL_APP_PASSWORD and EMAIL_ENABLED)
+
+
+def _send_sync(to: List[str], subject: str, text: str, html: str):
+    msg = EmailMessage()
+    msg["From"] = f"FitCoach <{GMAIL_ADDRESS}>"
+    msg["To"] = ", ".join(to)
+    msg["Subject"] = subject
+    msg.set_content(text)
+    msg.add_alternative(html, subtype="html")
+    ctx = ssl.create_default_context()
+    with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=ctx, timeout=20) as smtp:
+        smtp.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
+        smtp.send_message(msg)
+
+
+async def send_email(to: List[str], subject: str, text: str, html: str) -> bool:
+    to = [t for t in to if t]
+    if not to:
+        return False
+    if not email_configured():
+        logger.info("Email not configured; skipping: %s", subject)
+        return False
+    try:
+        await asyncio.to_thread(_send_sync, to, subject, text, html)
+        logger.info("Email sent: %s -> %s", subject, to)
+        return True
+    except Exception:
+        logger.exception("Email send failed: %s", subject)
+        return False
+
+
+def _email_shell(title: str, lines: List[str], cta_label: str = "", cta_url: str = "") -> str:
+    body = "".join(f'<p style="margin:0 0 10px;color:#4b5563;font-size:15px;line-height:1.6">{l}</p>' for l in lines)
+    cta = ""
+    if cta_label and cta_url:
+        cta = (f'<a href="{cta_url}" style="display:inline-block;margin-top:14px;padding:12px 24px;'
+               f'background:#e05c37;color:#fff;text-decoration:none;border-radius:999px;font-weight:600">{cta_label}</a>')
+    return (
+        f'<div style="background:#eef1f7;padding:32px 0;font-family:Arial,Helvetica,sans-serif">'
+        f'<div style="max-width:520px;margin:0 auto;background:#fff;border-radius:18px;padding:32px 34px;'
+        f'box-shadow:0 8px 30px rgba(70,85,120,0.10)">'
+        f'<div style="font-size:20px;font-weight:800;color:#1b2130;margin-bottom:4px">FitCoach</div>'
+        f'<div style="height:3px;width:46px;background:#e05c37;border-radius:2px;margin-bottom:20px"></div>'
+        f'<h2 style="margin:0 0 14px;color:#1b2130;font-size:21px">{title}</h2>{body}{cta}'
+        f'<p style="margin:26px 0 0;color:#93a0b0;font-size:12px">You are receiving this because you have a FitCoach account.</p>'
+        f'</div></div>'
+    )
+
+
+async def send_booking_emails(booking: dict, app_origin: str):
+    when = f"{booking['date']} at {booking['time']}"
+    join = f"{app_origin}/call/{booking['id']}"
+    await send_email(
+        [booking.get("client_email")], "Your FitCoach session is confirmed",
+        f"Your session with {booking['trainer_name']} is booked for {when}.",
+        _email_shell("Session confirmed",
+                     [f"Hi {booking.get('client_name') or 'there'},",
+                      f"Your session with <b>{booking['trainer_name']}</b> ({booking['specialty']}) is booked for <b>{when}</b>.",
+                      "You can join the live video call from the button below at your session time."],
+                     "Join video call", join),
+    )
+    await send_email(
+        [booking.get("trainer_email")], "New session booked",
+        f"{booking.get('client_name')} booked a session for {when}.",
+        _email_shell("New booking",
+                     [f"<b>{booking.get('client_name')}</b> booked a session with you for <b>{when}</b>.",
+                      "Join the video call from your trainer dashboard when it's time."],
+                     "Open trainer dashboard", f"{app_origin}/trainer"),
+    )
+
+
+async def send_due_reminders():
+    if not email_configured():
+        return
+    now_iso = datetime.now(timezone.utc).isoformat()
+    cursor = db.bookings.find({"reminder_email_sent": {"$ne": True}, "reminder_at": {"$lte": now_iso, "$ne": ""}})
+    async for b in cursor:
+        try:
+            session_dt = datetime.strptime(f"{b['date']} {b['time']}", "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
+        except (ValueError, KeyError):
+            await db.bookings.update_one({"id": b["id"]}, {"$set": {"reminder_email_sent": True}})
+            continue
+        if session_dt < datetime.now(timezone.utc):
+            await db.bookings.update_one({"id": b["id"]}, {"$set": {"reminder_email_sent": True}})
+            continue
+        when = f"{b['date']} at {b['time']}"
+        origin = os.environ.get('APP_ORIGIN', '')
+        await send_email(
+            [b.get("client_email"), b.get("trainer_email")], "Reminder: your FitCoach session is coming up",
+            f"Your session is scheduled for {when}.",
+            _email_shell("Session reminder",
+                         [f"This is a reminder that <b>{b.get('client_name')}</b> has a session with <b>{b['trainer_name']}</b> on <b>{when}</b>.",
+                          "Be ready a few minutes early and join the video call from the app."]),
+        )
+        await db.bookings.update_one({"id": b["id"]}, {"$set": {"reminder_email_sent": True}})
 
 
 def _humanize_until(dt: datetime) -> str:
@@ -474,14 +588,15 @@ async def list_bookings(user: User = Depends(get_current_user)):
 
 
 @api_router.post("/bookings", response_model=Booking)
-async def create_booking(payload: BookingCreate, user: User = Depends(get_current_user)):
+async def create_booking(payload: BookingCreate, request: Request, background: BackgroundTasks, user: User = Depends(get_current_user)):
     trainer = await db.users.find_one({"user_id": payload.trainer_id, "role": "trainer"}, {"_id": 0})
     if not trainer:
         raise HTTPException(status_code=400, detail="Invalid trainer")
     try:
-        weekday = datetime.strptime(payload.date, "%Y-%m-%d").weekday()
+        session_dt = datetime.strptime(f"{payload.date} {payload.time}", "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date")
+    weekday = session_dt.weekday()
     days = trainer.get("available_days") or DEFAULT_DAYS
     times = trainer.get("available_times") or DEFAULT_TIMES
     if weekday not in days or payload.time not in times:
@@ -492,16 +607,19 @@ async def create_booking(payload: BookingCreate, user: User = Depends(get_curren
         raise HTTPException(status_code=409, detail="This slot is already booked")
 
     booking = Booking(
-        user_id=user.user_id, client_name=user.name, trainer_id=trainer["user_id"],
-        trainer_name=trainer.get("name"), specialty=trainer.get("specialty") or "Personal Trainer",
-        date=payload.date, time=payload.time,
+        user_id=user.user_id, client_name=user.name, client_email=user.email,
+        trainer_id=trainer["user_id"], trainer_name=trainer.get("name"), trainer_email=trainer.get("email", ""),
+        specialty=trainer.get("specialty") or "Personal Trainer", date=payload.date, time=payload.time,
     )
     booking.room = _room_for(booking.id)
+    booking.reminder_at = (session_dt - timedelta(hours=REMINDER_HOURS_BEFORE)).isoformat()
     await db.bookings.insert_one(booking.model_dump())
     await push_notification(user.user_id, "Session booked",
                             f"With {booking.trainer_name} on {booking.date} at {booking.time}.", "/booking")
     await push_notification(trainer["user_id"], "New booking",
                             f"{user.name} booked {booking.date} at {booking.time}.", "/trainer")
+    origin = str(request.base_url).rstrip("/")
+    background.add_task(send_booking_emails, booking.model_dump(), origin)
     return booking
 
 
@@ -964,6 +1082,34 @@ async def payment_history(user: User = Depends(get_current_user)):
     return docs
 
 
+@api_router.get("/admin/email/status")
+async def admin_email_status(user: User = Depends(require_role("admin"))):
+    return {
+        "enabled": email_configured(),
+        "from_address": GMAIL_ADDRESS if email_configured() else None,
+        "smtp_host": SMTP_HOST,
+        "reminder_hours_before": REMINDER_HOURS_BEFORE,
+    }
+
+
+class EmailTestRequest(BaseModel):
+    to: EmailStr
+
+
+@api_router.post("/admin/email/test")
+async def admin_email_test(payload: EmailTestRequest, user: User = Depends(require_role("admin"))):
+    if not email_configured():
+        raise HTTPException(status_code=503, detail="Email is not configured. Add GMAIL_ADDRESS and GMAIL_APP_PASSWORD.")
+    ok = await send_email(
+        [payload.to], "FitCoach test email",
+        "This is a test email from FitCoach. Email delivery is working.",
+        _email_shell("Email is working", ["This is a test email from FitCoach.", "Your Gmail integration is set up correctly."]),
+    )
+    if not ok:
+        raise HTTPException(status_code=502, detail="Failed to send. Check the Gmail address and App Password.")
+    return {"ok": True}
+
+
 @api_router.get("/")
 async def root():
     return {"message": "FitCoach API"}
@@ -988,6 +1134,24 @@ async def create_indexes():
     except Exception as e:
         logger.warning(f"Index creation skipped: {e}")
     await seed_roles()
+    _start_scheduler()
+
+
+_scheduler = None
+
+
+def _start_scheduler():
+    global _scheduler
+    if _scheduler is not None:
+        return
+    try:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        _scheduler = AsyncIOScheduler(timezone="UTC")
+        _scheduler.add_job(send_due_reminders, "interval", minutes=5, id="reminders", replace_existing=True)
+        _scheduler.start()
+        logger.info("Reminder scheduler started (email_configured=%s)", email_configured())
+    except Exception:
+        logger.exception("Could not start reminder scheduler")
 
 
 async def seed_roles():
