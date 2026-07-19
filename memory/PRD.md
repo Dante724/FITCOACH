@@ -26,6 +26,12 @@ leads to a different set of features**. Style: clay morphism + Liquid Glass, pro
 - Overview (dashboard) always present.
 
 ## Implemented (2026-07-19)
+- **Razorpay payments** (BOTH membership plans + per-session): backend order/verify/history + config,
+  membership plans Monthly ₹10k / Quarterly ₹30k / Annual ₹50k, per-session ₹1000; Membership page
+  (always in nav) with plan cards + status + history; pay button on unpaid bookings. Signature verified
+  server-side; membership expiry set on success. **INACTIVE until RAZORPAY_KEY_ID/SECRET are added to
+  backend/.env** — degrades gracefully (config enabled=false, /order & /verify return 503, UI shows
+  "Coming soon"). Tests: 11/11 payment backend + frontend 100%.
 - **Email/Password (JWT) auth** added alongside Google OAuth: register/login/logout, bcrypt hashing,
   7-day httpOnly access_token cookie, unified get_current_user (accepts Google session OR JWT),
   brute-force lockout (5 fails/15 min, client IP from X-Forwarded-For). Login page has Sign in /
