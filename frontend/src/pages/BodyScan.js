@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import * as Icons from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { api } from "@/lib/api";
@@ -13,8 +13,8 @@ export default function BodyScan() {
   const [result, setResult] = useState(null);
   const [history, setHistory] = useState([]);
 
-  const load = () => api.get("/bodyscan/history").then((r) => setHistory(r.data)).catch(() => {});
-  useEffect(() => { load(); }, []);
+  const load = useCallback(() => api.get("/bodyscan/history").then((r) => setHistory(r.data)).catch(() => {}), []);
+  useEffect(() => { load(); }, [load]);
 
   const onFile = (e) => {
     const file = e.target.files?.[0];

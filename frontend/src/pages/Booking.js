@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import * as Icons from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { api } from "@/lib/api";
@@ -16,7 +16,7 @@ export default function Booking() {
   const [time, setTime] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const load = () => api.get("/bookings").then((r) => setBookings(r.data)).catch(() => {});
+  const load = useCallback(() => api.get("/bookings").then((r) => setBookings(r.data)).catch(() => {}), []);
 
   useEffect(() => {
     api.get("/trainers").then((r) => {
@@ -25,7 +25,7 @@ export default function Booking() {
       setTrainerId(r.data.trainers[0]?.trainer_id || "");
     }).catch(() => {});
     load();
-  }, []);
+  }, [load]);
 
   const book = async () => {
     if (!trainerId || !date || !time) { push("Pick a trainer, date and time.", "error"); return; }

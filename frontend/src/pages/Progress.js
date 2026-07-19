@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import * as Icons from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { api } from "@/lib/api";
@@ -27,7 +27,7 @@ function Sparkline({ data }) {
       <defs><linearGradient id="wg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="rgba(224,92,55,0.28)" /><stop offset="100%" stopColor="rgba(224,92,55,0)" /></linearGradient></defs>
       <path d={area} fill="url(#wg)" />
       <path d={line} fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-      {pts.map((v, i) => <circle key={i} cx={sx(i)} cy={sy(v)} r="3.5" fill="var(--accent)" />)}
+      {pts.map((v, i) => <circle key={`${i}-${v}`} cx={sx(i)} cy={sy(v)} r="3.5" fill="var(--accent)" />)}
     </svg>
   );
 }
@@ -39,8 +39,8 @@ export default function Progress() {
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
 
-  const load = () => api.get("/progress").then((r) => setEntries(r.data)).catch(() => {});
-  useEffect(() => { load(); }, []);
+  const load = useCallback(() => api.get("/progress").then((r) => setEntries(r.data)).catch(() => {}), []);
+  useEffect(() => { load(); }, [load]);
 
   const save = async () => {
     const payload = {};

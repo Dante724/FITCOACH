@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
 import { api } from "@/lib/api";
 
 const AuthContext = createContext(null);
@@ -27,20 +27,25 @@ export function AuthProvider({ children }) {
     checkAuth();
   }, [checkAuth]);
 
-  const login = () => {
+  const login = useCallback(() => {
     // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
     const redirectUrl = window.location.origin + "/dashboard";
     window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
-  };
+  }, []);
 
-  const logout = async () => {
-    try { await api.post("/auth/logout"); } catch {}
+  const logout = useCallback(async () => {
+    try { await api.post("/auth/logout"); } catch (err) { console.error("Logout request failed:", err); }
     setUser(null);
     window.location.href = "/login";
-  };
+  }, []);
+
+  const value = useMemo(
+    () => ({ user, setUser, loading, checkAuth, login, logout }),
+    [user, loading, checkAuth, login, logout]
+  );
 
   return (
-    <AuthContext.Provider value={{ user, setUser, loading, checkAuth, login, logout }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

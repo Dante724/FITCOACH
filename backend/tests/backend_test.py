@@ -12,7 +12,7 @@ import requests
 
 BASE = os.environ.get("REACT_APP_BACKEND_URL", "https://fitness-dashboard-115.preview.emergentagent.com").rstrip("/")
 API = f"{BASE}/api"
-TOKEN = "test_session_fitcoach_1"
+TOKEN = os.environ.get("TEST_SESSION_TOKEN", "test_session_fitcoach_1")
 
 
 # ─────────────────────────── Fixtures ───────────────────────────

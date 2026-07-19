@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import * as Icons from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { api } from "@/lib/api";
@@ -14,11 +14,11 @@ export default function Workouts() {
   const [sessions, setSessions] = useState([]);
   const [saving, setSaving] = useState(false);
 
-  const load = () => api.get("/workouts/sessions").then((r) => setSessions(r.data)).catch(() => {});
+  const load = useCallback(() => api.get("/workouts/sessions").then((r) => setSessions(r.data)).catch(() => {}), []);
   useEffect(() => {
     api.get("/workouts/plan").then((r) => setPlan(r.data)).catch(() => {});
     load();
-  }, []);
+  }, [load]);
 
   const toggle = (i) => setDone((d) => ({ ...d, [i]: !d[i] }));
   const total = plan?.exercises.length || 0;
@@ -54,7 +54,7 @@ export default function Workouts() {
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }} data-testid="exercise-list">
             {plan?.exercises.map((ex, i) => (
-              <button key={i} data-testid={`exercise-${i}`} onClick={() => toggle(i)}
+              <button key={`${ex.name}-${i}`} data-testid={`exercise-${i}`} onClick={() => toggle(i)}
                 className="clay-inset" style={{ border: "none", cursor: "pointer", padding: "14px 16px", display: "flex", alignItems: "center", gap: 13, textAlign: "left" }}>
                 <div style={{ width: 24, height: 24, borderRadius: 8, background: done[i] ? "var(--teal)" : "transparent", border: done[i] ? "none" : "2px solid rgba(139,150,172,0.4)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   {done[i] && <Icons.Check size={15} color="#fff" />}

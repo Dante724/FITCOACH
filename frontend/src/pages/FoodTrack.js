@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import * as Icons from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { api } from "@/lib/api";
@@ -19,8 +19,8 @@ export default function FoodTrack() {
   const [analyzing, setAnalyzing] = useState(false);
   const [logs, setLogs] = useState([]);
 
-  const load = () => api.get("/food/logs").then((r) => setLogs(r.data)).catch(() => {});
-  useEffect(() => { load(); }, []);
+  const load = useCallback(() => api.get("/food/logs").then((r) => setLogs(r.data)).catch(() => {}), []);
+  useEffect(() => { load(); }, [load]);
 
   const analyze = async () => {
     if (!desc.trim()) { push("Describe what you ate first.", "error"); return; }

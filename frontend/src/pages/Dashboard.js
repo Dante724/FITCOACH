@@ -37,7 +37,12 @@ export default function Dashboard() {
 
   const latest = progress[progress.length - 1] || {};
   const hour = new Date().getHours();
-  const greet = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const getGreeting = () => {
+    if (hour < 12) return "Good morning";
+    if (hour < 17) return "Good afternoon";
+    return "Good evening";
+  };
+  const greet = getGreeting();
   const nav = navForFocus(user?.focus).filter((n) => n.feature !== "dashboard");
   const showWorkouts = focus?.features.includes("workouts");
 
@@ -68,7 +73,7 @@ export default function Dashboard() {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
               {plan.exercises.map((ex, i) => (
-                <div key={i} className="clay-inset" style={{ padding: "13px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div key={`${ex.name}-${i}`} className="clay-inset" style={{ padding: "13px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: 14, fontWeight: 600 }}>{ex.name}</span>
                   <span className="chip chip-accent">{ex.meta}</span>
                 </div>
