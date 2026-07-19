@@ -267,6 +267,28 @@ def require_role(*roles):
     return dep
 
 
+async def push_notification(user_id: str, title: str, body: str, link: str = ""):
+    if not user_id:
+        return
+    await db.notifications.insert_one({
+        "id": str(uuid.uuid4()), "user_id": user_id, "title": title, "body": body,
+        "link": link, "read": False, "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+
+def _humanize_until(dt: datetime) -> str:
+    delta = dt - datetime.now(timezone.utc)
+    mins = int(delta.total_seconds() // 60)
+    if mins < 0:
+        return "in progress"
+    if mins < 60:
+        return f"in {mins} min"
+    hours = mins // 60
+    if hours < 24:
+        return f"in {hours}h {mins % 60}m"
+    return f"in {hours // 24}d"
+
+
 @api_router.post("/auth/session")
 async def process_session(request: Request, response: Response):
     body = await request.json()
@@ -476,6 +498,10 @@ async def create_booking(payload: BookingCreate, user: User = Depends(get_curren
     )
     booking.room = _room_for(booking.id)
     await db.bookings.insert_one(booking.model_dump())
+    await push_notification(user.user_id, "Session booked",
+                            f"With {booking.trainer_name} on {booking.date} at {booking.time}.", "/booking")
+    await push_notification(trainer["user_id"], "New booking",
+                            f"{user.name} booked {booking.date} at {booking.time}.", "/trainer")
     return booking
 
 
@@ -560,6 +586,7 @@ async def admin_set_role(target_id: str, payload: RoleUpdate, user: User = Depen
         update["available_times"] = list(DEFAULT_TIMES)
         update["specialty"] = target.get("specialty") or "Personal Trainer"
     await db.users.update_one({"user_id": target_id}, {"$set": update})
+    await push_notification(target_id, "Role updated", f"An administrator set your role to {payload.role}.", "/")
     return {"ok": True, "role": payload.role}
 
 
@@ -570,13 +597,49 @@ async def admin_set_membership(target_id: str, payload: MembershipUpdate, user: 
         raise HTTPException(status_code=404, detail="User not found")
     if payload.plan_id is None:
         await db.users.update_one({"user_id": target_id}, {"$set": {"membership_plan": None, "membership_expires_at": None}})
+        await push_notification(target_id, "Membership updated", "Your membership was cancelled by an administrator.", "/membership")
         return {"ok": True, "membership_plan": None}
     plan = next((p for p in MEMBERSHIP_PLANS if p["id"] == payload.plan_id), None)
     if not plan:
         raise HTTPException(status_code=400, detail="Invalid plan")
     expires = datetime.now(timezone.utc) + timedelta(days=plan["days"])
     await db.users.update_one({"user_id": target_id}, {"$set": {"membership_plan": plan["id"], "membership_expires_at": expires.isoformat()}})
+    await push_notification(target_id, "Membership activated", f"Your {plan['name']} membership is now active.", "/membership")
     return {"ok": True, "membership_plan": plan["id"], "membership_expires_at": expires.isoformat()}
+
+
+# ───────────────────────────── Notifications ─────────────────────────────
+@api_router.get("/notifications")
+async def list_notifications(user: User = Depends(get_current_user)):
+    stored = await db.notifications.find({"user_id": user.user_id}, {"_id": 0}).to_list(100)
+    stored.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+
+    reminders = []
+    bookings = await db.bookings.find(
+        {"$or": [{"user_id": user.user_id}, {"trainer_id": user.user_id}]}, {"_id": 0}
+    ).to_list(300)
+    for b in bookings:
+        try:
+            dt = datetime.strptime(f"{b['date']} {b['time']}", "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
+        except (ValueError, KeyError):
+            continue
+        delta = dt - datetime.now(timezone.utc)
+        if timedelta(minutes=-30) <= delta <= timedelta(hours=48):
+            who = b.get("trainer_name") if b.get("user_id") == user.user_id else (b.get("client_name") or "your client")
+            reminders.append({
+                "id": f"rem-{b['id']}", "title": "Upcoming session",
+                "body": f"With {who} — {_humanize_until(dt)} ({b['date']} at {b['time']})",
+                "link": f"/call/{b['id']}", "kind": "reminder",
+            })
+    reminders.sort(key=lambda r: r["body"])
+    unread = sum(1 for n in stored if not n.get("read"))
+    return {"notifications": stored, "reminders": reminders, "unread": unread, "badge": unread + len(reminders)}
+
+
+@api_router.post("/notifications/read")
+async def mark_notifications_read(user: User = Depends(get_current_user)):
+    await db.notifications.update_many({"user_id": user.user_id, "read": False}, {"$set": {"read": True}})
+    return {"ok": True}
 
 
 # ───────────────────────────── Progress ─────────────────────────────

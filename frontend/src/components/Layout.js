@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { navForFocus, getFocus, focusAllowsPath } from "@/lib/focus";
+import NotificationBell from "@/components/NotificationBell";
 
 function Logo() {
   return (
@@ -90,7 +91,10 @@ export default function Layout() {
         </div>
       </aside>
 
-      <main style={{ marginLeft: 282, flex: 1, padding: "34px 42px", maxWidth: 1180 }}>
+      <main style={{ marginLeft: 282, flex: 1, padding: "24px 42px 40px", maxWidth: 1180 }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+          <NotificationBell />
+        </div>
         <Outlet />
       </main>
     </div>
