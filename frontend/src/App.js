@@ -27,6 +27,10 @@ function Loader() {
   );
 }
 
+const CLIENT_ROLES = ["client"];
+const ADMIN_ROLES = ["admin"];
+const TRAINER_ROLES = ["trainer"];
+
 function RequireAuth({ children, roles, requireFocus }) {
   const { user, loading } = useAuth();
   if (loading) return <Loader />;
@@ -44,10 +48,10 @@ function AppRouter() {
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
-      <Route path="/focus" element={<RequireAuth roles={["client"]}><FocusSelect /></RequireAuth>} />
+      <Route path="/focus" element={<RequireAuth roles={CLIENT_ROLES}><FocusSelect /></RequireAuth>} />
       <Route path="/call/:bookingId" element={<RequireAuth><VideoCall /></RequireAuth>} />
 
-      <Route element={<RequireAuth roles={["client"]} requireFocus><Layout /></RequireAuth>}>
+      <Route element={<RequireAuth roles={CLIENT_ROLES} requireFocus><Layout /></RequireAuth>}>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/workouts" element={<Workouts />} />
         <Route path="/booking" element={<Booking />} />
@@ -57,11 +61,11 @@ function AppRouter() {
         <Route path="/membership" element={<Membership />} />
       </Route>
 
-      <Route element={<RequireAuth roles={["admin"]}><Layout /></RequireAuth>}>
+      <Route element={<RequireAuth roles={ADMIN_ROLES}><Layout /></RequireAuth>}>
         <Route path="/admin" element={<AdminPanel />} />
       </Route>
 
-      <Route element={<RequireAuth roles={["trainer"]}><Layout /></RequireAuth>}>
+      <Route element={<RequireAuth roles={TRAINER_ROLES}><Layout /></RequireAuth>}>
         <Route path="/trainer" element={<TrainerDashboard />} />
       </Route>
 

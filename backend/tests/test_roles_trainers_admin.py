@@ -12,13 +12,13 @@ import requests
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://fitness-dashboard-115.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
 
-ADMIN_EMAIL = "admin@fitcoach.com"
-ADMIN_PASSWORD = "Admin@12345"
-TRAINER_EMAIL = "sarah.trainer@fitcoach.com"
-TRAINER_PASSWORD = "Trainer@123"
-CLIENT_EMAIL = "pwuser@example.com"
-CLIENT_PASSWORD = "Passw0rd!"
-GOOGLE_TEST_SESSION = "test_session_fitcoach_1"
+ADMIN_EMAIL = os.getenv("TEST_ADMIN_EMAIL", "admin@fitcoach.com")
+ADMIN_PASSWORD = os.getenv("TEST_ADMIN_PASSWORD", "Admin@12345")
+TRAINER_EMAIL = os.getenv("TEST_TRAINER_EMAIL", "sarah.trainer@fitcoach.com")
+TRAINER_PASSWORD = os.getenv("TEST_TRAINER_PASSWORD", "Trainer@123")
+CLIENT_EMAIL = os.getenv("TEST_CLIENT_EMAIL", "pwuser@example.com")
+CLIENT_PASSWORD = os.getenv("TEST_CLIENT_PASSWORD", "Passw0rd!")
+GOOGLE_TEST_SESSION = os.getenv("TEST_GOOGLE_SESSION", "test_session_fitcoach_1")
 
 
 def _next_monday_iso():

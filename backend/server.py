@@ -1009,6 +1009,7 @@ async def create_payment_order(payload: PaymentOrderRequest, user: User = Depend
 
     amount_paise = amount_inr * 100
     receipt = f"fc_{uuid.uuid4().hex[:16]}"
+    order = None
     try:
         order = _razorpay_client().order.create({
             "amount": amount_paise,

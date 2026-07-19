@@ -25,9 +25,9 @@ BASE = os.environ.get(
     "https://fitness-dashboard-115.preview.emergentagent.com",
 ).rstrip("/")
 API = f"{BASE}/api"
-GOOGLE_TOKEN = "test_session_fitcoach_1"
-SEEDED_EMAIL = "pwuser@example.com"
-SEEDED_PASSWORD = "Passw0rd!"
+GOOGLE_TOKEN = os.getenv("TEST_GOOGLE_SESSION", "test_session_fitcoach_1")
+SEEDED_EMAIL = os.getenv("TEST_CLIENT_EMAIL", "pwuser@example.com")
+SEEDED_PASSWORD = os.getenv("TEST_CLIENT_PASSWORD", "Passw0rd!")
 
 
 # ─────────────────────────── Helpers ───────────────────────────
