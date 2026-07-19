@@ -58,3 +58,11 @@ export function focusAllowsPath(key, pathname) {
   if (!focus) return false;
   return focus.features.some((f) => pathname.startsWith(FEATURE_META[f].path));
 }
+
+// Where a user should land after authenticating, based on role.
+export function roleHome(user) {
+  if (!user) return "/login";
+  if (user.role === "admin") return "/admin";
+  if (user.role === "trainer") return "/trainer";
+  return user.focus ? "/dashboard" : "/focus";
+}

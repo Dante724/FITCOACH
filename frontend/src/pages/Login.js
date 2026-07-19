@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { Zap, Activity, CalendarCheck, ScanLine, AlertCircle } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { roleHome } from "@/lib/focus";
 
 function formatApiErrorDetail(detail) {
   if (detail == null) return "Something went wrong. Please try again.";
@@ -23,7 +24,7 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
 
   if (loading) return null;
-  if (user) return <Navigate to={user.focus ? "/dashboard" : "/focus"} replace />;
+  if (user) return <Navigate to={roleHome(user)} replace />;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -33,7 +34,7 @@ export default function Login() {
       const u = tab === "login"
         ? await emailLogin(email.trim(), password)
         : await emailRegister(name.trim(), email.trim(), password);
-      navigate(u.focus ? "/dashboard" : "/focus", { replace: true });
+      navigate(roleHome(u), { replace: true });
     } catch (err) {
       setError(formatApiErrorDetail(err.response?.data?.detail) || err.message);
     } finally {

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { api } from "@/lib/api";
@@ -11,11 +12,12 @@ function todayISO() { return new Date().toISOString().slice(0, 10); }
 export default function Booking() {
   const { user } = useAuth();
   const { push } = useToast();
+  const navigate = useNavigate();
   const [trainers, setTrainers] = useState([]);
-  const [slots, setSlots] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [trainerId, setTrainerId] = useState("");
   const [date, setDate] = useState(todayISO());
+  const [slots, setSlots] = useState([]);
   const [time, setTime] = useState("");
   const [saving, setSaving] = useState(false);
   const [pay, setPay] = useState({ enabled: false, price: 0 });
@@ -26,22 +28,18 @@ export default function Booking() {
   useEffect(() => {
     api.get("/trainers").then((r) => {
       setTrainers(r.data.trainers);
-      setSlots(r.data.slots);
       setTrainerId(r.data.trainers[0]?.trainer_id || "");
     }).catch(() => {});
     api.get("/payments/config").then((r) => setPay({ enabled: r.data.enabled, price: r.data.session_price_inr })).catch(() => {});
     load();
   }, [load]);
 
-  const paySession = (b) => {
-    setPayingId(b.id);
-    payWithRazorpay({
-      orderPayload: { type: "session", booking_id: b.id },
-      user,
-      onSuccess: () => { setPayingId(null); push("Session payment successful.", "success"); load(); },
-      onError: (e) => { setPayingId(null); push(e?.response?.data?.detail || e.message || "Payment failed.", "error"); },
-    });
-  };
+  useEffect(() => {
+    if (!trainerId || !date) { setSlots([]); return; }
+    setTime("");
+    api.get(`/trainers/${trainerId}/slots`, { params: { date } })
+      .then((r) => setSlots(r.data.slots)).catch(() => setSlots([]));
+  }, [trainerId, date, bookings]);
 
   const book = async () => {
     if (!trainerId || !date || !time) { push("Pick a trainer, date and time.", "error"); return; }
@@ -58,17 +56,23 @@ export default function Booking() {
     }
   };
 
-  const cancel = async (id) => {
-    await api.delete(`/bookings/${id}`).catch(() => {});
-    push("Booking cancelled.");
-    load();
+  const cancel = async (id) => { await api.delete(`/bookings/${id}`).catch(() => {}); push("Booking cancelled."); load(); };
+
+  const paySession = (b) => {
+    setPayingId(b.id);
+    payWithRazorpay({
+      orderPayload: { type: "session", booking_id: b.id },
+      user,
+      onSuccess: () => { setPayingId(null); push("Session payment successful.", "success"); load(); },
+      onError: (e) => { setPayingId(null); push(e?.response?.data?.detail || e.message || "Payment failed.", "error"); },
+    });
   };
 
-  const takenTimes = bookings.filter((b) => b.date === date).map((b) => b.time);
+  const selectedTrainer = trainers.find((t) => t.trainer_id === trainerId);
 
   return (
     <div>
-      <PageHeader eyebrow="Schedule" title="Book a Session" subtitle="Reserve time with a certified trainer. Pick a coach, date and slot that works for you." />
+      <PageHeader eyebrow="Schedule" title="Book a Session" subtitle="Reserve time with a certified trainer, then meet them on a live video call." />
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
         <div className="clay fade-up" style={{ padding: 26 }}>
@@ -85,28 +89,29 @@ export default function Booking() {
                 {trainerId === t.trainer_id && <Icons.Check size={18} color="var(--accent)" />}
               </button>
             ))}
+            {trainers.length === 0 && <div style={{ fontSize: 13.5, color: "var(--text-3)", padding: "10px 0" }}>No trainers available yet.</div>}
           </div>
 
           <label className="label">Date</label>
           <input type="date" className="field" data-testid="booking-date" value={date} min={todayISO()} onChange={(e) => setDate(e.target.value)} style={{ marginBottom: 18 }} />
 
-          <label className="label">Available slots</label>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 9 }}>
-            {slots.map((s) => {
-              const taken = takenTimes.includes(s);
-              return (
-                <button key={s} data-testid={`slot-${s}`} disabled={taken} onClick={() => setTime(s)}
+          <label className="label">Available slots {selectedTrainer ? `with ${selectedTrainer.name}` : ""}</label>
+          {slots.length === 0 ? (
+            <div className="clay-inset" style={{ padding: "16px", textAlign: "center", fontSize: 13, color: "var(--text-3)" }}>No open slots on this day. Try another date.</div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 9 }}>
+              {slots.map((s) => (
+                <button key={s} data-testid={`slot-${s}`} onClick={() => setTime(s)}
                   className={time === s ? "" : "clay-inset"}
-                  style={{ padding: "11px 0", borderRadius: 12, border: time === s ? "2px solid var(--accent)" : "none", cursor: taken ? "not-allowed" : "pointer",
-                    background: time === s ? "var(--accent-soft)" : undefined, color: taken ? "var(--text-3)" : "var(--text)", opacity: taken ? 0.5 : 1,
-                    fontWeight: 600, fontSize: 13.5, textDecoration: taken ? "line-through" : "none" }}>
+                  style={{ padding: "11px 0", borderRadius: 12, border: time === s ? "2px solid var(--accent)" : "none", cursor: "pointer",
+                    background: time === s ? "var(--accent-soft)" : undefined, color: "var(--text)", fontWeight: 600, fontSize: 13.5 }}>
                   {s}
                 </button>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          )}
 
-          <button data-testid="confirm-booking-btn" className="btn btn-primary" disabled={saving} onClick={book} style={{ width: "100%", marginTop: 22, padding: 14 }}>
+          <button data-testid="confirm-booking-btn" className="btn btn-primary" disabled={saving || !time} onClick={book} style={{ width: "100%", marginTop: 22, padding: 14 }}>
             <Icons.CalendarCheck size={18} /> {saving ? "Booking..." : "Confirm booking"}
           </button>
         </div>
@@ -124,19 +129,22 @@ export default function Booking() {
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 11 }} data-testid="bookings-list">
               {bookings.map((b) => (
-                <div key={b.id} className="clay-inset" style={{ padding: "15px 16px", display: "flex", alignItems: "center", gap: 13 }}>
+                <div key={b.id} className="clay-inset" style={{ padding: "15px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                   <div style={{ width: 44, height: 44, borderRadius: 12, background: "var(--teal-soft)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--teal)" }}>
                     <span style={{ fontSize: 16, fontWeight: 800, lineHeight: 1 }}>{new Date(b.date + "T12:00").getDate()}</span>
                     <span style={{ fontSize: 10, fontWeight: 600 }}>{new Date(b.date + "T12:00").toLocaleDateString("en-US", { month: "short" })}</span>
                   </div>
-                  <div style={{ flex: 1 }}>
+                  <div style={{ flex: 1, minWidth: 120 }}>
                     <div style={{ fontSize: 14, fontWeight: 700 }}>{b.trainer_name} · {b.time}</div>
                     <div style={{ fontSize: 12, color: "var(--text-3)" }}>{b.specialty}</div>
                   </div>
+                  <button data-testid={`join-${b.id}`} className="btn btn-ghost" onClick={() => navigate(`/call/${b.id}`)} style={{ padding: "8px 13px", fontSize: 12.5, color: "var(--teal)" }}>
+                    <Icons.Video size={15} /> Join
+                  </button>
                   {b.paid ? (
                     <span className="chip chip-teal" data-testid={`paid-${b.id}`}><Icons.Check size={13} /> Paid</span>
                   ) : pay.enabled ? (
-                    <button data-testid={`pay-${b.id}`} className="btn btn-primary" disabled={payingId === b.id} onClick={() => paySession(b)} style={{ padding: "8px 14px", fontSize: 12.5 }}>
+                    <button data-testid={`pay-${b.id}`} className="btn btn-primary" disabled={payingId === b.id} onClick={() => paySession(b)} style={{ padding: "8px 13px", fontSize: 12.5 }}>
                       {payingId === b.id ? "..." : `Pay ₹${pay.price}`}
                     </button>
                   ) : (

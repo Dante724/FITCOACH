@@ -2,7 +2,9 @@ import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ToastProvider } from "@/context/ToastContext";
+import { roleHome } from "@/lib/focus";
 import Layout from "@/components/Layout";
+import Landing from "@/pages/Landing";
 import Login from "@/pages/Login";
 import AuthCallback from "@/pages/AuthCallback";
 import FocusSelect from "@/pages/FocusSelect";
@@ -13,6 +15,9 @@ import FoodTrack from "@/pages/FoodTrack";
 import BodyScan from "@/pages/BodyScan";
 import Workouts from "@/pages/Workouts";
 import Membership from "@/pages/Membership";
+import AdminPanel from "@/pages/AdminPanel";
+import TrainerDashboard from "@/pages/TrainerDashboard";
+import VideoCall from "@/pages/VideoCall";
 
 function Loader() {
   return (
@@ -22,11 +27,12 @@ function Loader() {
   );
 }
 
-function RequireAuth({ children, requireFocus }) {
+function RequireAuth({ children, roles, requireFocus }) {
   const { user, loading } = useAuth();
   if (loading) return <Loader />;
   if (!user) return <Navigate to="/login" replace />;
-  if (requireFocus && !user.focus) return <Navigate to="/focus" replace />;
+  if (roles && !roles.includes(user.role)) return <Navigate to={roleHome(user)} replace />;
+  if (requireFocus && user.role === "client" && !user.focus) return <Navigate to="/focus" replace />;
   return children;
 }
 
@@ -36,9 +42,12 @@ function AppRouter() {
 
   return (
     <Routes>
+      <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
-      <Route path="/focus" element={<RequireAuth><FocusSelect /></RequireAuth>} />
-      <Route element={<RequireAuth requireFocus><Layout /></RequireAuth>}>
+      <Route path="/focus" element={<RequireAuth roles={["client"]}><FocusSelect /></RequireAuth>} />
+      <Route path="/call/:bookingId" element={<RequireAuth><VideoCall /></RequireAuth>} />
+
+      <Route element={<RequireAuth roles={["client"]} requireFocus><Layout /></RequireAuth>}>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/workouts" element={<Workouts />} />
         <Route path="/booking" element={<Booking />} />
@@ -47,7 +56,16 @@ function AppRouter() {
         <Route path="/bodyscan" element={<BodyScan />} />
         <Route path="/membership" element={<Membership />} />
       </Route>
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+
+      <Route element={<RequireAuth roles={["admin"]}><Layout /></RequireAuth>}>
+        <Route path="/admin" element={<AdminPanel />} />
+      </Route>
+
+      <Route element={<RequireAuth roles={["trainer"]}><Layout /></RequireAuth>}>
+        <Route path="/trainer" element={<TrainerDashboard />} />
+      </Route>
+
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

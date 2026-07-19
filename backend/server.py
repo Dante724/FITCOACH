@@ -37,6 +37,12 @@ RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID', '').strip()
 RAZORPAY_KEY_SECRET = os.environ.get('RAZORPAY_KEY_SECRET', '').strip()
 PAYMENTS_ENABLED = bool(RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET)
 
+ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', 'admin@fitcoach.com').strip().lower()
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'Admin@12345')
+
+DEFAULT_DAYS = [0, 1, 2, 3, 4]
+DEFAULT_TIMES = ["07:00", "08:00", "09:00", "17:00", "18:00", "19:00"]
+
 MEMBERSHIP_PLANS = [
     {"id": "monthly", "name": "Monthly", "price_inr": 10000, "days": 30, "blurb": "Full access, billed monthly"},
     {"id": "quarterly", "name": "Quarterly", "price_inr": 30000, "days": 90, "blurb": "Save with a 3-month commitment"},
@@ -98,8 +104,13 @@ class User(BaseModel):
     user_id: str
     email: str
     name: str
+    role: str = "client"
     picture: Optional[str] = None
     focus: Optional[str] = None
+    specialty: Optional[str] = None
+    bio: Optional[str] = None
+    available_days: Optional[List[int]] = None
+    available_times: Optional[List[str]] = None
     membership_plan: Optional[str] = None
     membership_expires_at: Optional[str] = None
     created_at: Optional[str] = None
@@ -120,15 +131,32 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class TrainerProfile(BaseModel):
+    specialty: str = ""
+    bio: str = ""
+    available_days: List[int] = []
+    available_times: List[str] = []
+
+
+class RoleUpdate(BaseModel):
+    role: str
+
+
+class MembershipUpdate(BaseModel):
+    plan_id: Optional[str] = None
+
+
 class Booking(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     user_id: str = ""
+    client_name: str = ""
     trainer_id: str
     trainer_name: str
     specialty: str
     date: str
     time: str
+    room: str = ""
     paid: bool = False
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -231,6 +259,14 @@ async def get_current_user(
     raise HTTPException(status_code=401, detail="Not authenticated")
 
 
+def require_role(*roles):
+    async def dep(user: User = Depends(get_current_user)) -> User:
+        if user.role not in roles:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        return user
+    return dep
+
+
 @api_router.post("/auth/session")
 async def process_session(request: Request, response: Response):
     body = await request.json()
@@ -301,6 +337,7 @@ async def register(payload: RegisterRequest, response: Response):
         "user_id": user_id,
         "email": email,
         "name": payload.name.strip() or email,
+        "role": "client",
         "picture": None,
         "focus": None,
         "password_hash": hash_password(payload.password),
@@ -367,18 +404,44 @@ async def set_focus(payload: FocusUpdate, user: User = Depends(get_current_user)
 
 
 # ───────────────────────────── Trainers / Booking ─────────────────────────────
-TRAINERS = [
-    {"trainer_id": "t1", "name": "Sarah Johnson", "specialty": "Strength & Conditioning", "initials": "SJ"},
-    {"trainer_id": "t2", "name": "Mike Chen", "specialty": "Muscle Building & Fat Loss", "initials": "MC"},
-    {"trainer_id": "t3", "name": "Priya Sharma", "specialty": "Yoga & Flexibility", "initials": "PS"},
-    {"trainer_id": "t4", "name": "Raj Patel", "specialty": "Nutrition & Conditioning", "initials": "RP"},
-]
-SLOT_TIMES = ["07:00", "08:00", "09:00", "10:00", "16:00", "17:00", "18:00", "19:00"]
+def _trainer_public(u: dict) -> dict:
+    return {
+        "trainer_id": u["user_id"],
+        "name": u.get("name"),
+        "specialty": u.get("specialty") or "Personal Trainer",
+        "bio": u.get("bio") or "",
+        "available_days": u.get("available_days") or DEFAULT_DAYS,
+        "available_times": sorted(u.get("available_times") or DEFAULT_TIMES),
+        "initials": "".join([p[0] for p in (u.get("name") or "T").split()][:2]).upper(),
+    }
+
+
+def _room_for(booking_id: str) -> str:
+    return "FitCoach-" + booking_id.replace("-", "")
 
 
 @api_router.get("/trainers")
 async def get_trainers(user: User = Depends(get_current_user)):
-    return {"trainers": TRAINERS, "slots": SLOT_TIMES}
+    docs = await db.users.find({"role": "trainer"}, {"_id": 0}).to_list(200)
+    return {"trainers": [_trainer_public(d) for d in docs]}
+
+
+@api_router.get("/trainers/{trainer_id}/slots")
+async def trainer_slots(trainer_id: str, date: str, user: User = Depends(get_current_user)):
+    trainer = await db.users.find_one({"user_id": trainer_id, "role": "trainer"}, {"_id": 0})
+    if not trainer:
+        raise HTTPException(status_code=404, detail="Trainer not found")
+    try:
+        weekday = datetime.strptime(date, "%Y-%m-%d").weekday()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date")
+    days = trainer.get("available_days") or DEFAULT_DAYS
+    times = sorted(trainer.get("available_times") or DEFAULT_TIMES)
+    if weekday not in days:
+        return {"slots": []}
+    booked = await db.bookings.find({"trainer_id": trainer_id, "date": date}, {"_id": 0, "time": 1}).to_list(200)
+    taken = {b["time"] for b in booked}
+    return {"slots": [t for t in times if t not in taken]}
 
 
 @api_router.get("/bookings")
@@ -390,16 +453,28 @@ async def list_bookings(user: User = Depends(get_current_user)):
 
 @api_router.post("/bookings", response_model=Booking)
 async def create_booking(payload: BookingCreate, user: User = Depends(get_current_user)):
-    trainer = next((t for t in TRAINERS if t["trainer_id"] == payload.trainer_id), None)
+    trainer = await db.users.find_one({"user_id": payload.trainer_id, "role": "trainer"}, {"_id": 0})
     if not trainer:
         raise HTTPException(status_code=400, detail="Invalid trainer")
-    clash = await db.bookings.find_one({"user_id": user.user_id, "date": payload.date, "time": payload.time})
+    try:
+        weekday = datetime.strptime(payload.date, "%Y-%m-%d").weekday()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date")
+    days = trainer.get("available_days") or DEFAULT_DAYS
+    times = trainer.get("available_times") or DEFAULT_TIMES
+    if weekday not in days or payload.time not in times:
+        raise HTTPException(status_code=409, detail="Trainer is not available at this time")
+    # Prevent double booking across ALL clients for this trainer/date/time
+    clash = await db.bookings.find_one({"trainer_id": payload.trainer_id, "date": payload.date, "time": payload.time})
     if clash:
-        raise HTTPException(status_code=409, detail="You already have a booking at this time")
+        raise HTTPException(status_code=409, detail="This slot is already booked")
+
     booking = Booking(
-        user_id=user.user_id, trainer_id=trainer["trainer_id"], trainer_name=trainer["name"],
-        specialty=trainer["specialty"], date=payload.date, time=payload.time,
+        user_id=user.user_id, client_name=user.name, trainer_id=trainer["user_id"],
+        trainer_name=trainer.get("name"), specialty=trainer.get("specialty") or "Personal Trainer",
+        date=payload.date, time=payload.time,
     )
+    booking.room = _room_for(booking.id)
     await db.bookings.insert_one(booking.model_dump())
     return booking
 
@@ -408,6 +483,100 @@ async def create_booking(payload: BookingCreate, user: User = Depends(get_curren
 async def delete_booking(booking_id: str, user: User = Depends(get_current_user)):
     await db.bookings.delete_one({"id": booking_id, "user_id": user.user_id})
     return {"ok": True}
+
+
+@api_router.get("/sessions/{booking_id}")
+async def get_session(booking_id: str, user: User = Depends(get_current_user)):
+    booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
+    if not booking or user.user_id not in (booking.get("user_id"), booking.get("trainer_id")):
+        raise HTTPException(status_code=404, detail="Session not found")
+    room = booking.get("room") or _room_for(booking_id)
+    other = booking.get("trainer_name") if user.user_id == booking.get("user_id") else booking.get("client_name")
+    return {
+        "room": room, "display_name": user.name, "date": booking.get("date"),
+        "time": booking.get("time"), "with": other, "specialty": booking.get("specialty"),
+    }
+
+
+# ───────────────────────────── Trainer endpoints ─────────────────────────────
+@api_router.get("/trainer/me")
+async def trainer_me(user: User = Depends(require_role("trainer"))):
+    doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    return {
+        "specialty": doc.get("specialty") or "",
+        "bio": doc.get("bio") or "",
+        "available_days": doc.get("available_days") or DEFAULT_DAYS,
+        "available_times": sorted(doc.get("available_times") or DEFAULT_TIMES),
+    }
+
+
+@api_router.put("/trainer/me")
+async def trainer_update(payload: TrainerProfile, user: User = Depends(require_role("trainer"))):
+    update = {
+        "specialty": payload.specialty.strip(),
+        "bio": payload.bio.strip(),
+        "available_days": sorted(set(d for d in payload.available_days if 0 <= d <= 6)),
+        "available_times": sorted(set(payload.available_times)),
+    }
+    await db.users.update_one({"user_id": user.user_id}, {"$set": update})
+    return {"ok": True, **update}
+
+
+@api_router.get("/trainer/sessions")
+async def trainer_sessions(user: User = Depends(require_role("trainer"))):
+    docs = await db.bookings.find({"trainer_id": user.user_id}, {"_id": 0}).to_list(500)
+    docs.sort(key=lambda x: (x.get("date", ""), x.get("time", "")))
+    return docs
+
+
+# ───────────────────────────── Admin endpoints ─────────────────────────────
+@api_router.get("/admin/stats")
+async def admin_stats(user: User = Depends(require_role("admin"))):
+    return {
+        "clients": await db.users.count_documents({"role": "client"}),
+        "trainers": await db.users.count_documents({"role": "trainer"}),
+        "bookings": await db.bookings.count_documents({}),
+        "active_members": await db.users.count_documents({"membership_expires_at": {"$gt": datetime.now(timezone.utc).isoformat()}}),
+    }
+
+
+@api_router.get("/admin/users")
+async def admin_users(user: User = Depends(require_role("admin"))):
+    docs = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(1000)
+    docs.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return docs
+
+
+@api_router.put("/admin/users/{target_id}/role")
+async def admin_set_role(target_id: str, payload: RoleUpdate, user: User = Depends(require_role("admin"))):
+    if payload.role not in ("client", "trainer", "admin"):
+        raise HTTPException(status_code=400, detail="Invalid role")
+    target = await db.users.find_one({"user_id": target_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    update = {"role": payload.role}
+    if payload.role == "trainer" and not target.get("available_times"):
+        update["available_days"] = DEFAULT_DAYS
+        update["available_times"] = DEFAULT_TIMES
+        update["specialty"] = target.get("specialty") or "Personal Trainer"
+    await db.users.update_one({"user_id": target_id}, {"$set": update})
+    return {"ok": True, "role": payload.role}
+
+
+@api_router.put("/admin/users/{target_id}/membership")
+async def admin_set_membership(target_id: str, payload: MembershipUpdate, user: User = Depends(require_role("admin"))):
+    target = await db.users.find_one({"user_id": target_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if payload.plan_id is None:
+        await db.users.update_one({"user_id": target_id}, {"$set": {"membership_plan": None, "membership_expires_at": None}})
+        return {"ok": True, "membership_plan": None}
+    plan = next((p for p in MEMBERSHIP_PLANS if p["id"] == payload.plan_id), None)
+    if not plan:
+        raise HTTPException(status_code=400, detail="Invalid plan")
+    expires = datetime.now(timezone.utc) + timedelta(days=plan["days"])
+    await db.users.update_one({"user_id": target_id}, {"$set": {"membership_plan": plan["id"], "membership_expires_at": expires.isoformat()}})
+    return {"ok": True, "membership_plan": plan["id"], "membership_expires_at": expires.isoformat()}
 
 
 # ───────────────────────────── Progress ─────────────────────────────
@@ -755,6 +924,35 @@ async def create_indexes():
         await db.login_attempts.create_index("identifier", unique=True)
     except Exception as e:
         logger.warning(f"Index creation skipped: {e}")
+    await seed_roles()
+
+
+async def seed_roles():
+    # Idempotent admin seeding
+    admin = await db.users.find_one({"email": ADMIN_EMAIL})
+    if not admin:
+        await db.users.insert_one({
+            "user_id": f"user_{uuid.uuid4().hex[:12]}", "email": ADMIN_EMAIL, "name": "Administrator",
+            "role": "admin", "picture": None, "focus": None,
+            "password_hash": hash_password(ADMIN_PASSWORD), "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+    elif not verify_password(ADMIN_PASSWORD, admin.get("password_hash", "")):
+        await db.users.update_one({"email": ADMIN_EMAIL}, {"$set": {"password_hash": hash_password(ADMIN_PASSWORD), "role": "admin"}})
+
+    # Demo trainers so booking works out of the box
+    demo_trainers = [
+        {"email": "sarah.trainer@fitcoach.com", "name": "Sarah Johnson", "specialty": "Strength & Conditioning"},
+        {"email": "mike.trainer@fitcoach.com", "name": "Mike Chen", "specialty": "Muscle Building & Fat Loss"},
+        {"email": "priya.trainer@fitcoach.com", "name": "Priya Sharma", "specialty": "Yoga & Flexibility"},
+    ]
+    for t in demo_trainers:
+        if not await db.users.find_one({"email": t["email"]}):
+            await db.users.insert_one({
+                "user_id": f"user_{uuid.uuid4().hex[:12]}", "email": t["email"], "name": t["name"],
+                "role": "trainer", "specialty": t["specialty"], "bio": f"Certified coach specialising in {t['specialty']}.",
+                "available_days": DEFAULT_DAYS, "available_times": DEFAULT_TIMES, "picture": None, "focus": None,
+                "password_hash": hash_password("Trainer@123"), "created_at": datetime.now(timezone.utc).isoformat(),
+            })
 
 
 @app.on_event("shutdown")
