@@ -1,0 +1,48 @@
+{
+  "summary": "Tested new Email/Password (JWT) auth alongside existing Emergent Google OAuth. Backend: 9/10 tests pass (register 200/409/400, login 200/401, /auth/me via cookie, logout clears cookies, Google Bearer still authorizes protected endpoints, JWT user can call /api/bookings and PUT /api/profile/focus). Brute-force lockout test xfailed due to a genuine backend bug (see rca). Frontend: /login shows both tabs and all data-testids; wrong password renders readable auth-error; email login navigates to /dashboard (user with focus) and email register navigates to /focus; logout works; sidebar renders for authenticated user.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/auth/login (brute-force lockout)",
+        "issue": "Behind K8s ingress the counter never reaches MAX_LOGIN_ATTEMPTS because request.client.host rotates across multiple proxy pod IPs (e.g. 10.211.11.70 and 10.211.11.90). Six wrong attempts still return 401 instead of 429. Login attempts get split across identifiers like '10.211.11.70:user@x.com' and '10.211.11.90:user@x.com' with counts 2 and 4 respectively. Backend must trust the X-Forwarded-For header (first entry) instead of request.client.host.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_email_auth.py",
+    "/app/test_reports/pytest/email_auth_results.xml"
+  ],
+  "action_items": [
+    "Fix brute-force IP tracking: derive the client IP from X-Forwarded-For (or CF-Connecting-IP) instead of request.client.host, otherwise the 5-fails/15-min lockout is effectively bypassable on the deployed ingress.",
+    "Consider also keying login_attempts on just the email (with a separate ip-level counter) so that ingress-IP fragmentation cannot dilute the lockout."
+  ],
+  "critical_code_review_comments": [
+    "server.py get_current_user tries the Bearer token as a Google session first, then as a JWT — correct precedence, but a valid JWT sent in Authorization header still works only because the second loop retries `bearer`. Documented behavior.",
+    "login_attempts collection has unique index on identifier — good, but the identifier '{ip}:{email}' relies on request.client.host which is unreliable behind the ingress (see backend_issues.critical).",
+    "register response returns user via model_dump but does NOT include password_hash because User model has extra='ignore' + no password_hash field — safe.",
+    "AuthContext.emailLogin/emailRegister set user via setUser(res.data) so Login.js can navigate immediately based on returned user.focus. This correctly avoids depending on a cookie round-trip.",
+    "Login.js formatApiErrorDetail handles string, array (Pydantic 422 errors), and object detail shapes — prevents `[object Object]` regressions."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_email_auth.py"
+  ],
+  "success_rate": { "backend": "90% (9/10, 1 xfail is a real backend bug)", "frontend": "100%" },
+  "test_credentials": "Seeded email/password: pwuser@example.com / Passw0rd! (note: pwuser.focus was set to 'strength' by the coexistence test, so email login now routes to /dashboard, not /focus). Google Bearer: test_session_fitcoach_1 (user_testfitcoach1). Base URL: https://fitness-dashboard-115.preview.emergentagent.com.",
+  "seed_data_creation": "Tests create TEST_/testreg_/fe_new_ prefixed users during runs. login_attempts collection is cleared per-test for the seeded email and per-run for the unique brute-force identifier.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend brute-force lockout only works when the client IP is stable, which it is not on this ingress. If main agent fixes it (X-Forwarded-For), remove the xfail marker on test_brute_force_lockout_returns_429 in /app/backend/tests/test_email_auth.py. pwuser@example.com in the DB now has focus='strength' from the coexistence test, so a fresh email login for that account routes to /dashboard (not /focus). Use a fresh registered account (any unique email + password >= 8 chars) to see the /focus routing path.",
+  "rca of the issue": {
+    "bug": "Login brute-force lockout does not fire in production.",
+    "reproduction": "curl the deployed /api/auth/login with 6 wrong-password requests for the same email; all return 401. mongosh shows two rows in login_attempts with distinct ip prefixes (e.g. 10.211.11.70:x and 10.211.11.90:x) with counts 2 and 4 — neither reaches 5.",
+    "root_cause": "server.py uses `request.client.host` to build the identifier. Behind a K8s ingress the TCP peer is a rotating proxy pod, not the true client, so the counter is fragmented across multiple pod IPs.",
+    "mitigation": "Read X-Forwarded-For (first value) and fall back to request.client.host only if the header is missing. Optionally rate-limit per-email as a secondary key so ingress-side IP variance can never dilute the lockout."
+  }
+}

@@ -33,6 +33,18 @@ export function AuthProvider({ children }) {
     window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
   }, []);
 
+  const emailLogin = useCallback(async (email, password) => {
+    const res = await api.post("/auth/login", { email, password });
+    setUser(res.data);
+    return res.data;
+  }, []);
+
+  const emailRegister = useCallback(async (name, email, password) => {
+    const res = await api.post("/auth/register", { name, email, password });
+    setUser(res.data);
+    return res.data;
+  }, []);
+
   const logout = useCallback(async () => {
     try { await api.post("/auth/logout"); } catch (err) { console.error("Logout request failed:", err); }
     setUser(null);
@@ -40,8 +52,8 @@ export function AuthProvider({ children }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, setUser, loading, checkAuth, login, logout }),
-    [user, loading, checkAuth, login, logout]
+    () => ({ user, setUser, loading, checkAuth, login, emailLogin, emailRegister, logout }),
+    [user, loading, checkAuth, login, emailLogin, emailRegister, logout]
   );
 
   return (

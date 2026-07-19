@@ -7,12 +7,15 @@ import re
 import json
 import logging
 import uuid
+import secrets
 from pathlib import Path
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 
+import bcrypt
+import jwt
 import httpx
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, EmailStr
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -24,6 +27,12 @@ db = client[os.environ['DB_NAME']]
 EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY')
 GEMINI_MODEL = "gemini-3-flash-preview"
 
+JWT_SECRET = os.environ['JWT_SECRET']
+JWT_ALGORITHM = "HS256"
+ACCESS_TOKEN_DAYS = 7
+MAX_LOGIN_ATTEMPTS = 5
+LOCKOUT_MINUTES = 15
+
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
@@ -31,6 +40,34 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 VALID_FOCUS = {"strength", "nutrition", "yoga", "muscle_fat"}
+
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
+
+
+def create_access_token(user_id: str, email: str) -> str:
+    payload = {
+        "sub": user_id,
+        "email": email,
+        "type": "access",
+        "exp": datetime.now(timezone.utc) + timedelta(days=ACCESS_TOKEN_DAYS),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def set_access_cookie(response: Response, token: str):
+    response.set_cookie(
+        key="access_token", value=token, httponly=True, secure=True,
+        samesite="none", path="/", max_age=ACCESS_TOKEN_DAYS * 24 * 60 * 60,
+    )
 
 
 # ───────────────────────────── Models ─────────────────────────────
@@ -46,6 +83,17 @@ class User(BaseModel):
 
 class FocusUpdate(BaseModel):
     focus: str
+
+
+class RegisterRequest(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
 
 
 class Booking(BaseModel):
@@ -105,33 +153,57 @@ class WorkoutSessionCreate(BaseModel):
 
 
 # ───────────────────────────── Auth ─────────────────────────────
-async def get_current_user(
-    request: Request,
-    session_token: Optional[str] = Cookie(None),
-    authorization: Optional[str] = Header(None),
-) -> User:
-    token = session_token
-    if not token and authorization and authorization.startswith("Bearer "):
-        token = authorization.split(" ", 1)[1]
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
+async def _user_from_google_session(token: str) -> Optional[User]:
     session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
     if not session:
-        raise HTTPException(status_code=401, detail="Invalid session")
-
+        return None
     expires_at = session["expires_at"]
     if isinstance(expires_at, str):
         expires_at = datetime.fromisoformat(expires_at)
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     if expires_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=401, detail="Session expired")
-
+        return None
     user_doc = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
-    if not user_doc:
-        raise HTTPException(status_code=401, detail="User not found")
-    return User(**user_doc)
+    return User(**user_doc) if user_doc else None
+
+
+async def _user_from_jwt(token: str) -> Optional[User]:
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.PyJWTError:
+        return None
+    if payload.get("type") != "access":
+        return None
+    user_doc = await db.users.find_one({"user_id": payload.get("sub")}, {"_id": 0})
+    return User(**user_doc) if user_doc else None
+
+
+async def get_current_user(
+    request: Request,
+    session_token: Optional[str] = Cookie(None),
+    access_token: Optional[str] = Cookie(None),
+    authorization: Optional[str] = Header(None),
+) -> User:
+    bearer = None
+    if authorization and authorization.startswith("Bearer "):
+        bearer = authorization.split(" ", 1)[1]
+
+    # 1) Google OAuth session (session_token cookie, or a Bearer that matches a session)
+    for candidate in (session_token, bearer):
+        if candidate:
+            user = await _user_from_google_session(candidate)
+            if user:
+                return user
+
+    # 2) Email/password JWT (access_token cookie, or Bearer as a JWT)
+    for candidate in (access_token, bearer):
+        if candidate:
+            user = await _user_from_jwt(candidate)
+            if user:
+                return user
+
+    raise HTTPException(status_code=401, detail="Not authenticated")
 
 
 @api_router.post("/auth/session")
@@ -191,6 +263,62 @@ async def auth_me(user: User = Depends(get_current_user)):
     return user
 
 
+@api_router.post("/auth/register", response_model=User)
+async def register(payload: RegisterRequest, response: Response):
+    email = payload.email.lower().strip()
+    if len(payload.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    existing = await db.users.find_one({"email": email}, {"_id": 0})
+    if existing:
+        raise HTTPException(status_code=409, detail="An account with this email already exists")
+    user_id = f"user_{uuid.uuid4().hex[:12]}"
+    await db.users.insert_one({
+        "user_id": user_id,
+        "email": email,
+        "name": payload.name.strip() or email,
+        "picture": None,
+        "focus": None,
+        "password_hash": hash_password(payload.password),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    token = create_access_token(user_id, email)
+    set_access_cookie(response, token)
+    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    return User(**user_doc)
+
+
+@api_router.post("/auth/login", response_model=User)
+async def login(payload: LoginRequest, request: Request, response: Response):
+    email = payload.email.lower().strip()
+    ip = request.client.host if request.client else "unknown"
+    identifier = f"{ip}:{email}"
+
+    attempt = await db.login_attempts.find_one({"identifier": identifier})
+    if attempt and attempt.get("count", 0) >= MAX_LOGIN_ATTEMPTS:
+        last = attempt.get("last_attempt")
+        if isinstance(last, str):
+            last = datetime.fromisoformat(last)
+        if last and last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        if last and datetime.now(timezone.utc) - last < timedelta(minutes=LOCKOUT_MINUTES):
+            raise HTTPException(status_code=429, detail="Too many attempts. Try again in a few minutes.")
+        await db.login_attempts.delete_one({"identifier": identifier})
+
+    user_doc = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user_doc or not user_doc.get("password_hash") or not verify_password(payload.password, user_doc["password_hash"]):
+        await db.login_attempts.update_one(
+            {"identifier": identifier},
+            {"$inc": {"count": 1}, "$set": {"last_attempt": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
+        )
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    await db.login_attempts.delete_one({"identifier": identifier})
+    token = create_access_token(user_doc["user_id"], email)
+    set_access_cookie(response, token)
+    return User(**user_doc)
+
+
 @api_router.post("/auth/logout")
 async def logout(response: Response, session_token: Optional[str] = Cookie(None),
                  authorization: Optional[str] = Header(None)):
@@ -200,6 +328,7 @@ async def logout(response: Response, session_token: Optional[str] = Cookie(None)
     if token:
         await db.user_sessions.delete_one({"session_token": token})
     response.delete_cookie("session_token", path="/")
+    response.delete_cookie("access_token", path="/")
     return {"ok": True}
 
 
@@ -467,6 +596,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def create_indexes():
+    try:
+        await db.users.create_index("email", unique=True)
+        await db.login_attempts.create_index("identifier", unique=True)
+    except Exception as e:
+        logger.warning(f"Index creation skipped: {e}")
 
 
 @app.on_event("shutdown")
