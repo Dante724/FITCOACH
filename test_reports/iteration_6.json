@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 6 verifies the four fixes flagged by the previous agent (Emergent badge removal, mobile responsiveness, trainer/client login hang, Jitsi mount) on the deployed preview at fitness-dashboard-115.preview.emergentagent.com. ALL 4 fixes PASS + regression checks are green. (1) Emergent badge: /app/frontend/public/index.html contains no 'Made with Emergent' badge (only PostHog analytics referencing api_host https://ap.emergent.sh — expected/kept). Landing page HTML confirms no 'made with emergent' or 'emergent-badge' string. (2) Public landing renders on desktop (1920x1080) with FitCoach header, Programmes/How it works/Pricing nav, Log in + Get started CTAs, hero + Yoga/Strength/Muscle/Fat programme cards. On mobile 375x812 it stacks cleanly (screenshot landing_mobile.png). (3) Trainer login (sarah.trainer@fitcoach.com / Trainer@123) via [data-testid=email-login-btn] → API 200, browser navigates to /trainer within 3s and the dashboard renders 'My Sessions', Specialty=Strength & Conditioning, day chips (Mon–Fri highlighted, Sat/Sun off), time chips (07/08/09/17/18/19 highlighted), Save availability button, and 2 booked sessions (Pat Lee 07:00 + Jordan Reyes 07:00, both with a Join button). Waited an additional 8s post-login: no spinner, page stable. (4) Client login (pwuser@example.com / Passw0rd!) → API 200, navigates to /dashboard rendering 'Good morning, Pat', quick-workouts / quick-progress / quick-bodyscan / quick-booking / quick-membership tiles. No hang. Admin login (admin@fitcoach.com / Admin@12345) → API 200, /admin renders 4 stat cards (6 Clients, 6 Trainers, 5 Bookings, 1 Active member), Gmail 'Awaiting credentials' notice, ALL USERS (19). (5) Booking + Jitsi: on /booking there is 1 existing booking (Sarah Johnson · 20 Jul 07:00) with a Join button. Clicking it navigates to /call/6179d64d-... which mounts [data-testid=jitsi-container] and an iframe with src=https://meet.jit.si/FitCoach-6179d64db5e04cf280266e63164e13c1#jitsi_meet_external_api_id=0&config… — confirming Jitsi external_api mounts correctly. (6) Mobile responsiveness after login: /dashboard on 375x812 shows a [data-testid=menu-btn] hamburger in top-left, notif-bell in top-right (badge=2). Clicking menu-btn opens a drawer overlay with FitCoach header, Programme badge, and full nav (Overview, Workouts, Progress, AI Body Scan, Book Session, Membership) plus user card + logout at bottom — drawer opens/closes correctly. Booking page also fluidly stacks on mobile. Backend regression: 36/36 tests pass across test_email_auth.py + test_payments.py + test_roles_trainers_admin.py. Legacy backend_test.py still references stale seeded trainers t1..t4 (removed in iter 4) and its TestBookings::test_create_booking fails with 'Invalid trainer' — this is a stale test file, not a product bug; the current roles/trainers/admin suite fully covers booking creation.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "N/A (test file)", "issue": "/app/backend/tests/backend_test.py TestBookings::test_create_booking uses hard-coded stale trainer id (t1..t4) removed in iteration 4 seeding; fails with 400 'Invalid trainer'. Not a product bug — remove or refactor this legacy suite; test_roles_trainers_admin.py already covers booking creation against seeded Sarah/Mike/Priya."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_roles_trainers_admin.py",
+    "/app/backend/tests/test_email_auth.py",
+    "/app/backend/tests/test_payments.py",
+    "/app/test_reports/pytest/iteration_6.xml"
+  ],
+  "action_items": [
+    "Consider deleting or rewriting /app/backend/tests/backend_test.py — its TestBookings uses stale trainer ids t1..t4 and blocks the -x pytest run. Non-blocking (coverage already provided by test_roles_trainers_admin.py)."
+  ],
+  "critical_code_review_comments": [
+    "Login submit selector: on the /login page both the tab button and the submit button carry the visible text 'Sign in'. Automation using text-based selectors matches the tab and no-ops. The submit button already has data-testid=email-login-btn (good). Consider also giving the tabs more distinctive labels or aria-selected states to avoid ambiguity for humans and screen readers.",
+    "Trainer dashboard loading: TrainerDashboard.js now short-circuits into a rendered shell even before /trainer/me or /trainer/sessions resolve — verified no infinite spinner. Nice; but the initial body-length briefly is small (~406 chars) then rehydrates; if either API 500s the UI still shows Specialty/availability form (empty). An explicit toast/error state on API failure would be more informative than silent empty.",
+    "Layout.js mobile drawer: [data-testid=menu-btn] hides on desktop and shows on mobile; drawer opens a full-height overlay with role links. Works. Consider adding an aria-label='Open menu' + aria-expanded to the button (currently aria=None on both button states).",
+    "Booking Jitsi mount: /call/{bookingId} correctly loads meet.jit.si/FitCoach-<uuid> iframe with external_api_id. Room name strips hyphens from the booking id (deterministic, both client & trainer join same room). Good.",
+    "index.html still ships PostHog analytics pointing at ap.emergent.sh — that is expected and unrelated to the 'Made with Emergent' badge; kept.",
+    "server.py continues to grow (1024+ lines from iter 5 review). Router split recommendation stands from iterations 4 & 5."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (36/36 current suite; 1 legacy stale test excluded)", "frontend": "100% (6/6 scenarios: no-badge, landing-mobile, admin login, trainer login no-hang, client login no-hang, mobile drawer, Jitsi mount — all pass)"},
+  "test_credentials": "admin@fitcoach.com / Admin@12345, sarah.trainer@fitcoach.com / Trainer@123, pwuser@example.com / Passw0rd!, session_token=test_session_fitcoach_1 for Google-session flow.",
+  "seed_data_creation": "No new data created. The existing booking (6179d64d-b5e0-4cf2-8026-6e63164e13c1 — pwuser + Sarah Johnson 2026-07-20 07:00) from iteration 5 was used to verify the Join → /call/{id} → Jitsi flow and is left intact.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All 4 previous-agent fixes are verified live: (a) no Emergent badge, (b) mobile drawer via [data-testid=menu-btn] on Layout works, (c) trainer & client logins land on their dashboards with content (no spinner hang), (d) /call/{id} mounts jitsi-container + iframe to meet.jit.si. For future login automation, use [data-testid=email-login-btn] to submit — do NOT use button:has-text('Sign in') because the tab button collides with the same text. If login rate-limits (429), clear with: mongosh --eval \"db.getSiblingDB('test_database').login_attempts.deleteMany({})\". Payments remain intentionally degraded (PAYMENTS_ENABLED=false).",
+  "rca of the issue": "N/A — all four flagged fixes verified working."
+}
