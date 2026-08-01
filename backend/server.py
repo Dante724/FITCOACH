@@ -1515,7 +1515,7 @@ def _start_scheduler():
 
 
 async def seed_roles():
-    # Idempotent admin seeding
+      # Idempotent admin seeding
     admin = await db.users.find_one({"email": ADMIN_EMAIL})
     if not admin:
         await db.users.insert_one({
@@ -1523,7 +1523,8 @@ async def seed_roles():
             "role": "admin", "picture": None, "focus": None,
             "password_hash": hash_password(ADMIN_PASSWORD), "created_at": datetime.now(timezone.utc).isoformat(),
         })
-            elif not verify_password(ADMIN_PASSWORD, admin.get("password_hash", "")):
+    elif not verify_password(ADMIN_PASSWORD, admin.get("password_hash", "")):
+        await db.users.update_one({"email": ADMIN_EMAIL}, {"$set": {"password_hash": hash_password(ADMIN_PASSWORD), "role": "admin"}})
 
 
     # Demo trainers so booking works out of the box
