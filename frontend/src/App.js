@@ -1,22 +1,3 @@
-html,
-body,
-#root,
-.App {
-  overflow-x: hidden;
-  max-width: 100vw;
-}
-
-* {
-  min-width: 0;
-}
-
-img,
-video,
-canvas {
-  max-width: 100%;
-  height: auto;
-}
-
 import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
