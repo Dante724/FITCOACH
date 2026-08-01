@@ -1,2 +1,47 @@
 /* App-level styles kept minimal; design system lives in index.css */
 .App { min-height: 100vh; }
+/* ---------- Mobile responsive overrides ---------- */
+html, body, #root, .App { overflow-x: hidden; max-width: 100vw; }
+
+@media (max-width: 860px) {
+  /* Nav */
+  .ld-nav-links { display: none !important; }
+  .ld-nav-login { display: none !important; }
+
+  /* Hero: single column */
+  .ld-hero-grid {
+    grid-template-columns: 1fr !important;
+    padding: 120px 18px 50px !important;
+    gap: 36px !important;
+    min-height: auto !important;
+  }
+  .ld-hero-grid h1 { font-size: 40px !important; }
+  .ld-hero-grid p { font-size: 15.5px !important; }
+
+  /* Hide floating stat cards that hang off-screen */
+  .landing-hero .ld-glass[style*="absolute"] { display: none !important; }
+
+  /* Hero image shorter */
+  .landing-hero img { height: 300px !important; }
+
+  /* All section grids stack */
+  #programs > div:last-of-type,
+  #how > div:last-of-type,
+  #pricing > div:last-of-type {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  /* Section padding + headings */
+  #programs, #how, #pricing { padding: 44px 18px !important; }
+  #programs h2, #how h2, #pricing h2 { font-size: 30px !important; }
+
+  /* Don't scale the featured plan past the edge */
+  .ld-featured { transform: none !important; }
+
+  /* Stat row wraps instead of overflowing */
+  .ld-hero-grid > div:first-child > div:last-child {
+    flex-wrap: wrap !important;
+    gap: 20px !important;
+  }
+}
