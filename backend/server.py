@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, Request, Response, Cookie, Header, BackgroundTasks, UploadFile, File, Query
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, Request, Response, Cookie, Header, BackgroundTasks, UploadFile, File, Query, Form
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -923,6 +923,75 @@ async def create_progress(payload: ProgressCreate, user: User = Depends(get_curr
 @api_router.delete("/progress/{entry_id}")
 async def delete_progress(entry_id: str, user: User = Depends(get_current_user)):
     await db.progress.delete_one({"id": entry_id, "user_id": user.user_id})
+    return {"ok": True}
+
+
+# ───────────────────────────── Progress Photos ─────────────────────────────
+@api_router.get("/progress/photos")
+async def list_progress_photos(user: User = Depends(get_current_user)):
+    docs = await db.progress_photos.find({"user_id": user.user_id, "is_deleted": {"$ne": True}}, {"_id": 0}).to_list(300)
+    docs.sort(key=lambda x: (x.get("date", ""), x.get("created_at", "")))
+    return docs
+
+
+@api_router.post("/progress/photos")
+async def upload_progress_photo(
+    request: Request,
+    file: UploadFile = File(...),
+    date: Optional[str] = Form(None),
+    weight: Optional[str] = Form(None),
+    note: Optional[str] = Form(None),
+    user: User = Depends(get_current_user),
+):
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
+    if ext not in ALLOWED_IMAGE_EXT:
+        raise HTTPException(status_code=400, detail="Only JPG, PNG, WEBP or GIF images are allowed")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(data) > MAX_PHOTO_BYTES:
+        raise HTTPException(status_code=400, detail="Image must be 5MB or smaller")
+    path = f"{STORAGE_APP_NAME}/progress/{user.user_id}/{uuid.uuid4().hex}.{ext}"
+    content_type = IMAGE_MIME.get(ext, file.content_type or "application/octet-stream")
+    try:
+        result = await asyncio.to_thread(put_object, path, data, content_type)
+    except Exception:
+        logger.exception("Progress photo upload failed")
+        raise HTTPException(status_code=502, detail="Could not store the image, please try again")
+    stored_path = result["path"]
+    await db.files.insert_one({
+        "id": str(uuid.uuid4()), "storage_path": stored_path, "owner_id": user.user_id,
+        "original_filename": file.filename, "content_type": content_type, "size": result.get("size"),
+        "kind": "progress", "is_deleted": False, "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    proto = request.headers.get("x-forwarded-proto", "https")
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    url = f"{proto}://{host}/api/files/{stored_path}"
+    weight_val = None
+    try:
+        if weight not in (None, ""):
+            weight_val = float(weight)
+    except ValueError:
+        weight_val = None
+    doc = {
+        "id": str(uuid.uuid4()), "user_id": user.user_id, "url": url, "storage_path": stored_path,
+        "date": (date or datetime.now(timezone.utc).date().isoformat())[:10],
+        "weight": weight_val, "note": (note or "").strip()[:200] or None,
+        "is_deleted": False, "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.progress_photos.insert_one(dict(doc))
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.delete("/progress/photos/{photo_id}")
+async def delete_progress_photo(photo_id: str, user: User = Depends(get_current_user)):
+    photo = await db.progress_photos.find_one({"id": photo_id, "user_id": user.user_id})
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    await db.progress_photos.update_one({"id": photo_id, "user_id": user.user_id}, {"$set": {"is_deleted": True}})
+    if photo.get("storage_path"):
+        await db.files.update_one({"storage_path": photo["storage_path"]}, {"$set": {"is_deleted": True}})
     return {"ok": True}
 
 

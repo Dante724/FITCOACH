@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import * as Icons from "lucide-react";
 import PageHeader from "@/components/PageHeader";
+import ProgressPhotos from "@/pages/ProgressPhotos";
 import { api } from "@/lib/api";
 import { useToast } from "@/context/ToastContext";
 
@@ -38,6 +39,7 @@ export default function Progress() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
+  const [tab, setTab] = useState("measurements");
 
   const load = useCallback(() => api.get("/progress").then((r) => setEntries(r.data)).catch(() => {}), []);
   useEffect(() => { load(); }, [load]);
@@ -64,8 +66,25 @@ export default function Progress() {
   return (
     <div>
       <PageHeader eyebrow="Progress Tracker" title="Body Progress" subtitle="Log measurements over time and watch your trend take shape."
-        action={<button className="btn btn-primary" data-testid="log-progress-btn" onClick={() => setOpen(true)}><Icons.Plus size={18} /> Log today</button>} />
+        action={tab === "measurements" ? <button className="btn btn-primary" data-testid="log-progress-btn" onClick={() => setOpen(true)}><Icons.Plus size={18} /> Log today</button> : null} />
 
+      <div style={{ display: "flex", gap: 8, marginBottom: 22 }}>
+        {[["measurements", "Measurements", "Ruler"], ["photos", "Photos", "Images"]].map(([id, label, icon]) => {
+          const Icon = Icons[icon] || Icons.Circle;
+          const active = tab === id;
+          return (
+            <button key={id} data-testid={`tab-${id}`} onClick={() => setTab(id)}
+              style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 18px", borderRadius: 999, border: "none", cursor: "pointer", fontSize: 13.5, fontWeight: 700,
+                color: active ? "#fff" : "var(--text-2)", background: active ? "linear-gradient(135deg, var(--accent), var(--accent-2))" : "var(--clay-inset, rgba(0,0,0,0.05))", transition: "all 0.18s ease" }}>
+              <Icon size={16} /> {label}
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === "photos" && <ProgressPhotos />}
+
+      {tab === "measurements" && (<>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
         {["weight", "body_fat", "waist", "chest"].map((fid, i) => {
           const f = FIELDS.find((x) => x.id === fid);
@@ -127,8 +146,9 @@ export default function Progress() {
           </div>
         )}
       </div>
+      </>)}
 
-      {open && (
+      {open && tab === "measurements" && (
         <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(27,33,48,0.45)", backdropFilter: "blur(6px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div onClick={(e) => e.stopPropagation()} className="glass fade-up" style={{ width: "100%", maxWidth: 460, padding: 30 }} data-testid="progress-modal">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>

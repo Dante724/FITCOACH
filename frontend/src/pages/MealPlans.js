@@ -123,10 +123,12 @@ export default function MealPlans() {
   };
 
   const removePlan = async (id) => {
-    await api.delete(`/meal-plans/${id}`).catch(() => {});
-    push("Plan removed.");
-    if (openId === id) setOpenId(null);
-    load();
+    try {
+      await api.delete(`/meal-plans/${id}`);
+      push("Plan removed.");
+      if (openId === id) setOpenId(null);
+      load();
+    } catch { push("Could not remove plan.", "error"); }
   };
 
   return (
