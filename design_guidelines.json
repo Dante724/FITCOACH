@@ -1,0 +1,132 @@
+{
+  "theme": "dark",
+  "archetype": "Luxury + Organic & Earthy",
+  "typography": {
+    "headings": {
+      "font": "Bricolage Grotesque",
+      "classes": "font-bold tracking-tight",
+      "scale": {
+        "h1": "text-5xl md:text-6xl lg:text-7xl",
+        "h2": "text-4xl md:text-5xl",
+        "h3": "text-2xl md:text-3xl"
+      }
+    },
+    "body": {
+      "font": "Manrope",
+      "classes": "font-medium tracking-normal",
+      "scale": {
+        "large": "text-lg md:text-xl",
+        "base": "text-base",
+        "small": "text-sm uppercase tracking-[0.2em]"
+      }
+    }
+  },
+  "colors": {
+    "background": {
+      "primary": "#0A0B0E",
+      "secondary": "#12141A",
+      "surface": "#1A1D24"
+    },
+    "brand": {
+      "terracotta": {
+        "base": "#D85C45",
+        "dark": "#9E3C29",
+        "light": "#F28C79"
+      },
+      "teal": {
+        "base": "#0E7470",
+        "dark": "#074240",
+        "light": "#20B2AC"
+      }
+    },
+    "text": {
+      "primary": "#F8FAFC",
+      "secondary": "#94A3B8",
+      "accent": "#D85C45"
+    }
+  },
+  "visual_enhancers": {
+    "clay_morphism": "Darkened clay: mix soft ambient outer shadow (shadow-2xl shadow-black/40) with a sharp 1px inner border (border border-white/5) and a faint white top-inner-glow to simulate matte tactile surfaces.",
+    "liquid_glass": "Premium glassmorphism: bg-teal-900/10 backdrop-blur-2xl border border-white/10. Used for sticky navigation, floating stat cards, and overlay modals. MUST use backdrop-saturate-150.",
+    "gradients": "Subtle, non-linear. E.g., radial-gradient(circle at top right, rgba(216,92,69,0.15), transparent 50%). Avoid loud full-screen gradients. Keep them as background 'auras'."
+  },
+  "layouts": {
+    "spacing": "Generous spacing. Use py-24 or py-32 for section padding. gap-8 to gap-12 for grids.",
+    "grids": "Bento Grid protocol for feature sections. Asymmetric and dense. For programme cards, use a 4-col grid on desktop (grid-cols-1 md:grid-cols-2 lg:grid-cols-4) with h-full stretch.",
+    "hero": "Full viewport height (min-h-[90vh]). Use a dark overlay (bg-black/60) over a premium video or image. Left-aligned massive typography. Floating liquid glass stats cards overlapping the bottom edge.",
+    "pricing_section": "3 tiers (grid-cols-1 md:grid-cols-3). Middle tier is highly elevated (scale-105) with a glowing terracotta border or tracing beam effect."
+  },
+  "motion": {
+    "interactions": "Hover states must lift cards (-translate-y-2) and increase border opacity. Buttons should have a slight scale down on click (active:scale-95).",
+    "page_load": "Staggered fade-in-up for hero elements and grid items (framer-motion).",
+    "scroll": "Parallax scrolling on hero background images. Use lenis for smooth scrolling if possible."
+  },
+  "accessibility": {
+    "contrast": "Ensure all terracotta/teal text against dark backgrounds passes WCAG AA. Use text-white over terracotta buttons.",
+    "focus": "focus:ring-2 focus:ring-terracotta-light focus:outline-none",
+    "testing": "All interactive elements MUST include data-testid attribute in kebab-case format (e.g., data-testid='pricing-plan-buy-button')."
+  },
+  "media": {
+    "image_urls": [
+      {
+        "category": "Programme - Strength & Conditioning",
+        "url": "https://images.unsplash.com/photo-1637430308606-86576d8fef3c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzl8MHwxfHNlYXJjaHwxfHxmaXRuZXNzJTIwc3RyZW5ndGglMjB0cmFpbmluZyUyMGRhcmslMjBneW18ZW58MHx8fHwxNzg1NTgwMDcyfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Dark gym machines, represents strength training"
+      },
+      {
+        "category": "Programme - Muscle Building & Fat Loss",
+        "url": "https://images.unsplash.com/photo-1672344048213-76b6e77304bd?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzl8MHwxfHNlYXJjaHwzfHxmaXRuZXNzJTIwc3RyZW5ndGglMjB0cmFpbmluZyUyMGRhcmslMjBneW18ZW58MHx8fHwxNzg1NTgwMDcyfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Black and white dumbbell, represents raw muscle building"
+      },
+      {
+        "category": "Programme - Yoga",
+        "url": "https://images.unsplash.com/photo-1769416945759-4660fd121172?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODl8MHwxfHNlYXJjaHwxfHx5b2dhJTIwbWluZGZ1bG5lc3MlMjBzdHVkaW8lMjBkYXJrfGVufDB8fHx8MTc4NTU4MDA3MXww&ixlib=rb-4.1.0&q=85",
+        "description": "Moody yoga pose in dark studio"
+      },
+      {
+        "category": "Programme - Nutrition",
+        "url": "https://images.unsplash.com/photo-1644704170910-a0cdf183649b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxoZWFsdGh5JTIwbnV0cml0aW9uJTIwbWVhbCUyMHBsYW4lMjBkYXJrfGVufDB8fHx8MTc4NTU4MDA3MXww&ixlib=rb-4.1.0&q=85",
+        "description": "Person holding healthy nutrition bowl"
+      }
+    ],
+    "treatment": "Images must be wrapped in overflow-hidden containers with a subtle dark overlay (bg-black/20) and a slow scale effect on hover (hover:scale-105 transition-transform duration-700). Never use pure black overlays that kill the image."
+  },
+  "specific_page_guidance": {
+    "landing_page": {
+      "hero": "Dark mode hero with massive Bricolage Grotesque typography. Use a background video or rich image with a bg-black/60 overlay. Overlapping liquid-glass navigation bar. CTA buttons should be pill-shaped, using the vibrant terracotta color.",
+      "programmes": "4 cards in a grid. Use dark clay-morphism cards. Deep teal backgrounds with terracotta accents on hover. Image at the top (h-48), content below. Left aligned text.",
+      "how_it_works": "Vertical timeline or staggered alternating layout. Large numbers (01, 02) using text-gray-800 to fade into the background. Minimalist.",
+      "pricing": "3 tiers (15k Monthly, 30k 3 Months, 85k Yearly). Middle tier highlighted with 'The Tracing Beam' border effect (liquid glass glow) and scale-105."
+    },
+    "membership_page_logged_in": {
+      "layout": "Dense dashboard hybrid approach. Sidebar or top-nav with liquid glass.",
+      "current_status": "A premium clay-morphism card at the top showing current active plan. Deep teal background with glowing terracotta text for 'Active'.",
+      "plan_upgrades": "3 plan cards with the new pricing + highlighted recommended plan. Add a 'Per Session: ₹1000' callout as a floating badge or sub-text. Razorpay Pay button should be highly visible.",
+      "payment_history": "Clean table or list view using Manrope font. text-sm. Subtle border-b border-white/10 for rows."
+    }
+  },
+  "instructions_to_main_agent": [
+    "CRITICAL: The codebase uses .js files, NOT .tsx files. Write all React code in .js (JSX).",
+    "Implement in React using Tailwind CSS and lucide-react icons.",
+    "MUST use Framer Motion for liquid glass sticky navigation and staggered card entrances.",
+    "Do NOT use pure #000000. Use the dark obsidian/charcoal colors specified (#0A0B0E).",
+    "Ensure all buttons and links have data-testid attributes.",
+    "Do NOT use any emojis in the UI.",
+    "Pricing is strictly: ₹15,000 (Monthly), ₹30,000 (3 Months), ₹85,000 (Yearly), and Session ₹1,000. Update the content to reflect this perfectly.",
+    "Keep existing routes and app functionality intact. The redesign should purely elevate the UI/UX visually."
+  ],
+  "universal_guidelines_for_main_agent": [
+    "You tend to converge toward generic, 'on distribution' outputs. Avoid this: make creative, distinctive frontends that surprise and delight.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Use glass-morphism effects with backdrop filters (12-24px blur).",
+    "You MUST NOT apply universal transition (e.g., transition: all). Always add transitions for specific interactive elements.",
+    "You MUST NOT center align the app container, i.e., do not add .App { text-align: center; } in the css file.",
+    "Always use modern button styles like pill-shaped, or sharp button with interaction animations & color relevant to the app style.",
+    "NEVER: use AI assistant Emoji characters like 🤖🧠💭💡🔮🎯 etc for icons.",
+    "Every interaction needs micro-animations - hover states, transitions, parallax effects.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Do NOT use complete transparent background in header, overlays, any surface that has content under it. Example: Dropdown with transparent background"
+  ]
+}
