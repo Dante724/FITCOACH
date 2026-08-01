@@ -12,7 +12,7 @@ export const FOCUS_OPTIONS = [
     label: "Nutrition Plan",
     tagline: "Dial in your diet with AI-assisted food tracking.",
     accent: "var(--teal)",
-    features: ["food", "progress", "booking"],
+    features: ["food", "mealplan", "progress", "booking"],
   },
   {
     key: "yoga",
@@ -26,7 +26,7 @@ export const FOCUS_OPTIONS = [
     label: "Muscle Building & Fat Loss",
     tagline: "Recomposition through training and nutrition.",
     accent: "var(--amber)",
-    features: ["bodyscan", "food", "workouts", "progress", "booking"],
+    features: ["bodyscan", "food", "mealplan", "workouts", "progress", "booking"],
   },
 ];
 
@@ -36,6 +36,7 @@ export const FEATURE_META = {
   booking: { path: "/booking", label: "Book Session", icon: "CalendarDays" },
   progress: { path: "/progress", label: "Progress", icon: "TrendingUp" },
   food: { path: "/food", label: "AI Food Track", icon: "Utensils" },
+  mealplan: { path: "/meal-plans", label: "Meal Plans", icon: "UtensilsCrossed" },
   bodyscan: { path: "/bodyscan", label: "AI Body Scan", icon: "ScanLine" },
   membership: { path: "/membership", label: "Membership", icon: "CreditCard" },
 };

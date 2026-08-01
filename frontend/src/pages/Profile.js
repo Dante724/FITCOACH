@@ -18,6 +18,7 @@ export default function Profile() {
   const roleLabel = (user?.role || "client").charAt(0).toUpperCase() + (user?.role || "client").slice(1);
   const focus = getFocus(user?.focus);
   const dirty = name.trim() !== (user?.name || "").trim();
+  const canSave = dirty && !!name.trim();
 
   const saveName = async () => {
     const trimmed = name.trim();
@@ -87,8 +88,8 @@ export default function Profile() {
           <input id="profile-name" data-testid="profile-name-input" value={name} onChange={(e) => setName(e.target.value)} maxLength={60}
             className="clay-inset" style={{ width: "100%", marginTop: 10, padding: "13px 15px", borderRadius: 14, border: "none", fontSize: 15, fontWeight: 600, background: "transparent", color: "var(--text)" }} />
           <div style={{ marginTop: 10, fontSize: 12.5, color: "var(--text-3)" }}>Email addresses cannot be changed.</div>
-          <button data-testid="save-profile-btn" onClick={saveName} disabled={!dirty || savingName}
-            style={{ marginTop: 18, padding: "12px 24px", borderRadius: 14, border: "none", fontSize: 14, fontWeight: 700, color: "#fff", cursor: (!dirty || savingName) ? "not-allowed" : "pointer", opacity: (!dirty || savingName) ? 0.55 : 1, background: "linear-gradient(135deg, var(--accent), var(--accent-2))", boxShadow: "0 6px 16px rgba(224,92,55,0.35)", display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <button data-testid="save-profile-btn" onClick={saveName} disabled={!canSave || savingName}
+            style={{ marginTop: 18, padding: "12px 24px", borderRadius: 14, border: "none", fontSize: 14, fontWeight: 700, color: "#fff", cursor: (!canSave || savingName) ? "not-allowed" : "pointer", opacity: (!canSave || savingName) ? 0.55 : 1, background: "linear-gradient(135deg, var(--accent), var(--accent-2))", boxShadow: "0 6px 16px rgba(224,92,55,0.35)", display: "inline-flex", alignItems: "center", gap: 8 }}>
             {savingName ? <div className="spinner" style={{ width: 15, height: 15 }} /> : <Icons.Check size={16} />}Save changes
           </button>
         </div>

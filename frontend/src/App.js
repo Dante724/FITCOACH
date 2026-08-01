@@ -13,6 +13,7 @@ import Booking from "@/pages/Booking";
 import Progress from "@/pages/Progress";
 import FoodTrack from "@/pages/FoodTrack";
 import BodyScan from "@/pages/BodyScan";
+import MealPlans from "@/pages/MealPlans";
 import Workouts from "@/pages/Workouts";
 import Membership from "@/pages/Membership";
 import AdminPanel from "@/pages/AdminPanel";
@@ -58,6 +59,7 @@ function AppRouter() {
         <Route path="/booking" element={<Booking />} />
         <Route path="/progress" element={<Progress />} />
         <Route path="/food" element={<FoodTrack />} />
+        <Route path="/meal-plans" element={<MealPlans />} />
         <Route path="/bodyscan" element={<BodyScan />} />
         <Route path="/membership" element={<Membership />} />
       </Route>

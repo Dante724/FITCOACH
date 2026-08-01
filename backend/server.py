@@ -278,6 +278,20 @@ class WorkoutSessionCreate(BaseModel):
     notes: Optional[str] = None
 
 
+class MealPlanGenerateRequest(BaseModel):
+    goal: str = "maintenance"          # fat_loss | maintenance | muscle_gain
+    diet: str = "balanced"             # balanced | vegetarian | vegan | high_protein | keto
+    calories: Optional[int] = None
+    allergies: Optional[str] = None
+
+
+class MealPlanCreate(BaseModel):
+    name: str
+    goal: Optional[str] = None
+    diet: Optional[str] = None
+    plan: dict
+
+
 # ───────────────────────────── Auth ─────────────────────────────
 async def _user_from_google_session(token: str) -> Optional[User]:
     session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
@@ -1038,6 +1052,74 @@ async def food_logs(user: User = Depends(get_current_user)):
 @api_router.delete("/food/logs/{log_id}")
 async def delete_food(log_id: str, user: User = Depends(get_current_user)):
     await db.food_logs.delete_one({"id": log_id, "user_id": user.user_id})
+    return {"ok": True}
+
+
+# ───────────────────────────── Meal Plans ─────────────────────────────
+GOAL_LABELS = {"fat_loss": "fat loss", "maintenance": "weight maintenance", "muscle_gain": "muscle gain"}
+DIET_LABELS = {
+    "balanced": "balanced omnivore", "vegetarian": "vegetarian", "vegan": "vegan",
+    "high_protein": "high-protein", "keto": "ketogenic (low-carb, high-fat)",
+}
+
+
+@api_router.post("/meal-plans/generate")
+async def generate_meal_plan(payload: MealPlanGenerateRequest, user: User = Depends(get_current_user)):
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    goal = GOAL_LABELS.get(payload.goal, "weight maintenance")
+    diet = DIET_LABELS.get(payload.diet, "balanced omnivore")
+    cal = f"approximately {payload.calories} kcal for the day" if payload.calories else "an appropriate daily calorie target"
+    allergies = f" Avoid these foods/allergens: {payload.allergies.strip()}." if (payload.allergies or "").strip() else ""
+    system = (
+        "You are a professional dietitian building a one-day meal plan. "
+        "Respond ONLY with strict JSON, no prose, using this schema: "
+        '{"title": string, "summary": string, "total_calories": number, "total_protein_g": number, '
+        '"total_carbs_g": number, "total_fat_g": number, "meals": [{"meal": "Breakfast"|"Lunch"|"Dinner"|"Snack", '
+        '"name": string, "items": [string], "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number}]}. '
+        "Include Breakfast, Lunch, Dinner and 1-2 Snacks. Make totals the sum of the meals."
+    )
+    prompt = (
+        f"Build a {diet} meal plan for {goal}, targeting {cal}.{allergies} "
+        "Keep meals realistic, easy to prepare, and clearly portioned."
+    )
+    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"meal-{user.user_id}-{uuid.uuid4().hex[:6]}",
+                   system_message=system).with_model("gemini", GEMINI_MODEL)
+    try:
+        reply = await chat.send_message(UserMessage(text=prompt))
+        result = _extract_json(reply)
+    except Exception as e:
+        logger.exception("meal plan generation failed")
+        raise HTTPException(status_code=502, detail=f"AI generation failed: {e}")
+    result["goal"] = payload.goal
+    result["diet"] = payload.diet
+    return result
+
+
+@api_router.get("/meal-plans")
+async def list_meal_plans(user: User = Depends(get_current_user)):
+    docs = await db.meal_plans.find({"user_id": user.user_id}, {"_id": 0}).to_list(200)
+    docs.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return docs
+
+
+@api_router.post("/meal-plans")
+async def save_meal_plan(payload: MealPlanCreate, user: User = Depends(get_current_user)):
+    name = payload.name.strip()
+    if not (1 <= len(name) <= 80):
+        raise HTTPException(status_code=400, detail="Plan name must be 1–80 characters")
+    doc = {
+        "id": str(uuid.uuid4()), "user_id": user.user_id, "name": name,
+        "goal": payload.goal, "diet": payload.diet, "plan": payload.plan,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.meal_plans.insert_one(dict(doc))
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.delete("/meal-plans/{plan_id}")
+async def delete_meal_plan(plan_id: str, user: User = Depends(get_current_user)):
+    await db.meal_plans.delete_one({"id": plan_id, "user_id": user.user_id})
     return {"ok": True}
 
 

@@ -1,0 +1,28 @@
+{
+  "summary": "Iteration 8 verifies the new Meal Plan Builder end-to-end for the nutrition & muscle_fat focus clients. BACKEND (/app/backend/tests/test_meal_plans.py, 5/5 pass): (1) GET /api/meal-plans requires auth (401), (2) POST /api/meal-plans/generate requires auth (401), (3) generate returns a real Gemini plan (>=3 meals, meal/calories fields, total_calories present) and does NOT persist (list count unchanged before vs after), (4) full save→list→delete flow with prefix TEST_ verifies POST /api/meal-plans returns the persisted doc without any Mongo _id, GET /api/meal-plans includes it, DELETE removes it, subsequent GET no longer contains it, (5) POST /api/meal-plans without plan body is rejected 422. FRONTEND (Playwright, 1440x900): logged in as nutriuser@example.com — sidebar shows [data-testid=nav-mealplan] AND [data-testid=nav-food]; clicked nav-mealplan → /meal-plans → [data-testid=mealplans-page] renders. Selected [data-testid=goal-fat_loss] + [data-testid=diet-high_protein], filled calories-input=1800 + allergies-input=peanuts, clicked generate-plan-btn — real Gemini call ~10s — [data-testid=meal-plan-detail] appeared containing Breakfast/Lunch/Dinner meal rows and total kcal/macros grid. Filled plan-name-input=TEST_UI_Plan, clicked save-plan-btn → preview cleared, saved-plans list went 0→1, new [data-testid=saved-plan-{id}] present and contains TEST_UI_Plan. Clicking the saved row toggles [data-testid=meal-plan-detail] open (expand=1) and closed (collapse=0). Full page reload — the plan persists (GET /api/meal-plans). Clicked [data-testid=delete-saved-{id}] — count 1→0. Regression: [data-testid=nav-food] still navigates to /food. Access control: logged in as pwuser@example.com (strength focus) — sidebar does NOT contain [data-testid=nav-mealplan]; direct navigation to /meal-plans redirects to /dashboard (focusAllowsPath denies). No 500s, no console errors beyond expected pre-login 401 from /api/auth/me poll.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": { "ui_bugs": [], "integration_issues": [], "design_issues": [] },
+  "test_report_links": [
+    "/app/backend/tests/test_meal_plans.py",
+    "/app/test_reports/pytest/iteration_8.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "MealPlans.js: generate() sets preview=null before the AI call and doesn't reset if generation fails — but planName is not cleared on failure, so a stale name may persist across attempts. Minor UX polish.",
+    "MealPlans.js removePlan() swallows delete errors silently (.catch(()=>{})) and still shows a success toast 'Plan removed.' — if the DELETE fails the user is misled. Consider surfacing the error.",
+    "server.py generate_meal_plan performs a real LLM call synchronously; there is no rate limiting per user. A malicious client could burn budget with rapid /meal-plans/generate calls.",
+    "server.py save_meal_plan stores the entire client-supplied plan dict verbatim with no schema validation — a client could persist arbitrary large/dirty payloads. Consider Pydantic-validating the plan shape before storage.",
+    "server.py DELETE /api/meal-plans/{id} returns 200 even when no document matched (delete_one is no-op) — consider returning 404 to align REST semantics.",
+    "server.py has crossed ~1400 lines; meal-plan router should be split into routers/meal_plans.py (repeat of iter-7 comment on modularization)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_meal_plans.py (new)"
+  ],
+  "success_rate": { "backend": "100% (5/5)", "frontend": "100% (nav + generate + save + expand/collapse + reload persist + delete + access control + food regression)" },
+  "test_credentials": "nutriuser@example.com / Passw0rd! (nutrition client), pwuser@example.com / Passw0rd! (strength client).",
+  "seed_data_creation": "None retained. Created and deleted one meal plan (TEST_UI_Plan) for nutriuser during the UI test. Backend test also creates+deletes a TEST_plan_* doc.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Nav testid is data-testid=nav-{feature} (e.g., nav-mealplan, nav-food) from Layout.js. Login form uses data-testid=auth-email / auth-password / email-login-btn (NOT email-input). Backend pytest.ini enables xdist by default; use -o addopts=\"\" to disable when running a single file. Meal plan generation is a real Gemini call (~10-15s) — allow up to 60s in Playwright. focusAllowsPath in /app/frontend/src/lib/focus.js gates /meal-plans by feature membership (nutrition + muscle_fat only).",
+  "rca of the issue": "N/A — no defects found."
+}
