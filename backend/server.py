@@ -1481,15 +1481,11 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def create_indexes():
-        if EMERGENT_LLM_KEY:
-        try:
-            await asyncio.to_thread(init_storage)
-            logger.info("Object storage initialized")
-        except Exception as e:
-            logger.error(f"Storage init failed: {e}")
-    else:
-        logger.warning("EMERGENT_LLM_KEY not set — photo uploads and AI features disabled")
-
+            try:
+        await db.users.create_index("email", unique=True)
+        await db.login_attempts.create_index("identifier", unique=True)
+    except Exception as e:
+        logger.warning(f"Index creation skipped: {e}")
     await seed_roles()
     _start_scheduler()
     try:
@@ -1497,6 +1493,7 @@ async def create_indexes():
         logger.info("Object storage initialized")
     except Exception as e:
         logger.error(f"Storage init failed: {e}")
+
 
 
 _scheduler = None
