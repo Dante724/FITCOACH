@@ -188,5 +188,6 @@ select.field { appearance: none; }
 @media (max-width: 900px) {
   .ld-hero-grid { grid-template-columns: 1fr !important; }
   .ld-nav-links { display: none !important; }
+  .ld-nav-login { display: none !important; }
 }
 

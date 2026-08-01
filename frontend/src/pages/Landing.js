@@ -44,7 +44,7 @@ function Nav() {
         ))}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <button className="ld-pill ld-pill-ghost" data-testid="nav-login-btn" onClick={() => navigate("/login")} style={{ padding: "9px 18px", fontSize: 14 }}>Log in</button>
+        <button className="ld-pill ld-pill-ghost ld-nav-login" data-testid="nav-login-btn" onClick={() => navigate("/login")} style={{ padding: "9px 18px", fontSize: 14 }}>Log in</button>
         <button className="ld-pill ld-pill-primary" data-testid="nav-signup-btn" onClick={() => navigate("/login")} style={{ padding: "9px 20px", fontSize: 14 }}>Get started</button>
       </div>
     </nav>

@@ -25,6 +25,18 @@ leads to a different set of features**. Style: clay morphism + Liquid Glass, pro
 - muscle_fat  → bodyscan, food, workouts, progress, booking
 - Overview (dashboard) always present.
 
+## Implemented (2026-08-01, part 2)
+- **Landing page redesign** (`/`): premium DARK theme (obsidian bg, terracotta/teal auras, glass nav,
+  cinematic hero + floating stat cards, dark clay programme cards with hover lift, glowing "Most popular"
+  pricing tier). New `.ld-*` classes in index.css. Kept all routes/CTAs → /login.
+- **Membership page elevated** (light clay to match app shell): plan cards now show feature lists, crown
+  icons, highlighted quarterly tier with glow, and a "₹1,000 / session" pay-as-you-go callout.
+- **New membership pricing**: Monthly ₹15,000 / Quarterly ₹30,000 (3 months) / Annual ₹85,000
+  (backend MEMBERSHIP_PLANS + landing + membership). Per-session ₹1,000 unchanged.
+- **Weekly progress-photo reminder**: `GET /api/notifications` appends a `rem-photo-weekly` reminder
+  (link /progress) for clients with no progress photo in the last 7 days; shows in the notification bell,
+  clears once a photo is added. Verified 6/6 backend + FE (iter 10).
+
 ## Implemented (2026-08-01)
 - **Profile Settings** (`/profile`, all roles): update display name + upload/change profile photo via Emergent
   object storage; photos served through authed `GET /api/files/{path}`. Sidebar user card links to it.
