@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
@@ -40,11 +40,23 @@ export default function Layout() {
 
   const initials = (user?.name || "U").split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
   const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
+  const [drawer, setDrawer] = useState(false);
+
+  useEffect(() => { setDrawer(false); }, [location.pathname]);
 
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
-      <aside className="glass" data-testid="sidebar"
-        style={{ width: 250, position: "fixed", top: 16, left: 16, bottom: 16, borderRadius: 26, display: "flex", flexDirection: "column", padding: "24px 18px", zIndex: 40 }}>
+      <div className={`mobile-topbar glass${drawer ? " " : ""}`}>
+        <button data-testid="menu-btn" onClick={() => setDrawer(true)} style={{ border: "none", background: "transparent", cursor: "pointer", padding: 6, display: "flex" }}>
+          <Icons.Menu size={24} color="var(--text)" />
+        </button>
+        <Logo />
+        <NotificationBell />
+      </div>
+      <div className={`sidebar-overlay${drawer ? " open" : ""}`} onClick={() => setDrawer(false)} />
+
+      <aside className={`glass app-sidebar${drawer ? " open" : ""}`} data-testid="sidebar"
+        style={{ width: 250, position: "fixed", top: 16, left: 16, bottom: 16, borderRadius: 26, display: "flex", flexDirection: "column", padding: "24px 18px", zIndex: 42 }}>
         <div style={{ padding: "0 6px 22px" }}><Logo /></div>
         {role === "client" && focus && (
           <div className="clay-inset" style={{ padding: "10px 14px", marginBottom: 18 }}>
@@ -91,8 +103,8 @@ export default function Layout() {
         </div>
       </aside>
 
-      <main style={{ marginLeft: 282, flex: 1, padding: "24px 42px 40px", maxWidth: 1180 }}>
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+      <main className="app-main" style={{ marginLeft: 282, flex: 1, padding: "24px 42px 40px", maxWidth: 1180 }}>
+        <div className="desktop-bell" style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
           <NotificationBell />
         </div>
         <Outlet />

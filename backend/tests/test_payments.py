@@ -115,21 +115,30 @@ class TestBookingRegression:
     """Ensure booking create/list/cancel still works while payments are disabled."""
 
     def test_create_list_cancel_booking(self, bearer):
-        # create
-        r = bearer.post(f"{API}/bookings", json={"trainer_id": "t1", "date": "2026-11-14", "time": "09:00"})
-        # allow 409 if leftover data
+        # create — use a real seeded trainer, a valid weekday and an available slot
+        import datetime as _dt
+        trainers = bearer.get(f"{API}/trainers").json()["trainers"]
+        assert trainers, "expected seeded trainers"
+        tid = trainers[0]["trainer_id"]
+        t = _dt.date.today()
+        monday = t + _dt.timedelta(days=((0 - t.weekday()) % 7) + 7)  # a future Monday
+        date = monday.isoformat()
+        slots = bearer.get(f"{API}/trainers/{tid}/slots", params={"date": date}).json()["slots"]
+        assert slots, "expected available slots on a weekday"
+        slot = slots[0]
+
+        r = bearer.post(f"{API}/bookings", json={"trainer_id": tid, "date": date, "time": slot})
         assert r.status_code in (200, 409), r.text
         if r.status_code == 409:
-            # find existing
             lst = bearer.get(f"{API}/bookings").json()
-            b = next((x for x in lst if x["date"] == "2026-11-14" and x["time"] == "09:00"), None)
+            b = next((x for x in lst if x["date"] == date and x["time"] == slot), None)
             assert b, "expected leftover booking"
             bid = b["id"]
         else:
             b = r.json()
-            assert b["date"] == "2026-11-14"
-            # booking should have a paid field (False by default)
+            assert b["date"] == date
             assert b.get("paid") is False or b.get("paid") is None
+            assert b.get("room"), "booking should have a video room"
             bid = b["id"]
 
         # list contains it

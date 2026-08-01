@@ -105,3 +105,43 @@ select.field { appearance: none; }
 .fade-up { animation: fadeUp 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
 
 .toast-wrap { position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 10px; z-index: 9999; }
+
+/* ── Mobile top bar (shown only on small screens) ── */
+.mobile-topbar { display: none; }
+.sidebar-overlay { display: none; }
+
+@media (max-width: 900px) {
+  /* Collapse every multi-column inline grid to a single column */
+  [style*="grid-template-columns"] { grid-template-columns: 1fr !important; }
+
+  h1 { font-size: 32px !important; }
+  h2 { font-size: 26px !important; }
+
+  /* App shell: sidebar becomes a slide-in drawer */
+  .app-sidebar {
+    transform: translateX(-115%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .app-sidebar.open { transform: translateX(0); }
+  .app-main { margin-left: 0 !important; padding: 74px 16px 40px !important; }
+  .desktop-bell { display: none !important; }
+  .mobile-topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    position: fixed; top: 0; left: 0; right: 0; height: 58px; padding: 0 14px; z-index: 45;
+  }
+  .sidebar-overlay.open {
+    display: block; position: fixed; inset: 0; background: rgba(27, 33, 48, 0.4);
+    backdrop-filter: blur(2px); z-index: 41;
+  }
+
+  /* Landing / login: stack and pad */
+  .landing-links { display: none !important; }
+  .landing-hero { padding-top: 120px !important; }
+  .toast-wrap { left: 16px; right: 16px; bottom: 16px; }
+}
+
+@media (max-width: 520px) {
+  h1 { font-size: 27px !important; }
+  .display { letter-spacing: -0.01em; }
+}
+

@@ -17,7 +17,9 @@ export default function TrainerDashboard() {
 
   const loadSessions = useCallback(() => api.get("/trainer/sessions").then((r) => setSessions(r.data)).catch(() => {}), []);
   useEffect(() => {
-    api.get("/trainer/me").then((r) => setProfile(r.data)).catch(() => {});
+    api.get("/trainer/me")
+      .then((r) => setProfile(r.data))
+      .catch(() => setProfile({ specialty: "", bio: "", available_days: [0, 1, 2, 3, 4], available_times: [] }));
     loadSessions();
   }, [loadSessions]);
 
