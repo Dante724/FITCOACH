@@ -1481,7 +1481,7 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def create_indexes():
-try:
+    try:
         await db.users.create_index("email", unique=True)
         await db.login_attempts.create_index("identifier", unique=True)
     except Exception as e:
@@ -1493,6 +1493,7 @@ try:
         logger.info("Object storage initialized")
     except Exception as e:
         logger.error(f"Storage init failed: {e}")
+
 
 
 
