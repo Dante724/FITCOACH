@@ -25,6 +25,20 @@ leads to a different set of features**. Style: clay morphism + Liquid Glass, pro
 - muscle_fat  → bodyscan, food, workouts, progress, booking
 - Overview (dashboard) always present.
 
+## Implemented (2026-08-01)
+- **Profile Settings** (`/profile`, all roles): update display name + upload/change profile photo via Emergent
+  object storage; photos served through authed `GET /api/files/{path}`. Sidebar user card links to it.
+  Endpoints: `PUT /api/profile`, `POST /api/profile/photo`, `GET /api/files/{path}`. Verified 12/12 backend + FE.
+- **Meal Plan Builder** (`/meal-plans`, nutrition + muscle_fat focus): pick goal/diet/calories/allergies →
+  Gemini generates a full-day plan (meals + macros + totals); name & save to a library, expand saved plans,
+  delete. Endpoints: `POST /api/meal-plans/generate`, `GET/POST /api/meal-plans`, `DELETE /api/meal-plans/{id}`.
+  Verified 5/5 backend + FE.
+- **Progress Photo Timeline** (Progress page → Photos tab): upload dated progress photos (weight + note),
+  chronological timeline grid, Compare mode for Before/After side-by-side, delete. Photos in object storage.
+  Endpoints: `GET/POST /api/progress/photos`, `DELETE /api/progress/photos/{id}`. Verified 9/9 backend + FE.
+- Object storage integrated (Emergent objstore, `EMERGENT_LLM_KEY`) — init at startup, `db.files` registry,
+  soft-delete. App name prefix `fitcoach/`.
+
 ## Implemented (2026-07-19)
 - **Email (Gmail SMTP)**: booking confirmation emails (client + trainer) on booking, and reminder emails
   ~24h before each session via APScheduler (runs every 5 min). Admin Console shows email status + "Send
@@ -63,8 +77,9 @@ leads to a different set of features**. Style: clay morphism + Liquid Glass, pro
 - Testing: 22/22 backend pass, 100% frontend pass (testing agent iteration_1)
 
 ## Backlog / next
-- P1: Real trainer-side availability & video session join (dropped from client-only scope)
-- P1: Meal plan builder + saved diet templates (nutrition focus)
-- P2: Per-user rate limiting on AI endpoints; strict Pydantic response models for AI outputs
-- P2: Progress photo timeline; export data
-- P2: Split server.py into modules as features grow
+- P1: Meal plan → shopping list export; per-meal swap/regenerate a single meal
+- P1: Progress photo reminder nudges (weekly) via the notification bell
+- P2: Per-user rate limiting on AI endpoints (food/analyze, meal-plans/generate, bodyscan)
+- P2: Delete-confirmation dialogs for progress photos & saved plans
+- P2: Split server.py into routers (auth, profile, meal_plans, progress, payments) — now ~1500 lines
+- P2: Export data; progress-photo purge from object storage on delete
