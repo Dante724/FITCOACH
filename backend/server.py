@@ -56,9 +56,9 @@ EMAIL_ENABLED = os.environ.get('EMAIL_ENABLED', 'true').lower() == 'true'
 REMINDER_HOURS_BEFORE = int(os.environ.get('REMINDER_HOURS_BEFORE', '24'))
 
 MEMBERSHIP_PLANS = [
-    {"id": "monthly", "name": "Monthly", "price_inr": 10000, "days": 30, "blurb": "Full access, billed monthly"},
+    {"id": "monthly", "name": "Monthly", "price_inr": 15000, "days": 30, "blurb": "Full access, billed monthly"},
     {"id": "quarterly", "name": "Quarterly", "price_inr": 30000, "days": 90, "blurb": "Save with a 3-month commitment"},
-    {"id": "annual", "name": "Annual", "price_inr": 50000, "days": 365, "blurb": "Best value — a full year of training"},
+    {"id": "annual", "name": "Annual", "price_inr": 85000, "days": 365, "blurb": "Best value — a full year of training"},
 ]
 SESSION_PRICE_INR = 1000
 
@@ -892,6 +892,29 @@ async def list_notifications(user: User = Depends(get_current_user)):
                 "link": f"/call/{b['id']}", "kind": "reminder",
             })
     reminders.sort(key=lambda r: r["body"])
+
+    # Weekly progress-photo nudge for clients (no photo in the last 7 days)
+    if user.role == "client":
+        last_photo = await db.progress_photos.find_one(
+            {"user_id": user.user_id, "is_deleted": {"$ne": True}}, sort=[("created_at", -1)]
+        )
+        need_nudge = True
+        if last_photo:
+            try:
+                last_dt = datetime.fromisoformat(last_photo["created_at"])
+                if last_dt.tzinfo is None:
+                    last_dt = last_dt.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) - last_dt < timedelta(days=7):
+                    need_nudge = False
+            except (ValueError, TypeError):
+                pass
+        if need_nudge:
+            reminders.append({
+                "id": "rem-photo-weekly", "title": "Time for a progress photo",
+                "body": "It's been a week — snap a new progress photo to track your transformation.",
+                "link": "/progress", "kind": "reminder",
+            })
+
     unread = sum(1 for n in stored if not n.get("read"))
     return {"notifications": stored, "reminders": reminders, "unread": unread, "badge": unread + len(reminders)}
 

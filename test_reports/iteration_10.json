@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 10 — Landing redesign + Membership pricing + weekly photo reminder. BACKEND (/app/backend/tests/test_landing_membership_reminder.py, 6/6 pass): GET /api/payments/config with test session returns plans monthly=15000, quarterly=30000, annual=85000 (verified twice — once via session cookie, once via nutriuser email login); requires auth (401 unauth). GET /api/notifications for a client with no recent progress photo includes reminder id 'rem-photo-weekly' title 'Time for a progress photo' link '/progress' and it increments badge beyond unread. After POST /api/progress/photos (multipart tiny PNG) the same GET /api/notifications no longer contains 'rem-photo-weekly'; after DELETE /api/progress/photos/{id} the reminder reappears. Landing root GET / returns 200 index HTML for unauthenticated user. FRONTEND (Playwright 1920x1080 + 390x844 mobile): / (public, no login) renders the new dark landing with all required testids visible (nav-login-btn, nav-signup-btn, hero-signup-btn, landing-plan-{monthly|quarterly|annual}, landing-buy-{monthly|quarterly|annual}), page text contains ₹15,000 / ₹30,000 / ₹85,000 / 'Most popular' / '/3 months'; landing-buy-monthly click navigates to /login. Membership page (logged-in nutriuser@example.com) shows plan-{monthly,quarterly,annual} cards with the exact new prices, quarterly labelled 'Most popular' (highlighted border), '₹1,000 / session' pay-as-you-go callout, and subscribe-{id} buttons rendered as 'Coming soon' and disabled=true (PAYMENTS_ENABLED=false — expected). Notification bell (top-right) shows badge count 4 (3 unread + reminder); clicking notif-bell opens notif-panel which contains the reminder 'Time for a progress photo' as a notif-item; clicking it navigates to /progress. After uploading a photo via Progress → Photos tab (progress-photo-input + save-photo-btn), reopening the bell no longer shows the reminder. Cleanup: uploaded photo deleted via delete-photo-{id}, 'Photo removed.' toast confirmed. Regression: /dashboard sidebar and membership status/payment history sections still render, login flow via [data-testid=email-login-btn] works. Note: two NotificationBell instances exist (mobile + desktop) in Layout.js — use :visible filter when selecting in Playwright.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Landing (mobile 390px)", "issues": ["Top-right nav still shows 'Log in' + 'Get started' side-by-side; the 'Log in' pill wraps to 2 lines because the two buttons compete for width next to the FitCoach logo. Request stated 'nav links hidden' on mobile — the middle links (Programmes / How it works / Pricing) ARE hidden as expected, but the two right-hand auth CTAs remain and look cramped. Consider hiding one (e.g. only show 'Get started') or moving to a hamburger."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_landing_membership_reminder.py",
+    "/app/test_reports/pytest/iteration_10.xml"
+  ],
+  "action_items": [
+    "Optional: tidy landing mobile header — the two auth CTAs wrap awkwardly at 390px (cosmetic only)."
+  ],
+  "critical_code_review_comments": [
+    "Layout.js renders <NotificationBell/> twice (mobile header + desktop header). Consider a single instance with responsive placement to avoid duplicate polling of /api/notifications and duplicate DOM ids; also each instance has independent open-state.",
+    "server.py get_notifications: the rem-photo-weekly reminder is unconditionally added for clients with no recent photo, but there is no server-side dedupe with a persisted 'dismissed_at' — user can never dismiss it from the panel (no read/dismiss action for reminders).",
+    "Membership.js: subscribe buttons are hardcoded to 'Coming soon' when payments are disabled — good — but MEMBERSHIP_PLANS `blurb` in server.py is exposed via /api/payments/config yet Membership.js hardcodes its own feature lists client-side. If pricing/plan copy changes on the server, the client card body will still show the old features. Move features into MEMBERSHIP_PLANS.",
+    "server.py MEMBERSHIP_PLANS lives at module scope with no currency field — assumes INR everywhere. Add 'currency': 'INR' for forward-compat.",
+    "Landing.js appears to inline prices (15,000 / 30,000 / 85,000). If backend pricing changes, landing will silently diverge. Consider fetching /api/payments/config from the public landing (or seeding via a public /api/pricing endpoint).",
+    "server.py grew past ~1500 lines (still not modularised — repeats iter-7/8/9 comment)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_landing_membership_reminder.py (new)"
+  ],
+  "success_rate": { "backend": "100% (6/6)", "frontend": "100% (landing desktop + mobile + membership + notif reminder end-to-end)" },
+  "test_credentials": "nutriuser@example.com / Passw0rd! for Membership UI; session_token=test_session_fitcoach_1 for backend reminder tests.",
+  "seed_data_creation": "None retained. Uploaded and deleted 1 TEST_reminder progress photo via UI + 1 via backend test (both cleaned up).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Landing page (public) at /: testids nav-login-btn, nav-signup-btn, hero-signup-btn, cta-signup-btn, landing-plan-{monthly|quarterly|annual}, landing-buy-{monthly|quarterly|annual}. Membership (logged-in) testids: plan-{id}, subscribe-{id} (disabled when PAYMENTS_ENABLED=false). NotificationBell: two instances rendered (mobile + desktop) in Layout.js — MUST use '[data-testid=notif-bell]:visible' in Playwright, plain .first will hit the hidden mobile one on desktop viewport. Panel = notif-panel, items = notif-item; reminders have kind='reminder' and appear first. Backend: GET /api/payments/config requires auth and returns plans [{id,name,price_inr,days,blurb}]. GET /api/notifications appends {id:'rem-photo-weekly', kind:'reminder', link:'/progress', title:'Time for a progress photo'} in the reminders[] array when the user has no non-deleted progress_photos within last 7 days; badge counts unread notifications + reminders.",
+  "rca of the issue": "N/A — no defects found; all requested features work as specified."
+}

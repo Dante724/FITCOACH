@@ -73,7 +73,9 @@ export default function NotificationBell() {
                       <div style={{ fontSize: 13.5, fontWeight: 700 }}>{n.title}</div>
                       <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5 }}>{n.body}</div>
                     </div>
-                    {isReminder && <Icons.Video size={15} color="var(--teal)" style={{ flexShrink: 0, marginTop: 2 }} />}
+                    {isReminder && (n.link === "/progress"
+                      ? <Icons.Camera size={15} color="var(--teal)" style={{ flexShrink: 0, marginTop: 2 }} />
+                      : <Icons.Video size={15} color="var(--teal)" style={{ flexShrink: 0, marginTop: 2 }} />)}
                   </button>
                 );
               })}
