@@ -1523,8 +1523,8 @@ async def seed_roles():
             "role": "admin", "picture": None, "focus": None,
             "password_hash": hash_password(ADMIN_PASSWORD), "created_at": datetime.now(timezone.utc).isoformat(),
         })
-        elif ADMIN_PASSWORD_RESET:
-        await db.users.update_one({"email": ADMIN_EMAIL}, {"$set": {"password_hash": hash_password(ADMIN_PASSWORD), "role": "admin"}})
+            elif not verify_password(ADMIN_PASSWORD, admin.get("password_hash", "")):
+
 
     # Demo trainers so booking works out of the box
     demo_trainers = [
