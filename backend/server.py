@@ -874,6 +874,21 @@ async def list_notifications(user: User = Depends(get_current_user)):
     stored = await db.notifications.find({"user_id": user.user_id}, {"_id": 0}).to_list(100)
     stored.sort(key=lambda x: x.get("created_at", ""), reverse=True)
 
+    dismissed_docs = await db.dismissed_reminders.find({"user_id": user.user_id}, {"_id": 0}).to_list(500)
+    dismissed = {d["reminder_id"]: d.get("dismissed_at", "") for d in dismissed_docs}
+
+    def _dismissed_recently(reminder_id: str, days: int) -> bool:
+        ts = dismissed.get(reminder_id)
+        if not ts:
+            return False
+        try:
+            dt = datetime.fromisoformat(ts)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return datetime.now(timezone.utc) - dt < timedelta(days=days)
+        except (ValueError, TypeError):
+            return False
+
     reminders = []
     bookings = await db.bookings.find(
         {"$or": [{"user_id": user.user_id}, {"trainer_id": user.user_id}]}, {"_id": 0}
@@ -884,17 +899,20 @@ async def list_notifications(user: User = Depends(get_current_user)):
         except (ValueError, KeyError):
             continue
         delta = dt - datetime.now(timezone.utc)
+        rid = f"rem-{b['id']}"
+        if rid in dismissed:  # session reminder dismissed → suppress permanently
+            continue
         if timedelta(minutes=-30) <= delta <= timedelta(hours=48):
             who = b.get("trainer_name") if b.get("user_id") == user.user_id else (b.get("client_name") or "your client")
             reminders.append({
-                "id": f"rem-{b['id']}", "title": "Upcoming session",
+                "id": rid, "title": "Upcoming session",
                 "body": f"With {who} — {_humanize_until(dt)} ({b['date']} at {b['time']})",
                 "link": f"/call/{b['id']}", "kind": "reminder",
             })
     reminders.sort(key=lambda r: r["body"])
 
-    # Weekly progress-photo nudge for clients (no photo in the last 7 days)
-    if user.role == "client":
+    # Weekly progress-photo nudge for clients (no photo in the last 7 days, not dismissed this week)
+    if user.role == "client" and not _dismissed_recently("rem-photo-weekly", 7):
         last_photo = await db.progress_photos.find_one(
             {"user_id": user.user_id, "is_deleted": {"$ne": True}}, sort=[("created_at", -1)]
         )
@@ -917,6 +935,23 @@ async def list_notifications(user: User = Depends(get_current_user)):
 
     unread = sum(1 for n in stored if not n.get("read"))
     return {"notifications": stored, "reminders": reminders, "unread": unread, "badge": unread + len(reminders)}
+
+
+class DismissReminderRequest(BaseModel):
+    reminder_id: str
+
+
+@api_router.post("/notifications/reminders/dismiss")
+async def dismiss_reminder(payload: DismissReminderRequest, user: User = Depends(get_current_user)):
+    rid = payload.reminder_id.strip()
+    if not rid:
+        raise HTTPException(status_code=400, detail="reminder_id is required")
+    await db.dismissed_reminders.update_one(
+        {"user_id": user.user_id, "reminder_id": rid},
+        {"$set": {"user_id": user.user_id, "reminder_id": rid, "dismissed_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    return {"ok": True}
 
 
 @api_router.post("/notifications/read")

@@ -25,6 +25,10 @@ leads to a different set of features**. Style: clay morphism + Liquid Glass, pro
 - muscle_fat  → bodyscan, food, workouts, progress, booking
 - Overview (dashboard) always present.
 
+- **Dismiss reminders**: users can dismiss a reminder from the notification bell (X button). Session
+  reminders stay dismissed permanently; the weekly photo nudge is suppressed for 7 days then can recur.
+  `POST /api/notifications/reminders/dismiss {reminder_id}` + `dismissed_reminders` collection.
+
 ## Implemented (2026-08-01, part 2)
 - **Landing page redesign** (`/`): premium DARK theme (obsidian bg, terracotta/teal auras, glass nav,
   cinematic hero + floating stat cards, dark clay programme cards with hover lift, glowing "Most popular"

@@ -36,6 +36,12 @@ export default function NotificationBell() {
   };
 
   const goto = (link) => { setOpen(false); if (link) navigate(link); };
+
+  const dismiss = async (id) => {
+    setData((d) => ({ ...d, reminders: d.reminders.filter((r) => r.id !== id), badge: Math.max(0, d.badge - 1) }));
+    await api.post("/notifications/reminders/dismiss", { reminder_id: id }).catch(() => {});
+  };
+
   const items = [...data.reminders, ...data.notifications];
 
   return (
@@ -64,19 +70,24 @@ export default function NotificationBell() {
               {items.map((n) => {
                 const isReminder = n.kind === "reminder";
                 return (
-                  <button key={n.id} data-testid="notif-item" onClick={() => goto(n.link)}
-                    className="clay-inset" style={{ border: "none", cursor: "pointer", textAlign: "left", padding: "12px 13px", display: "flex", gap: 11, alignItems: "flex-start" }}>
-                    <div style={{ width: 32, height: 32, borderRadius: 9, flexShrink: 0, background: isReminder ? "var(--teal-soft)" : "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      {isReminder ? <Icons.CalendarClock size={16} color="var(--teal)" /> : <Icons.Info size={16} color="var(--accent)" />}
+                  <div key={n.id} data-testid="notif-item"
+                    className="clay-inset" style={{ padding: "12px 13px", display: "flex", gap: 11, alignItems: "flex-start" }}>
+                    <div onClick={() => goto(n.link)} style={{ display: "flex", gap: 11, alignItems: "flex-start", flex: 1, minWidth: 0, cursor: "pointer" }}>
+                      <div style={{ width: 32, height: 32, borderRadius: 9, flexShrink: 0, background: isReminder ? "var(--teal-soft)" : "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        {isReminder ? (n.link === "/progress" ? <Icons.Camera size={16} color="var(--teal)" /> : <Icons.CalendarClock size={16} color="var(--teal)" />) : <Icons.Info size={16} color="var(--accent)" />}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 700 }}>{n.title}</div>
+                        <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5 }}>{n.body}</div>
+                      </div>
                     </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 700 }}>{n.title}</div>
-                      <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5 }}>{n.body}</div>
-                    </div>
-                    {isReminder && (n.link === "/progress"
-                      ? <Icons.Camera size={15} color="var(--teal)" style={{ flexShrink: 0, marginTop: 2 }} />
-                      : <Icons.Video size={15} color="var(--teal)" style={{ flexShrink: 0, marginTop: 2 }} />)}
-                  </button>
+                    {isReminder && (
+                      <button data-testid="dismiss-reminder-btn" title="Dismiss" onClick={(e) => { e.stopPropagation(); dismiss(n.id); }}
+                        style={{ flexShrink: 0, border: "none", background: "transparent", cursor: "pointer", padding: 4, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1 }}>
+                        <Icons.X size={15} color="var(--text-3)" />
+                      </button>
+                    )}
+                  </div>
                 );
               })}
             </div>
