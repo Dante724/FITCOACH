@@ -53,7 +53,7 @@ export function navForFocus(key) {
 }
 
 export function focusAllowsPath(key, pathname) {
-  if (pathname.startsWith("/dashboard") || pathname.startsWith("/membership")) return true;
+  if (pathname.startsWith("/dashboard") || pathname.startsWith("/membership") || pathname.startsWith("/profile")) return true;
   const focus = getFocus(key);
   if (!focus) return false;
   return focus.features.some((f) => pathname.startsWith(FEATURE_META[f].path));

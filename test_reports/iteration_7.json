@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 7 verifies the new Profile Settings feature end-to-end (backend + frontend) on the preview URL. BACKEND: /app/backend/tests/test_profile.py — 12/12 tests pass. Covers PUT /api/profile (rename) for client/trainer/admin + persistence via /api/auth/me + rejection of empty & >60 char names + 401 for unauthenticated; POST /api/profile/photo (multipart) — happy path returns updated user with picture URL starting with the preview host and /api/files/; rejects non-image (text/plain -> 400) and >5MB payload (400); GET /api/files/{path} returns 200 image/png with same-origin session cookie, 401 without any auth, 404 for unknown paths. Regression: /api/auth/me and /api/trainers still 200. FRONTEND (Playwright, 1440x900): (1) Client login pwuser@example.com — [data-testid=profile-link] in sidebar navigates to /profile which renders [data-testid=profile-page] with [data-testid=profile-name-input]='Pat Lee', [data-testid=profile-avatar] present, [data-testid=save-profile-btn] correctly disabled when unchanged. (2) Rename 'Pat UI Test' via save-profile-btn → sidebar user card updates immediately to 'Pat UI Test' and persists after full page reload (GET /api/auth/me). (3) Photo upload via set_input_files on [data-testid=photo-input] with a tiny valid PNG → [data-testid=profile-avatar] switches to an <img> whose src is https://<host>/api/files/fitcoach/avatars/user_<uid>/<hex>.png, naturalWidth=1, complete=true (image actually rendered, not broken). In-page fetch of that URL with credentials:'include' returns status=200 content-type=image/png. (4) Trainer sarah.trainer@fitcoach.com — /profile route allowed, name save→persist works, and /trainer dashboard still renders 'My Sessions' after. (5) Admin admin@fitcoach.com — /profile route allowed, name save→persist works, /admin still renders Clients/Trainers/Bookings stat cards (8/7/5/1). (6) Validation UX: save button is disabled while name is unchanged (dirty=false); backend rejects empty/whitespace names with 400. All three roles restored to their original names after tests. No 500s, no console errors beyond the expected 401 from anonymous /auth/me polling pre-login.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_profile.py",
+    "/app/test_reports/pytest/iteration_7.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py update_profile trims name but the 400 message says 'Name must be 1–60 characters' even for pure-whitespace input; consider a more specific 'Name cannot be empty' vs 'Name too long' to align with the UI toast copy. Non-blocking.",
+    "upload_profile_photo builds picture_url from x-forwarded-proto/host request headers. This is fine behind ingress but will break if the app is ever hit directly without those headers (host would be internal). Consider deriving from an env-configured PUBLIC_BASE_URL as a fallback.",
+    "GET /api/files/{path} always issues a full read into memory before returning Response(content=data). For avatars (<=5MB) this is fine, but if this endpoint is ever reused for larger uploads, prefer StreamingResponse with an async iterator to avoid holding the whole payload in RAM.",
+    "Profile.js: the file input MIME accept list is 'image/png,image/jpeg,image/webp,image/gif' but the client-side regex also validates the extension. Both agree with the backend ALLOWED_IMAGE_EXT — good. Consider adding a preview-before-upload step so users see the image before it hits object storage; currently the only feedback is a spinner then updated avatar.",
+    "Profile.js empty-name guard shows an error toast, but because save-profile-btn is disabled while dirty=false, users can only reach that error path by typing then clearing to whitespace — small UX polish opportunity: also disable when trimmed name is empty.",
+    "server.py has now grown past ~1330 lines with object storage helpers + files router inline. Splitting into routers/profile.py + routers/files.py would improve maintainability (already flagged in iter 4–6)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_profile.py (new — profile feature test suite)"
+  ],
+  "success_rate": {"backend": "100% (12/12)", "frontend": "100% (client + trainer + admin profile flows + upload + regression)"},
+  "test_credentials": "pwuser@example.com / Passw0rd! (client), sarah.trainer@fitcoach.com / Trainer@123 (trainer), admin@fitcoach.com / Admin@12345 (admin).",
+  "seed_data_creation": "None. Uploaded one avatar for pwuser during testing (persisted in object storage + db.files). Names were mutated during tests then restored to originals (Pat Lee / Sarah Johnson / Admin).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Profile Settings feature is fully working end-to-end. To login programmatically use POST /api/auth/login {email,password} on a requests.Session — cookies auto-set. To exercise the file serve endpoint, use the returned picture URL directly with the same session cookies; direct anonymous GET returns 401 by design. If tests hit 429 during login, clear login_attempts collection in test_database. Do NOT assume /api/trainers returns a bare list — it returns {trainers: [...]}. The Profile page respects focusAllowsPath for clients (allows /profile for all focus values).",
+  "rca of the issue": "N/A — no defects found."
+}

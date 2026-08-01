@@ -90,14 +90,16 @@ export default function Layout() {
           })}
         </nav>
         <div className="clay-inset" style={{ padding: "12px", display: "flex", alignItems: "center", gap: 11, marginTop: 12 }}>
-          {user?.picture ? (
-            <img src={user.picture} alt="" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover" }} />
-          ) : (
-            <div style={{ width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(135deg, var(--accent), #7c6bd6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#fff" }}>{initials}</div>
-          )}
-          <div style={{ flex: 1, overflow: "hidden" }}>
-            <div style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{user?.name}</div>
-            <div style={{ fontSize: 11, color: "var(--text-3)" }}>{roleLabel}</div>
+          <div data-testid="profile-link" onClick={() => navigate("/profile")} style={{ display: "flex", alignItems: "center", gap: 11, flex: 1, minWidth: 0, cursor: "pointer" }}>
+            {user?.picture ? (
+              <img src={user.picture} alt="" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover" }} />
+            ) : (
+              <div style={{ width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(135deg, var(--accent), #7c6bd6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#fff" }}>{initials}</div>
+            )}
+            <div style={{ flex: 1, overflow: "hidden" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{user?.name}</div>
+              <div style={{ fontSize: 11, color: "var(--text-3)" }}>{roleLabel}</div>
+            </div>
           </div>
           <Icons.LogOut size={17} data-testid="logout-btn" style={{ cursor: "pointer", color: "var(--text-3)" }} onClick={logout} />
         </div>

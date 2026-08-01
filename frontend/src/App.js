@@ -18,6 +18,7 @@ import Membership from "@/pages/Membership";
 import AdminPanel from "@/pages/AdminPanel";
 import TrainerDashboard from "@/pages/TrainerDashboard";
 import VideoCall from "@/pages/VideoCall";
+import Profile from "@/pages/Profile";
 
 function Loader() {
   return (
@@ -67,6 +68,10 @@ function AppRouter() {
 
       <Route element={<RequireAuth roles={TRAINER_ROLES}><Layout /></RequireAuth>}>
         <Route path="/trainer" element={<TrainerDashboard />} />
+      </Route>
+
+      <Route element={<RequireAuth><Layout /></RequireAuth>}>
+        <Route path="/profile" element={<Profile />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

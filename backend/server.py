@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, Request, Response, Cookie, Header, BackgroundTasks
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, Request, Response, Cookie, Header, BackgroundTasks, UploadFile, File, Query
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -19,6 +19,7 @@ from datetime import datetime, timezone, timedelta
 import bcrypt
 import jwt
 import httpx
+import requests
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 
 ROOT_DIR = Path(__file__).parent
@@ -60,6 +61,59 @@ MEMBERSHIP_PLANS = [
     {"id": "annual", "name": "Annual", "price_inr": 50000, "days": 365, "blurb": "Best value — a full year of training"},
 ]
 SESSION_PRICE_INR = 1000
+
+# ───────────────────────────── Object Storage (profile photos) ─────────────────────────────
+STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
+STORAGE_APP_NAME = "fitcoach"
+_storage_key = None
+ALLOWED_IMAGE_EXT = {"jpg", "jpeg", "png", "webp", "gif"}
+IMAGE_MIME = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp", "gif": "image/gif"}
+MAX_PHOTO_BYTES = 5 * 1024 * 1024
+
+
+def init_storage():
+    global _storage_key
+    if _storage_key:
+        return _storage_key
+    resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_LLM_KEY}, timeout=30)
+    resp.raise_for_status()
+    _storage_key = resp.json()["storage_key"]
+    return _storage_key
+
+
+def put_object(path: str, data: bytes, content_type: str) -> dict:
+    key = init_storage()
+    resp = requests.put(
+        f"{STORAGE_URL}/objects/{path}",
+        headers={"X-Storage-Key": key, "Content-Type": content_type},
+        data=data, timeout=120,
+    )
+    if resp.status_code == 403:
+        # storage key expired — re-init once and retry
+        global _storage_key
+        _storage_key = None
+        key = init_storage()
+        resp = requests.put(
+            f"{STORAGE_URL}/objects/{path}",
+            headers={"X-Storage-Key": key, "Content-Type": content_type},
+            data=data, timeout=120,
+        )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def get_object(path: str):
+    key = init_storage()
+    resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
+    if resp.status_code == 403:
+        global _storage_key
+        _storage_key = None
+        key = init_storage()
+        resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
+    resp.raise_for_status()
+    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+
+
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -129,6 +183,10 @@ class User(BaseModel):
 
 class FocusUpdate(BaseModel):
     focus: str
+
+
+class ProfileUpdate(BaseModel):
+    name: str
 
 
 class RegisterRequest(BaseModel):
@@ -537,6 +595,76 @@ async def set_focus(payload: FocusUpdate, user: User = Depends(get_current_user)
     await db.users.update_one({"user_id": user.user_id}, {"$set": {"focus": payload.focus}})
     user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
     return User(**user_doc)
+
+
+@api_router.put("/profile", response_model=User)
+async def update_profile(payload: ProfileUpdate, user: User = Depends(get_current_user)):
+    name = payload.name.strip()
+    if not (1 <= len(name) <= 60):
+        raise HTTPException(status_code=400, detail="Name must be 1–60 characters")
+    await db.users.update_one({"user_id": user.user_id}, {"$set": {"name": name}})
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    return User(**user_doc)
+
+
+@api_router.post("/profile/photo", response_model=User)
+async def upload_profile_photo(request: Request, file: UploadFile = File(...), user: User = Depends(get_current_user)):
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
+    if ext not in ALLOWED_IMAGE_EXT:
+        raise HTTPException(status_code=400, detail="Only JPG, PNG, WEBP or GIF images are allowed")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(data) > MAX_PHOTO_BYTES:
+        raise HTTPException(status_code=400, detail="Image must be 5MB or smaller")
+    path = f"{STORAGE_APP_NAME}/avatars/{user.user_id}/{uuid.uuid4().hex}.{ext}"
+    content_type = IMAGE_MIME.get(ext, file.content_type or "application/octet-stream")
+    try:
+        result = await asyncio.to_thread(put_object, path, data, content_type)
+    except Exception:
+        logger.exception("Photo upload failed")
+        raise HTTPException(status_code=502, detail="Could not store the image, please try again")
+    stored_path = result["path"]
+    await db.files.insert_one({
+        "id": str(uuid.uuid4()), "storage_path": stored_path, "owner_id": user.user_id,
+        "original_filename": file.filename, "content_type": content_type, "size": result.get("size"),
+        "kind": "avatar", "is_deleted": False, "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    proto = request.headers.get("x-forwarded-proto", "https")
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    picture_url = f"{proto}://{host}/api/files/{stored_path}"
+    await db.users.update_one({"user_id": user.user_id}, {"$set": {"picture": picture_url}})
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    return User(**user_doc)
+
+
+@api_router.get("/files/{path:path}")
+async def serve_file(path: str, request: Request,
+                     session_token: Optional[str] = Cookie(None),
+                     access_token: Optional[str] = Cookie(None),
+                     authorization: Optional[str] = Header(None),
+                     auth: Optional[str] = Query(None)):
+    # Same-origin <img> requests carry the session cookie; also accept a Bearer/query token.
+    authed = False
+    for cand in (session_token, access_token):
+        if cand and (await _user_from_google_session(cand) or await _user_from_jwt(cand)):
+            authed = True
+            break
+    if not authed:
+        token = auth or (authorization.split(" ", 1)[1] if authorization and authorization.startswith("Bearer ") else None)
+        if token and (await _user_from_google_session(token) or await _user_from_jwt(token)):
+            authed = True
+    if not authed:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    record = await db.files.find_one({"storage_path": path, "is_deleted": False})
+    if not record:
+        raise HTTPException(status_code=404, detail="File not found")
+    try:
+        data, content_type = await asyncio.to_thread(get_object, path)
+    except Exception:
+        raise HTTPException(status_code=404, detail="File not found")
+    return Response(content=data, media_type=record.get("content_type", content_type),
+                    headers={"Cache-Control": "private, max-age=3600"})
 
 
 # ───────────────────────────── Trainers / Booking ─────────────────────────────
@@ -1136,6 +1264,11 @@ async def create_indexes():
         logger.warning(f"Index creation skipped: {e}")
     await seed_roles()
     _start_scheduler()
+    try:
+        await asyncio.to_thread(init_storage)
+        logger.info("Object storage initialized")
+    except Exception as e:
+        logger.error(f"Storage init failed: {e}")
 
 
 _scheduler = None
