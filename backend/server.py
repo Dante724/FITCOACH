@@ -44,6 +44,8 @@ PAYMENTS_ENABLED = bool(RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET)
 
 ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', 'admin@fitcoach.com').strip().lower()
 ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'Admin@12345')
+ADMIN_PASSWORD_RESET = os.environ.get('ADMIN_PASSWORD_RESET', 'false').lower() == 'true'
+
 
 DEFAULT_DAYS = [0, 1, 2, 3, 4]
 DEFAULT_TIMES = ["07:00", "08:00", "09:00", "17:00", "18:00", "19:00"]
@@ -75,6 +77,8 @@ def init_storage():
     global _storage_key
     if _storage_key:
         return _storage_key
+    if not EMERGENT_LLM_KEY:
+        raise RuntimeError("EMERGENT_LLM_KEY is not set — object storage is disabled")
     resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_LLM_KEY}, timeout=30)
     resp.raise_for_status()
     _storage_key = resp.json()["storage_key"]
@@ -1453,7 +1457,18 @@ async def root():
     return {"message": "FitCoach API"}
 
 
+@app.get("/")
+async def app_root():
+    return {"status": "ok", "service": "fitcoach-backend"}
+
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy"}
+
+
 app.include_router(api_router)
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -1466,11 +1481,15 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def create_indexes():
-    try:
-        await db.users.create_index("email", unique=True)
-        await db.login_attempts.create_index("identifier", unique=True)
-    except Exception as e:
-        logger.warning(f"Index creation skipped: {e}")
+        if EMERGENT_LLM_KEY:
+        try:
+            await asyncio.to_thread(init_storage)
+            logger.info("Object storage initialized")
+        except Exception as e:
+            logger.error(f"Storage init failed: {e}")
+    else:
+        logger.warning("EMERGENT_LLM_KEY not set — photo uploads and AI features disabled")
+
     await seed_roles()
     _start_scheduler()
     try:
@@ -1506,7 +1525,7 @@ async def seed_roles():
             "role": "admin", "picture": None, "focus": None,
             "password_hash": hash_password(ADMIN_PASSWORD), "created_at": datetime.now(timezone.utc).isoformat(),
         })
-    elif not verify_password(ADMIN_PASSWORD, admin.get("password_hash", "")):
+        elif ADMIN_PASSWORD_RESET:
         await db.users.update_one({"email": ADMIN_EMAIL}, {"$set": {"password_hash": hash_password(ADMIN_PASSWORD), "role": "admin"}})
 
     # Demo trainers so booking works out of the box
