@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import * as Icons from "lucide-react";
 import PageHeader from "@/components/PageHeader";
+import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
@@ -125,6 +126,11 @@ export default function Membership() {
           </div>
         ))}
       </div>
+
+      <p style={{ fontSize: 12.5, color: "var(--text-3)", margin: "-6px 0 18px" }} data-testid="payment-terms">
+        By paying you agree to our <Link to="/terms" style={{ color: "var(--ink)" }}>Terms</Link> and <Link to="/refunds" style={{ color: "var(--ink)" }}>Refund policy</Link> —
+        including a full refund within 48 hours of your first payment if you haven't had a session yet.
+      </p>
 
       <div className="grid-main-side" style={{ marginBottom: 18 }}>
         <div className="clay fade-up" style={{ padding: 22 }}>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { AlertCircle, ArrowLeft } from "lucide-react";
 import Logo from "@/components/Logo";
@@ -6,6 +6,7 @@ import GoogleButton from "@/components/GoogleButton";
 import { pendingReferral, clearReferral } from "@/lib/membership";
 import { useAuth } from "@/context/AuthContext";
 import { roleHome } from "@/lib/focus";
+import { api } from "@/lib/api";
 
 function formatApiErrorDetail(detail) {
   if (detail == null) return "Something went wrong. Please try again.";
@@ -28,6 +29,8 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const [consent, setConsent] = useState({ consent: false, photo_consent: false, marketing: false });
   const needsConsent = tab === "register" && !consent.consent;
+  const [credentials, setCredentials] = useState("");
+  useEffect(() => { api.get("/legal").then((r) => setCredentials(r.data.coach_credentials || "")).catch(() => {}); }, []);
 
   if (loading) return null;
   if (user) return <Navigate to={roleHome(user)} replace />;
@@ -64,7 +67,7 @@ export default function Login() {
           <h1 style={{ fontSize: 46, fontWeight: 400, marginBottom: 16 }}>Your own coach.<br /><span className="serif-italic">Plans they approve.</span></h1>
           <p style={{ fontSize: 15, color: "var(--text-2)", lineHeight: 1.65 }}>Training, nutrition and yoga plans drafted by AI and checked by a certified coach, with progress tracking and chat in one place.</p>
         </div>
-        <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>Certified coaches · ACE · NASM · ACSM</div>
+        <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>{credentials || "Certified fitness & nutrition coaching · Yoga"}</div>
       </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "40px 20px" }}>

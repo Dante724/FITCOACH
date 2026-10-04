@@ -7,6 +7,24 @@ import { api } from "@/lib/api";
 import { useToast } from "@/context/ToastContext";
 import { getFocus, GOAL_LABEL } from "@/lib/focus";
 
+const LEGAL_LABELS = { business_name: "BUSINESS_NAME (your full name)", business_address: "BUSINESS_ADDRESS", grievance_officer: "GRIEVANCE_OFFICER", jurisdiction_city: "JURISDICTION_CITY", contact_email: "PRIVACY_CONTACT_EMAIL" };
+
+// Consumer and data-protection rules expect who runs the service to be published; nudge until it's set.
+function LegalDetailsWarning() {
+  const [missing, setMissing] = useState([]);
+  useEffect(() => { api.get("/legal").then((r) => setMissing(r.data.missing || [])).catch(() => {}); }, []);
+  if (!missing.length) return null;
+  return (
+    <div className="clay-inset row fade-up" style={{ padding: "12px 16px", gap: 10, marginBottom: 18, fontSize: 13.5, alignItems: "flex-start" }} data-testid="legal-warning">
+      <Icons.TriangleAlert size={17} color="var(--amber)" style={{ flexShrink: 0, marginTop: 2 }} />
+      <div>
+        <strong>Your legal pages are missing your details.</strong> Set {missing.map((k) => LEGAL_LABELS[k] || k).join(", ")} on the API service in Render
+        so Terms, Privacy, Refunds and Contact show who runs FitCoach. <a href="/contact" target="_blank" rel="noreferrer" style={{ color: "var(--ink)" }}>Preview</a>
+      </div>
+    </div>
+  );
+}
+
 const ROLES = ["client", "trainer", "admin"];
 const FILTERS = [["all", "All"], ["needs", "Needs a coach"], ["client", "Clients"], ["trainer", "Coaches"], ["admin", "Admins"]];
 
@@ -139,6 +157,7 @@ export default function AdminPanel() {
   return (
     <div>
       <PageHeader eyebrow="Administration" title="Admin Console" subtitle="Assign coaches, manage roles and control memberships." />
+      <LegalDetailsWarning />
 
       <div className="grid-stats" style={{ marginBottom: 20 }}>
         <Stat icon={Icons.Users} label="Clients" value={stats?.clients ?? "—"} accent="var(--accent)" delay={0} />

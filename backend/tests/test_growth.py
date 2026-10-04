@@ -248,3 +248,15 @@ def test_insights(api):
 
 def test_median():
     assert server._median([]) is None and server._median([5, 1, 3]) == 3 and server._median([1, 2, 3, 10]) == 2.5
+
+
+def test_legal_info_reports_missing_details(api, monkeypatch):
+    d = api.get("/api/legal").json()
+    assert {"business_name", "business_address", "grievance_officer", "jurisdiction_city"} <= set(d["missing"])
+    assert d["contact_email"] == "admin@fitcoach.com" and "coach_credentials" in d
+    monkeypatch.setitem(server.LEGAL_INFO, "business_name", "Asha Rao")
+    monkeypatch.setitem(server.LEGAL_INFO, "business_address", "Indiranagar, Bengaluru 560038")
+    monkeypatch.setitem(server.LEGAL_INFO, "grievance_officer", "Asha Rao")
+    monkeypatch.setitem(server.LEGAL_INFO, "jurisdiction_city", "Bengaluru")
+    d = api.get("/api/legal").json()
+    assert d["missing"] == [] and d["business_name"] == "Asha Rao"

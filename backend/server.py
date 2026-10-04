@@ -778,6 +778,29 @@ def _humanize_until(dt: datetime) -> str:
     return f"in {hours // 24}d"
 
 
+# Who runs the service — shown on the legal and contact pages. Consumer protection (e-commerce) rules
+# expect the seller's name, address, contact details and grievance officer to be published.
+LEGAL_INFO = {
+    "business_name": os.environ.get("BUSINESS_NAME", "").strip(),          # your full legal name (or business name)
+    "business_address": os.environ.get("BUSINESS_ADDRESS", "").strip(),    # correspondence address
+    "contact_phone": os.environ.get("CONTACT_PHONE", "").strip(),
+    "grievance_officer": os.environ.get("GRIEVANCE_OFFICER", "").strip(),  # name of the person handling complaints
+    "jurisdiction_city": os.environ.get("JURISDICTION_CITY", "").strip(),  # city whose courts handle disputes
+    "gstin": os.environ.get("GSTIN", "").strip(),                          # leave empty if not GST-registered
+    # Exact certifications your coaches actually hold, e.g. "ACE CPT · ISSA Nutritionist · YCB Level 2" —
+    # shown on the sign-in page. Only list ones you can show proof of.
+    "coach_credentials": os.environ.get("COACH_CREDENTIALS", "").strip(),
+}
+LEGAL_REQUIRED = ("business_name", "business_address", "grievance_officer", "jurisdiction_city")
+
+
+@api_router.get("/legal")
+async def legal_info():
+    contact = PRIVACY_CONTACT_EMAIL or ADMIN_EMAIL or ""
+    return {**LEGAL_INFO, "contact_email": contact,
+            "missing": [k for k in LEGAL_REQUIRED if not LEGAL_INFO[k]] + ([] if contact else ["contact_email"])}
+
+
 @api_router.get("/auth/config")
 async def auth_config():
     """Public settings the login page needs at runtime."""

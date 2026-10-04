@@ -45,6 +45,20 @@ services:
         sync: false
       - key: PRIVACY_CONTACT_EMAIL
         sync: false
+      - key: BUSINESS_NAME
+        sync: false
+      - key: BUSINESS_ADDRESS
+        sync: false
+      - key: CONTACT_PHONE
+        sync: false
+      - key: GRIEVANCE_OFFICER
+        sync: false
+      - key: JURISDICTION_CITY
+        sync: false
+      - key: GSTIN
+        sync: false
+      - key: COACH_CREDENTIALS
+        sync: false
 
   - type: web
     name: fitcoach-web

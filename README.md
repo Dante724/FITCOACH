@@ -66,9 +66,16 @@ and plan updates arrive even when it's closed — no app store needed.
   clients get (default: training plans, chat, food tracking) and how many free intro sessions (default 1).
 - **Consent & privacy (DPDP Act):** sign-up asks for consent to health data (required), photo storage and
   offers (optional), with a timestamped audit log. Clients can download their data or delete their account
-  from Profile → Privacy & data; admins can delete a client on request from the client's page. Set
-  `PRIVACY_CONTACT_EMAIL` to your grievance contact. The privacy policy and terms at `/privacy` and `/terms`
-  are a starting template — have a lawyer review them before launch.
+  from Profile → Privacy & data; admins can delete a client on request from the client's page.
+- **Legal pages:** `/terms`, `/privacy`, `/refunds` and `/contact` (Razorpay checks for these). They fill in who
+  runs FitCoach from these API env vars — the Admin Console warns until the required ones are set:
+  `BUSINESS_NAME` (your full name if you're a sole proprietor), `BUSINESS_ADDRESS`, `GRIEVANCE_OFFICER`,
+  `JURISDICTION_CITY`, `PRIVACY_CONTACT_EMAIL`, optional `CONTACT_PHONE`, `GSTIN` (only if registered) and
+  `COACH_CREDENTIALS` (only certifications your coaches actually hold). The text is a careful plain-language
+  starting point, not legal advice — have a lawyer review it, and edit the refund windows in
+  `frontend/src/pages/Legal.js` if you want different ones.
+- Use a **paid (billing-enabled) Gemini API key**: on the free tier Google may use prompts to improve its
+  products, which the privacy policy doesn't allow for.
 - **Insights:** Admin → Insights shows sign-ups, trial conversion, renewals, drop-offs, revenue, leads and
   coach reply times.
 

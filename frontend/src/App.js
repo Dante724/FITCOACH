@@ -87,6 +87,8 @@ function AppRouter() {
       <Route path="/login" element={<Login />} />
       <Route path="/privacy" element={<Legal page="privacy" />} />
       <Route path="/terms" element={<Legal page="terms" />} />
+      <Route path="/refunds" element={<Legal page="refunds" />} />
+      <Route path="/contact" element={<Legal page="contact" />} />
       <Route path="/r/:code" element={<ReferralLanding />} />
       <Route path="/focus" element={<RequireAuth roles={CLIENT_ROLES}><FocusSelect /></RequireAuth>} />
       <Route path="/call/live/:callId" element={<RequireAuth><LiveCall /></RequireAuth>} />

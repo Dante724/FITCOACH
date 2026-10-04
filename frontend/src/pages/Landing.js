@@ -15,7 +15,7 @@ const IMG = {
 const PROGRAMS = [
   { title: "Fat Loss", img: IMG.nutrition, desc: "Training and a nutrition plan built around Indian food, approved and adjusted by your own coach." },
   { title: "Muscle Gain", img: IMG.muscle, desc: "Progressive training and the right amount of food to add lean muscle, week after week." },
-  { title: "Yoga", img: IMG.yoga, desc: "A practice designed for your body by a certified yoga coach, with on-device pose checks." },
+  { title: "Yoga", img: IMG.yoga, desc: "A practice designed for your body by an experienced yoga coach, with on-device pose checks." },
   { title: "Fitness + Yoga", img: IMG.strength, desc: "A fitness coach and a yoga coach working together on the same goal." },
 ];
 
@@ -199,6 +199,8 @@ export default function Landing() {
           <div className="row" style={{ gap: 18, fontSize: 13, color: "var(--text-3)" }}>
             <Link to="/privacy" style={{ color: "inherit" }}>Privacy</Link>
             <Link to="/terms" style={{ color: "inherit" }}>Terms</Link>
+            <Link to="/refunds" style={{ color: "inherit" }}>Refunds</Link>
+            <Link to="/contact" style={{ color: "inherit" }}>Contact</Link>
             <span>© {new Date().getFullYear()} FitCoach</span>
           </div>
         </div>
