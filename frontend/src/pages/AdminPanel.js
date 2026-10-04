@@ -8,7 +8,6 @@ import { useToast } from "@/context/ToastContext";
 import { getFocus, GOAL_LABEL } from "@/lib/focus";
 
 const ROLES = ["client", "trainer", "admin"];
-const PLAN_LABELS = { monthly: "Monthly", quarterly: "Quarterly", annual: "Annual" };
 const FILTERS = [["all", "All"], ["needs", "Needs a coach"], ["client", "Clients"], ["trainer", "Coaches"], ["admin", "Admins"]];
 
 function Stat({ icon: Icon, label, value, accent, delay }) {
@@ -77,6 +76,9 @@ export default function AdminPanel() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [membershipFor, setMembershipFor] = useState(null);
+  const [plans, setPlans] = useState([]);
+  const [creditDelta, setCreditDelta] = useState(1);
+  const planName = (id) => (id === "trial" ? "Trial" : plans.find((p) => p.id === id)?.name || "Member");
   const [assignFor, setAssignFor] = useState(null);
   const [emailStatus, setEmailStatus] = useState(null);
   const [testEmail, setTestEmail] = useState("");
@@ -87,6 +89,7 @@ export default function AdminPanel() {
     api.get("/admin/users").then((r) => setUsers(r.data)).catch(() => {});
     api.get("/admin/coaches").then((r) => setCoaches(r.data)).catch(() => {});
     api.get("/admin/email/status").then((r) => setEmailStatus(r.data)).catch(() => {});
+    api.get("/admin/plans").then((r) => setPlans(r.data)).catch(() => {});
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -120,7 +123,7 @@ export default function AdminPanel() {
   const setMembership = async (u, plan_id) => {
     try {
       await api.put(`/admin/users/${u.user_id}/membership`, { plan_id });
-      push(plan_id ? `Granted ${PLAN_LABELS[plan_id]} to ${u.name}.` : `Revoked membership for ${u.name}.`, "success");
+      push(plan_id ? `Granted ${planName(plan_id)} to ${u.name}.` : `Revoked membership for ${u.name}.`, "success");
       setMembershipFor(null);
       load();
     } catch (e) { push(e?.response?.data?.detail || "Could not update membership.", "error"); }
@@ -201,7 +204,7 @@ export default function AdminPanel() {
                     {u.fitness_coach_id && <span className="chip chip-teal">Fitness: {coachName(u.fitness_coach_id) || "—"}</span>}
                     {u.yoga_coach_id && <span className="chip chip-violet">Yoga: {coachName(u.yoga_coach_id) || "—"}</span>}
                     {missing.map((t) => <span key={t} className="chip chip-accent">Needs {t} coach</span>)}
-                    {memberActive(u) ? <span className="chip chip-teal">{PLAN_LABELS[u.membership_plan] || "Member"}</span> : <span className="chip chip-neutral">No membership</span>}
+                    {memberActive(u) ? <span className="chip chip-teal">{planName(u.membership_plan)}{u.session_credits ? ` · ${u.session_credits} credits` : ""}</span> : <span className="chip chip-neutral">No membership</span>}
                   </div>
                 )}
                 {u.role === "trainer" && (
@@ -268,11 +271,23 @@ export default function AdminPanel() {
             </div>
             <p style={{ fontSize: 13.5, color: "var(--text-2)", marginBottom: 20 }}>{membershipFor.name} · {membershipFor.email}</p>
             <div className="stack">
-              {Object.entries(PLAN_LABELS).map(([id, label]) => (
-                <button key={id} data-testid={`grant-${id}`} className="btn btn-ghost" onClick={() => setMembership(membershipFor, id)} style={{ justifyContent: "space-between", padding: "13px 16px" }}>
-                  <span>Grant {label}</span><Icons.ChevronRight size={16} />
+              {plans.filter((p) => p.active).map((p) => (
+                <button key={p.id} data-testid={`grant-${p.id}`} className="btn btn-ghost" onClick={() => setMembership(membershipFor, p.id)} style={{ justifyContent: "space-between", padding: "13px 16px" }}>
+                  <span>Add {p.name} <span style={{ color: "var(--text-3)" }}>· {p.days} days</span></span><Icons.ChevronRight size={16} />
                 </button>
               ))}
+              <div className="clay-inset row" style={{ padding: "10px 12px", gap: 8 }}>
+                <span style={{ flex: 1, fontSize: 13.5 }}>Session credits: <strong>{membershipFor.session_credits || 0}</strong></span>
+                <input className="field" type="number" value={creditDelta} onChange={(e) => setCreditDelta(Number(e.target.value))} style={{ width: 70 }} aria-label="Credits to add or remove" />
+                <button className="btn btn-ghost" data-testid="adjust-credits" onClick={async () => {
+                  try {
+                    const r = await api.post(`/admin/users/${membershipFor.user_id}/credits`, { delta: creditDelta });
+                    setMembershipFor({ ...membershipFor, session_credits: r.data.session_credits });
+                    push(`Credits updated for ${membershipFor.name}.`, "success");
+                    load();
+                  } catch (e) { push(e?.response?.data?.detail || "Couldn't update credits.", "error"); }
+                }}>Apply</button>
+              </div>
               <button data-testid="revoke-membership" className="btn" onClick={() => setMembership(membershipFor, null)} style={{ padding: "13px 16px", background: "var(--accent-soft)", color: "var(--accent)", borderColor: "transparent" }}>Revoke membership</button>
             </div>
           </div>

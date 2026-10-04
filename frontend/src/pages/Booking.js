@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { payWithRazorpay } from "@/lib/payments";
+import { useMembership } from "@/lib/membership";
 import { localDate } from "@/lib/focus";
 
 function todayISO() { return localDate(); }
@@ -22,6 +23,7 @@ export default function Booking() {
   const [time, setTime] = useState("");
   const [saving, setSaving] = useState(false);
   const [pay, setPay] = useState({ enabled: false, price: 0 });
+  const [membership, reloadMembership] = useMembership();
   const [payingId, setPayingId] = useState(null);
 
   const load = useCallback(() => api.get("/bookings").then((r) => setBookings(r.data)).catch(() => {}), []);
@@ -48,6 +50,7 @@ export default function Booking() {
     try {
       await api.post("/bookings", { trainer_id: trainerId, date, time });
       push("Session booked.", "success");
+      reloadMembership();
       setTime("");
       load();
     } catch (e) {
@@ -74,6 +77,19 @@ export default function Booking() {
   return (
     <div>
       <PageHeader eyebrow="Schedule" title="Book a Session" subtitle="Reserve a live video session with your coach." />
+
+      {membership && (
+        <div className={`clay-inset row-wrap fade-up`} style={{ padding: "12px 14px", marginBottom: 16, gap: 10 }} data-testid="booking-balance">
+          <Icons.Ticket size={17} color="var(--gold)" style={{ flexShrink: 0 }} />
+          <span style={{ flex: 1, fontSize: 13.5 }}>
+            {membership.unlimited_sessions ? "Your membership includes unlimited sessions."
+              : membership.credits > 0 ? `${membership.credits} session credit${membership.credits === 1 ? "" : "s"} — your next booking is covered.`
+              : membership.has_access ? `No session credits left — new bookings are ₹${pay.price || "…"} each, or get a pack.`
+              : "Your membership has ended. Get a session pack or renew to book."}
+          </span>
+          {!membership.unlimited_sessions && membership.credits === 0 && <button className="btn btn-ghost" onClick={() => navigate("/membership")} style={{ padding: "8px 12px", fontSize: 13 }}>Get sessions</button>}
+        </div>
+      )}
 
       <div className="grid-2">
         <div className="clay fade-up min0" style={{ padding: 22 }}>

@@ -1,6 +1,6 @@
 import "@/App.css";
 import { lazy, Suspense, useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ToastProvider } from "@/context/ToastContext";
 import { roleHome } from "@/lib/focus";
@@ -22,6 +22,9 @@ import ClientDetail from "@/pages/ClientDetail";
 import Messages from "@/pages/Messages";
 import LiveCall, { BookedCall } from "@/pages/VideoCall";
 import Profile from "@/pages/Profile";
+import AdminBilling from "@/pages/AdminBilling";
+import MembershipGate from "@/components/MembershipGate";
+import { rememberReferral } from "@/lib/membership";
 
 // Pose tracking pulls in MediaPipe, so only load it when a client opens Pose Check.
 const PoseCheck = lazy(() => import("@/pages/PoseCheck"));
@@ -59,31 +62,44 @@ function NotificationRouter() {
   return null;
 }
 
+// /r/CODE — remember a friend's referral code and send the visitor to sign up.
+function ReferralLanding() {
+  const navigate = useNavigate();
+  const { code } = useParams();
+  useEffect(() => {
+    if (/^[A-Za-z0-9]{4,12}$/.test(code || "")) rememberReferral(code);
+    navigate("/login?signup=1", { replace: true });
+  }, [code, navigate]);
+  return null;
+}
+
 function AppRouter() {
 
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/r/:code" element={<ReferralLanding />} />
       <Route path="/focus" element={<RequireAuth roles={CLIENT_ROLES}><FocusSelect /></RequireAuth>} />
       <Route path="/call/live/:callId" element={<RequireAuth><LiveCall /></RequireAuth>} />
       <Route path="/call/:bookingId" element={<RequireAuth><BookedCall /></RequireAuth>} />
 
       <Route element={<RequireAuth roles={CLIENT_ROLES} requireFocus><Layout /></RequireAuth>}>
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/workouts" element={<Workouts kind="workout" />} />
-        <Route path="/yoga" element={<Workouts kind="yoga" />} />
-        <Route path="/messages" element={<Messages />} />
-        <Route path="/pose-check" element={<Suspense fallback={<div className="spinner" style={{ margin: "80px auto" }} />}><PoseCheck /></Suspense>} />
+        <Route path="/workouts" element={<MembershipGate><Workouts kind="workout" /></MembershipGate>} />
+        <Route path="/yoga" element={<MembershipGate><Workouts kind="yoga" /></MembershipGate>} />
+        <Route path="/messages" element={<MembershipGate><Messages /></MembershipGate>} />
+        <Route path="/pose-check" element={<MembershipGate><Suspense fallback={<div className="spinner" style={{ margin: "80px auto" }} />}><PoseCheck /></Suspense></MembershipGate>} />
         <Route path="/booking" element={<Booking />} />
         <Route path="/progress" element={<Progress />} />
-        <Route path="/food" element={<FoodTrack />} />
-        <Route path="/meal-plans" element={<MealPlans />} />
+        <Route path="/food" element={<MembershipGate><FoodTrack /></MembershipGate>} />
+        <Route path="/meal-plans" element={<MembershipGate><MealPlans /></MembershipGate>} />
         <Route path="/membership" element={<Membership />} />
       </Route>
 
       <Route element={<RequireAuth roles={ADMIN_ROLES}><Layout /></RequireAuth>}>
         <Route path="/admin" element={<AdminPanel />} />
+        <Route path="/admin/billing" element={<AdminBilling />} />
         <Route path="/admin/clients/:clientId" element={<ClientDetail />} />
       </Route>
 

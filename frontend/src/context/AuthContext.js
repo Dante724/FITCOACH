@@ -32,9 +32,9 @@ export function AuthProvider({ children }) {
   }, []);
 
   // Google Identity Services hands us an ID token; the API verifies it with Google directly.
-  const googleLogin = useCallback(async (credential) => signedIn((await api.post("/auth/google", { credential })).data), [signedIn]);
+  const googleLogin = useCallback(async (credential, referralCode) => signedIn((await api.post("/auth/google", { credential, referral_code: referralCode || undefined })).data), [signedIn]);
   const emailLogin = useCallback(async (email, password) => signedIn((await api.post("/auth/login", { email, password })).data), [signedIn]);
-  const emailRegister = useCallback(async (name, email, password) => signedIn((await api.post("/auth/register", { name, email, password })).data), [signedIn]);
+  const emailRegister = useCallback(async (name, email, password, referralCode) => signedIn((await api.post("/auth/register", { name, email, password, referral_code: referralCode || undefined })).data), [signedIn]);
 
   const logout = useCallback(async () => {
     await detachPushOnLogout();

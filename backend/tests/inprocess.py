@@ -5,7 +5,8 @@ import sys
 
 os.environ.update({"MONGO_URL": "mongodb://mock", "DB_NAME": "inprocess_test", "JWT_SECRET": "test-secret-for-inprocess-tests-0123456789",
                    "GOOGLE_CLIENT_ID": "fitcoach-test.apps.googleusercontent.com", "EMAIL_ENABLED": "false",
-                   "ADMIN_EMAIL": "admin@fitcoach.com", "ADMIN_PASSWORD": "Admin@12345", "SEED_DEMO_DATA": "true"})
+                   "ADMIN_EMAIL": "admin@fitcoach.com", "ADMIN_PASSWORD": "Admin@12345", "SEED_DEMO_DATA": "true",
+                   "RAZORPAY_KEY_ID": "rzp_test_key", "RAZORPAY_KEY_SECRET": "rzp_test_secret", "RAZORPAY_WEBHOOK_SECRET": "whsec_test"})
 import motor.motor_asyncio  # noqa: E402
 import mongomock_motor  # noqa: E402
 

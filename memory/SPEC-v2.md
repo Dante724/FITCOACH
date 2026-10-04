@@ -141,7 +141,10 @@ Start with **8–10 common poses** (Warrior I/II, Tree, Triangle, Downward Dog, 
 | In-app video calls (WebRTC, no Zoom/Jitsi): booked sessions + instant "Call now", ringing, echo/noise suppression toggle, reconnect | ✅ Built (STUN only by default — add a TURN server for strict networks) |
 | Coach schedules sessions; reminders 1h & 10 min before; "starting soon" banner | ✅ Built |
 | Installable app (PWA) + Web Push when closed: calls with Answer/Decline, reminders, messages, plan updates | ✅ Built (needs a real-device check; iPhone requires Add to Home Screen) |
-| Admin tier editor (DB-backed memberships) | ⏳ Next |
+| Admin billing: plan/price editor, session packs, trial/grace, referral rewards, coach payout report + CSV | ✅ Built + tested |
+| Membership lock after expiry (3 grace days) with renewal screen; progress stays open | ✅ Built + tested |
+| Razorpay: pay once, auto-renew subscriptions (webhook), session packs, credits used on booking | ✅ Built (tested with mocked Razorpay — needs a test-key run end to end) |
+| Referral codes: friend gets +7 trial days, referrer +7 days on friend's first payment | ✅ Built + tested |
 | Yoga pose check: live on-device tracking with cues, 10s hold or uploaded clip → score + corrections + one annotated still → yoga coach confirms/adjusts → client | ✅ Built (8 poses; camera tested only via a still photo — needs a real-phone test) |
 | Voice notes in chat, AI-written weekly brief | ⏳ Later |
 

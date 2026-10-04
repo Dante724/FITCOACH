@@ -6,6 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { getFocus, hasFeature, askCoachPath, PLAN_LABEL, localDate } from "@/lib/focus";
 import Avatar from "@/components/Avatar";
 import { startCall } from "@/lib/calls";
+import { useMembership, membershipNotice } from "@/lib/membership";
 import { useToast } from "@/context/ToastContext";
 
 function StatCard({ icon: Icon, label, value, unit, accent, delay }) {
@@ -101,6 +102,7 @@ export default function Dashboard() {
   const [plans, setPlans] = useState(null);
   const [coaches, setCoaches] = useState(null);
   const [unread, setUnread] = useState({});
+  const [membership] = useMembership();
 
   useEffect(() => {
     api.get("/progress").then((r) => setProgress(r.data)).catch(() => {});
@@ -121,6 +123,7 @@ export default function Dashboard() {
   const upcoming = bookings.filter((b) => startOf(b) >= new Date(Date.now() - 60 * 60000)).sort((a, b) => startOf(a) - startOf(b));
   const next = upcoming[0];
   const hasCoach = !!(coaches?.fitness || coaches?.yoga);
+  const notice = membershipNotice(membership);
   const nextLabel = next && (() => {
     const d = startOf(next);
     const mins = Math.round((d - Date.now()) / 60000);
@@ -137,6 +140,12 @@ export default function Dashboard() {
           <div className="eyebrow">{new Date().toLocaleDateString("en-IN", { weekday: "long", month: "long", day: "numeric" })}</div>
           <h1>{greet}, {user?.name?.split(" ")[0]}</h1>
           {focus && <p style={{ fontSize: 14.5, color: "var(--text-2)" }}>Working towards <span className="serif-italic" style={{ fontSize: 17 }}>{focus.label.toLowerCase()}</span></p>}
+          {notice && (
+            <button className="chip" onClick={() => navigate("/membership")} data-testid="membership-notice"
+              style={{ marginTop: 12, border: "none", cursor: "pointer", background: notice.tone === "gold" ? "rgba(201,164,92,0.2)" : "rgba(192,83,47,0.25)", color: notice.tone === "gold" ? "#e3c88f" : "#f3b9a5" }}>
+              <Icons.Crown size={13} /> {notice.text} · {notice.tone === "gold" ? "See plans" : "Renew"}
+            </button>
+          )}
         </div>
         <div className="hero-next">
           <div className="eyebrow" style={{ marginBottom: 6 }}>{next ? "Next session" : hasCoach ? "No session booked" : "Coach coming soon"}</div>

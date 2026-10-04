@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { AlertCircle, ArrowLeft } from "lucide-react";
 import Logo from "@/components/Logo";
 import GoogleButton from "@/components/GoogleButton";
+import { pendingReferral, clearReferral } from "@/lib/membership";
 import { useAuth } from "@/context/AuthContext";
 import { roleHome } from "@/lib/focus";
 
@@ -18,7 +19,8 @@ function formatApiErrorDetail(detail) {
 export default function Login() {
   const { user, googleLogin, emailLogin, emailRegister, loading } = useAuth();
   const navigate = useNavigate();
-  const [tab, setTab] = useState("login");
+  const [tab, setTab] = useState(() => (new URLSearchParams(window.location.search).get("signup") || pendingReferral() ? "register" : "login"));
+  const [referral, setReferral] = useState(pendingReferral);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,7 +37,8 @@ export default function Login() {
     try {
       const u = tab === "login"
         ? await emailLogin(email.trim(), password)
-        : await emailRegister(name.trim(), email.trim(), password);
+        : await emailRegister(name.trim(), email.trim(), password, referral.trim());
+      clearReferral();
       navigate(roleHome(u), { replace: true });
     } catch (err) {
       setError(formatApiErrorDetail(err.response?.data?.detail) || err.message);
@@ -94,6 +97,14 @@ export default function Login() {
               <label className="label">Password</label>
               <input className="field" type="password" data-testid="auth-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={tab === "register" ? "Min 8 characters" : "Enter password"} required />
             </div>
+            {tab === "register" && (
+              <div style={{ marginTop: -6, marginBottom: 20 }}>
+                <label className="label" htmlFor="referral">Referral code <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(optional)</span></label>
+                <input id="referral" className="field" data-testid="auth-referral" value={referral} onChange={(e) => setReferral(e.target.value.toUpperCase())}
+                  placeholder="e.g. 7F3A2C" maxLength={12} style={{ textTransform: "uppercase", letterSpacing: "0.08em" }} />
+                {referral && <div style={{ fontSize: 12, color: "var(--teal)", marginTop: 6 }}>A friend's code — you'll get extra free days.</div>}
+              </div>
+            )}
             <button type="submit" disabled={busy} data-testid={tab === "login" ? "email-login-btn" : "email-register-btn"} className="btn btn-primary" style={{ width: "100%", minHeight: 44 }}>
               {busy ? "Please wait..." : tab === "login" ? "Sign in" : "Create account"}
             </button>
@@ -101,7 +112,7 @@ export default function Login() {
 
           <GoogleButton onError={setError} onCredential={async (credential) => {
             setError(""); setBusy(true);
-            try { const u = await googleLogin(credential); navigate(roleHome(u), { replace: true }); }
+            try { const u = await googleLogin(credential, referral.trim()); clearReferral(); navigate(roleHome(u), { replace: true }); }
             catch (err) { setError(formatApiErrorDetail(err.response?.data?.detail) || "Google sign-in failed."); }
             finally { setBusy(false); }
           }} />

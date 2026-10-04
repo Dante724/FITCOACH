@@ -78,12 +78,7 @@ def booking_dt(date: str, time: str) -> datetime:
     """A booking's start as an aware datetime (raises ValueError on bad input)."""
     return datetime.strptime(f"{date} {time}", "%Y-%m-%d %H:%M").replace(tzinfo=APP_TZ)
 
-MEMBERSHIP_PLANS = [
-    {"id": "monthly", "name": "Monthly", "price_inr": 15000, "days": 30, "blurb": "Full access, billed monthly"},
-    {"id": "quarterly", "name": "Quarterly", "price_inr": 30000, "days": 90, "blurb": "Save with a 3-month commitment"},
-    {"id": "annual", "name": "Annual", "price_inr": 85000, "days": 365, "blurb": "Best value — a full year of training"},
-]
-SESSION_PRICE_INR = 1000
+# Membership plans, prices and session packs live in MongoDB (Admin → Billing); defaults in DEFAULT_PLANS.
 
 # ───────────────────────────── File storage (inside MongoDB) ─────────────────────────────
 # Photos are small (≤5 MB), so each is kept as one binary document — no external bucket needed.
@@ -193,6 +188,9 @@ class User(BaseModel):
     fitness_coach_id: Optional[str] = None
     yoga_coach_id: Optional[str] = None
     intake: Optional[dict] = None
+    session_credits: Optional[int] = None
+    subscription_status: Optional[str] = None
+    referral_code: Optional[str] = None
     created_at: Optional[str] = None
 
 
@@ -202,6 +200,7 @@ class AuthResponse(User):
 
 class GoogleLoginRequest(BaseModel):
     credential: str
+    referral_code: Optional[str] = None
 
 
 class FocusUpdate(BaseModel):
@@ -232,6 +231,7 @@ class RegisterRequest(BaseModel):
     name: str
     email: EmailStr
     password: str
+    referral_code: Optional[str] = None
 
 
 class LoginRequest(BaseModel):
@@ -400,6 +400,186 @@ def require_role(*roles):
     return dep
 
 
+# ───────────────────────────── Billing: plans, memberships, packs, referrals, payouts ─────────────────────────────
+DEFAULT_PLANS = [
+    {"id": "monthly", "name": "Monthly", "price_inr": 15000, "days": 30, "period": "monthly", "interval": 1,
+     "included_sessions": 4, "unlimited_sessions": False, "featured": False, "active": True, "sort": 1,
+     "blurb": "Full access, billed monthly",
+     "features": ["Your own assigned coach", "Coach-approved training & nutrition", "4 video sessions a month", "Progress tracking"]},
+    {"id": "quarterly", "name": "Quarterly", "price_inr": 30000, "days": 90, "period": "monthly", "interval": 3,
+     "included_sessions": 24, "unlimited_sessions": False, "featured": True, "active": True, "sort": 2,
+     "blurb": "Save with a 3-month commitment",
+     "features": ["Everything in Monthly", "2 video sessions a week", "Priority booking", "Pose checks reviewed by your coach"]},
+    {"id": "annual", "name": "Annual", "price_inr": 85000, "days": 365, "period": "yearly", "interval": 1,
+     "included_sessions": 0, "unlimited_sessions": True, "featured": False, "active": True, "sort": 3,
+     "blurb": "Best value — a full year of coaching",
+     "features": ["Everything in Quarterly", "Unlimited video sessions", "Quarterly assessments", "Best value"]},
+]
+DEFAULT_BILLING = {
+    "session_price_inr": 1000, "trial_days": 7, "grace_days": 3,
+    "referral_reward_days": 7, "referee_bonus_days": 7,
+    "payout_per_client_inr": 0, "payout_per_session_inr": 0,
+    "packs": [
+        {"id": "pack5", "name": "5 sessions", "sessions": 5, "price_inr": 4500, "active": True},
+        {"id": "pack10", "name": "10 sessions", "sessions": 10, "price_inr": 8500, "active": True},
+    ],
+}
+RAZORPAY_WEBHOOK_SECRET = os.environ.get("RAZORPAY_WEBHOOK_SECRET", "").strip()
+PERIODS = {"weekly", "monthly", "yearly"}
+MEMBERSHIP_REQUIRED = "Your membership has ended — renew to keep working with your coach."
+
+
+def _slug(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")[:40] or uuid.uuid4().hex[:8]
+
+
+async def billing_settings() -> dict:
+    doc = await db.app_settings.find_one({"_id": "billing"}, {"_id": 0}) or {}
+    return {**DEFAULT_BILLING, **doc}
+
+
+async def list_plans(include_inactive: bool = False) -> List[dict]:
+    q = {} if include_inactive else {"active": True}
+    return await db.membership_plans.find(q, {"_id": 0}).sort("sort", 1).to_list(50)
+
+
+async def get_plan(plan_id: str) -> Optional[dict]:
+    return await db.membership_plans.find_one({"id": plan_id}, {"_id": 0})
+
+
+async def seed_billing():
+    if not await db.membership_plans.count_documents({}):
+        for p in DEFAULT_PLANS:
+            await db.membership_plans.insert_one(dict(p))
+
+
+def membership_status(u: dict, settings: dict) -> dict:
+    now = datetime.now(timezone.utc)
+    exp = _parse_dt(u.get("membership_expires_at"))
+    active = bool(exp and exp > now)
+    grace_until = exp + timedelta(days=int(settings.get("grace_days") or 0)) if exp else None
+    in_grace = bool(not active and grace_until and now < grace_until)
+    unlimited = _parse_dt(u.get("unlimited_sessions_until"))
+    return {
+        "plan": u.get("membership_plan"), "expires_at": u.get("membership_expires_at"),
+        "active": active, "in_grace": in_grace, "has_access": active or in_grace or u.get("role") != "client",
+        "is_trial": u.get("membership_plan") == "trial",
+        "days_left": max(0, int((exp - now).total_seconds() // 86400) + 1) if active else 0,
+        "grace_until": grace_until.isoformat() if grace_until else None,
+        "credits": int(u.get("session_credits") or 0),
+        "unlimited_sessions": bool(unlimited and unlimited > now),
+        "auto_renew": u.get("subscription_status") == "active",
+        "subscription_status": u.get("subscription_status"),
+    }
+
+
+async def require_member(user: User = Depends(get_current_user)) -> User:
+    """Clients need an active membership (or grace period) for coaching features. Coaches/admins pass through."""
+    if user.role == "client":
+        doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0}) or {}
+        if not membership_status(doc, await billing_settings())["has_access"]:
+            raise HTTPException(status_code=402, detail=MEMBERSHIP_REQUIRED)
+    return user
+
+
+async def activate_membership(user_id: str, plan: dict, source: str, ref: Optional[str] = None, notify: bool = True) -> str:
+    """Add a plan's duration on top of any remaining time; grant included sessions. Returns the new expiry."""
+    u = await db.users.find_one({"user_id": user_id}, {"_id": 0}) or {}
+    now = datetime.now(timezone.utc)
+    current = _parse_dt(u.get("membership_expires_at"))
+    start = current if current and current > now else now
+    new_exp = start + timedelta(days=int(plan["days"]))
+    update = {"$set": {"membership_plan": plan["id"], "membership_expires_at": new_exp.isoformat()}}
+    if plan.get("unlimited_sessions"):
+        update["$set"]["unlimited_sessions_until"] = new_exp.isoformat()
+    elif plan.get("included_sessions"):
+        update["$inc"] = {"session_credits": int(plan["included_sessions"])}
+    await db.users.update_one({"user_id": user_id}, update)
+    await db.membership_events.insert_one({"id": str(uuid.uuid4()), "user_id": user_id, "plan_id": plan["id"], "source": source,
+                                           "ref": ref, "days": plan["days"], "expires_at": new_exp.isoformat(), "created_at": _now_iso()})
+    if notify and plan["id"] != "trial":
+        await push_notification(user_id, "Membership active", f"{plan['name']} — active until {new_exp.astimezone(APP_TZ).strftime('%d %b %Y')}.", "/membership")
+    return new_exp.isoformat()
+
+
+async def start_trial(user_id: str, bonus_days: int = 0):
+    s = await billing_settings()
+    days = int(s.get("trial_days") or 0) + int(bonus_days or 0)
+    if days > 0:
+        await activate_membership(user_id, {"id": "trial", "name": "Free trial", "days": days}, "trial", notify=False)
+    await db.users.update_one({"user_id": user_id}, {"$set": {"trial_granted": True}})
+
+
+async def ensure_referral_code(user_id: str) -> str:
+    u = await db.users.find_one({"user_id": user_id}, {"_id": 0, "referral_code": 1}) or {}
+    if u.get("referral_code"):
+        return u["referral_code"]
+    for _ in range(5):
+        code = secrets.token_hex(3).upper()
+        if not await db.users.find_one({"referral_code": code}):
+            await db.users.update_one({"user_id": user_id}, {"$set": {"referral_code": code}})
+            return code
+    raise HTTPException(status_code=500, detail="Could not create a referral code")
+
+
+async def apply_referral_on_signup(user_id: str, code: Optional[str]) -> int:
+    """Link a new client to their referrer. Returns bonus trial days for the new client."""
+    code = (code or "").strip().upper()
+    if not code:
+        return 0
+    referrer = await db.users.find_one({"referral_code": code}, {"_id": 0, "user_id": 1})
+    if not referrer or referrer["user_id"] == user_id:
+        return 0
+    await db.users.update_one({"user_id": user_id}, {"$set": {"referred_by": referrer["user_id"]}})
+    await db.referrals.insert_one({"id": str(uuid.uuid4()), "referrer_id": referrer["user_id"], "referee_id": user_id,
+                                   "code": code, "status": "signed_up", "created_at": _now_iso()})
+    return int((await billing_settings()).get("referee_bonus_days") or 0)
+
+
+async def reward_referrer_on_first_payment(user_id: str):
+    u = await db.users.find_one({"user_id": user_id}, {"_id": 0}) or {}
+    if not u.get("referred_by") or u.get("referral_rewarded"):
+        return
+    await db.users.update_one({"user_id": user_id}, {"$set": {"referral_rewarded": True}})
+    days = int((await billing_settings()).get("referral_reward_days") or 0)
+    referrer = await db.users.find_one({"user_id": u["referred_by"]}, {"_id": 0})
+    if referrer and days > 0 and referrer.get("role") == "client":
+        await activate_membership(referrer["user_id"], {"id": referrer.get("membership_plan") or "referral",
+                                                        "name": "Referral reward", "days": days}, "referral", ref=user_id, notify=False)
+        await push_notification(referrer["user_id"], "You earned a free week", f"{u.get('name')} joined with your code — {days} days added to your membership.", "/membership")
+    await db.referrals.update_one({"referee_id": user_id}, {"$set": {"status": "rewarded", "rewarded_at": _now_iso()}})
+
+
+async def record_payment_effects(txn: dict):
+    """Apply what a successful payment buys. Idempotent per transaction."""
+    claimed = await db.transactions.update_one({"id": txn["id"], "applied": {"$ne": True}}, {"$set": {"applied": True}})
+    if not claimed.modified_count:
+        return
+    ref = txn.get("ref") or {}
+    if txn["type"] in ("plan", "subscription"):
+        plan = await get_plan(ref.get("plan_id"))
+        if plan:
+            await activate_membership(txn["user_id"], plan, txn["type"], ref=txn.get("payment_id"))
+    elif txn["type"] == "pack":
+        await db.users.update_one({"user_id": txn["user_id"]}, {"$inc": {"session_credits": int(ref.get("sessions") or 0)}})
+        await push_notification(txn["user_id"], "Sessions added", f"{ref.get('sessions')} session credits are ready to book.", "/booking")
+    elif txn["type"] == "session":
+        await db.bookings.update_one({"id": ref.get("booking_id"), "user_id": txn["user_id"]}, {"$set": {"paid": True, "paid_via": "payment"}})
+    if txn["type"] in ("plan", "subscription", "pack"):
+        await reward_referrer_on_first_payment(txn["user_id"])
+
+
+async def pay_for_booking_from_balance(client_doc: dict, booking_doc: dict) -> Optional[str]:
+    """Cover a new booking with an unlimited membership or a session credit. Returns how it was paid, if at all."""
+    unlimited = _parse_dt(client_doc.get("unlimited_sessions_until"))
+    starts = _parse_dt(booking_doc.get("starts_at"))
+    if unlimited and starts and unlimited >= starts:
+        return "membership"
+    res = await db.users.update_one({"user_id": client_doc["user_id"], "session_credits": {"$gte": 1}}, {"$inc": {"session_credits": -1}})
+    return "credit" if res.modified_count else None
+
+
+
 _bg_tasks: set = set()  # keep references so background pushes aren't garbage-collected mid-flight
 
 
@@ -564,6 +744,7 @@ async def google_login(payload: GoogleLoginRequest, response: Response):
             "picture": info.get("picture"), "focus": None, "google_sub": info.get("sub"),
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
+        await start_trial(user_id, bonus_days=await apply_referral_on_signup(user_id, payload.referral_code))
     token = create_access_token(user_id, email)
     set_access_cookie(response, token)
     user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
@@ -594,6 +775,7 @@ async def register(payload: RegisterRequest, response: Response):
         "password_hash": hash_password(payload.password),
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
+    await start_trial(user_id, bonus_days=await apply_referral_on_signup(user_id, payload.referral_code))
     token = create_access_token(user_id, email)
     set_access_cookie(response, token)
     user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
@@ -801,6 +983,11 @@ async def _create_booking(client_doc: dict, trainer: dict, date: str, time: str,
     doc = booking.model_dump()
     doc["starts_at"] = session_dt.astimezone(timezone.utc).isoformat()
     doc["scheduled_by"] = scheduled_by.user_id if scheduled_by else client_doc["user_id"]
+    fresh_client = await db.users.find_one({"user_id": client_doc["user_id"]}, {"_id": 0}) or client_doc
+    paid_via = await pay_for_booking_from_balance(fresh_client, doc)
+    if paid_via:
+        doc.update({"paid": True, "paid_via": paid_via})
+        booking.paid = True
     await db.bookings.insert_one(doc)
     when = f"{date} at {time}"
     if scheduled_by:
@@ -820,6 +1007,11 @@ async def create_booking(payload: BookingCreate, request: Request, background: B
         raise HTTPException(status_code=400, detail="Invalid trainer")
     if user.role == "client" and payload.trainer_id not in _my_coach_ids(user):
         raise HTTPException(status_code=403, detail="You can only book sessions with your own coach")
+    if user.role == "client":
+        me = await db.users.find_one({"user_id": user.user_id}, {"_id": 0}) or {}
+        st = membership_status(me, await billing_settings())
+        if not st["has_access"] and st["credits"] < 1:
+            raise HTTPException(status_code=402, detail=MEMBERSHIP_REQUIRED)
     return await _create_booking(user.model_dump(), trainer, payload.date, payload.time, request, background, check_availability=True)
 
 
@@ -842,8 +1034,15 @@ async def coach_schedule_session(client_id: str, payload: CoachScheduleRequest, 
 
 @api_router.delete("/bookings/{booking_id}")
 async def delete_booking(booking_id: str, user: User = Depends(get_current_user)):
+    booking = await db.bookings.find_one({"id": booking_id, "user_id": user.user_id}, {"_id": 0})
+    if not booking:
+        return {"ok": True}
     await db.bookings.delete_one({"id": booking_id, "user_id": user.user_id})
-    return {"ok": True}
+    starts = _parse_dt(booking.get("starts_at"))
+    refunded = booking.get("paid_via") == "credit" and starts and starts > datetime.now(timezone.utc)
+    if refunded:
+        await db.users.update_one({"user_id": user.user_id}, {"$inc": {"session_credits": 1}})
+    return {"ok": True, "credit_refunded": bool(refunded)}
 
 
 @api_router.get("/sessions/{booking_id}")
@@ -1002,16 +1201,14 @@ async def admin_set_membership(target_id: str, payload: MembershipUpdate, user: 
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
     if payload.plan_id is None:
-        await db.users.update_one({"user_id": target_id}, {"$set": {"membership_plan": None, "membership_expires_at": None}})
+        await db.users.update_one({"user_id": target_id}, {"$set": {"membership_plan": None, "membership_expires_at": None, "unlimited_sessions_until": None}})
         await push_notification(target_id, "Membership updated", "Your membership was cancelled by an administrator.", "/membership")
         return {"ok": True, "membership_plan": None}
-    plan = next((p for p in MEMBERSHIP_PLANS if p["id"] == payload.plan_id), None)
+    plan = await get_plan(payload.plan_id)
     if not plan:
         raise HTTPException(status_code=400, detail="Invalid plan")
-    expires = datetime.now(timezone.utc) + timedelta(days=plan["days"])
-    await db.users.update_one({"user_id": target_id}, {"$set": {"membership_plan": plan["id"], "membership_expires_at": expires.isoformat()}})
-    await push_notification(target_id, "Membership activated", f"Your {plan['name']} membership is now active.", "/membership")
-    return {"ok": True, "membership_plan": plan["id"], "membership_expires_at": expires.isoformat()}
+    expires = await activate_membership(target_id, plan, "admin", ref=user.user_id)
+    return {"ok": True, "membership_plan": plan["id"], "membership_expires_at": expires}
 
 
 # ───────────────────────────── Notifications ─────────────────────────────
@@ -1181,7 +1378,7 @@ async def delete_progress_photo(photo_id: str, user: User = Depends(get_current_
 
 # ───────────────────────────── Workouts ─────────────────────────────
 @api_router.get("/workouts/plan")
-async def workout_plan(type: str = "workout", user: User = Depends(get_current_user)):
+async def workout_plan(type: str = "workout", user: User = Depends(require_member)):
     """The client's coach-approved plan of this type, or null while the coach prepares it."""
     if type not in PLAN_TYPES:
         raise HTTPException(status_code=400, detail="Invalid plan type")
@@ -1229,7 +1426,7 @@ def _extract_json(text: str) -> dict:
 
 
 @api_router.post("/food/analyze")
-async def analyze_food(payload: FoodAnalyzeRequest, user: User = Depends(get_current_user)):
+async def analyze_food(payload: FoodAnalyzeRequest, user: User = Depends(require_member)):
     description = payload.description.strip()
     if not (2 <= len(description) <= 1000):
         raise HTTPException(status_code=400, detail="Describe your meal in a few words (up to 1000 characters)")
@@ -1674,7 +1871,7 @@ async def discard_plan(plan_id: str, user: User = Depends(require_role("trainer"
 
 
 @api_router.get("/my/plans")
-async def my_plans(user: User = Depends(require_role("client"))):
+async def my_plans(user: User = Depends(require_member)):
     docs = await db.plans.find({"client_id": user.user_id, "status": "active"}, {"_id": 0}).to_list(10)
     return {d["type"]: d for d in docs}
 
@@ -1807,7 +2004,7 @@ def _pose_out(doc: dict, viewer: User) -> dict:
 
 
 @api_router.post("/pose-checks")
-async def create_pose_check(payload: PoseCheckCreate, user: User = Depends(require_role("client"))):
+async def create_pose_check(payload: PoseCheckCreate, user: User = Depends(require_role("client")), _m: User = Depends(require_member)):
     if user.focus not in YOGA_FOCUS or not user.yoga_coach_id:
         raise HTTPException(status_code=400, detail="Pose checks are reviewed by your yoga coach — one hasn't been assigned yet")
     snap = payload.snapshot
@@ -2005,7 +2202,7 @@ async def list_messages(client_id: str, coach_id: str, user: User = Depends(get_
 
 
 @api_router.post("/messages/{client_id}/{coach_id}")
-async def send_message(client_id: str, coach_id: str, payload: MessageCreate, user: User = Depends(get_current_user)):
+async def send_message(client_id: str, coach_id: str, payload: MessageCreate, user: User = Depends(require_member)):
     if user.role == "admin":
         raise HTTPException(status_code=403, detail="Admins can read but not post in coaching chats")
     await _thread_access(user, client_id, coach_id)
@@ -2115,7 +2312,7 @@ async def call_ice_servers(user: User = Depends(get_current_user)):
 
 
 @api_router.post("/calls/instant")
-async def start_instant_call(payload: InstantCallRequest, user: User = Depends(require_role("client", "trainer"))):
+async def start_instant_call(payload: InstantCallRequest, user: User = Depends(require_role("client", "trainer")), _m: User = Depends(require_member)):
     client_doc, coach_doc = await _pair(user, payload.peer_id)
     # reuse a call between this pair that is still ringing or live
     recent = (datetime.now(timezone.utc) - RING_TIMEOUT).isoformat()
@@ -2274,9 +2471,36 @@ async def send_session_alerts():
             await push_notification(uid, f"Session {label}", f"Video session with {other} at {b['time']}. Join from the app.", f"/call/{b['id']}",
                                     push={"tag": f"session-{b['id']}", "urgency": "high" if minutes_label_soon(label) else "normal"})
 
+# ── public + member endpoints ──
+@api_router.get("/plans")
+async def public_plans():
+    s = await billing_settings()
+    return {"plans": await list_plans(), "session_price_inr": s["session_price_inr"], "trial_days": s["trial_days"],
+            "packs": [p for p in s["packs"] if p.get("active")], "referee_bonus_days": s["referee_bonus_days"],
+            "currency": "INR", "payments_enabled": PAYMENTS_ENABLED}
+
+
+@api_router.get("/me/membership")
+async def my_membership(user: User = Depends(get_current_user)):
+    doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0}) or {}
+    s = await billing_settings()
+    status = membership_status(doc, s)
+    plan = await get_plan(doc.get("membership_plan")) if doc.get("membership_plan") not in (None, "trial") else None
+    status["plan_name"] = "Free trial" if status["is_trial"] else (plan or {}).get("name")
+    referral = None
+    if user.role == "client":
+        code = await ensure_referral_code(user.user_id)
+        referral = {"code": code, "path": f"/r/{code}", "reward_days": s["referral_reward_days"], "friend_bonus_days": s["referee_bonus_days"],
+                    "signed_up": await db.referrals.count_documents({"referrer_id": user.user_id}),
+                    "rewarded": await db.referrals.count_documents({"referrer_id": user.user_id, "status": "rewarded"})}
+    return {**status, "referral": referral}
+
+
+# ── checkout (one-time orders: plan, pack, single session) ──
 class PaymentOrderRequest(BaseModel):
-    type: str  # "plan" or "session"
+    type: str                      # plan | pack | session
     plan_id: Optional[str] = None
+    pack_id: Optional[str] = None
     booking_id: Optional[str] = None
 
 
@@ -2291,106 +2515,192 @@ def _razorpay_client():
     return razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
 
+def _hmac_ok(message: str, signature: str, secret: str) -> bool:
+    import hashlib
+    import hmac
+    digest = hmac.new(secret.encode(), message.encode(), hashlib.sha256).hexdigest()
+    return bool(signature) and hmac.compare_digest(digest, signature)
+
+
+def _require_payments():
+    if not PAYMENTS_ENABLED:
+        raise HTTPException(status_code=503, detail="Payments are not configured yet. Add Razorpay keys to enable checkout.")
+
+
 @api_router.get("/payments/config")
 async def payments_config(user: User = Depends(get_current_user)):
-    return {
-        "enabled": PAYMENTS_ENABLED,
-        "key_id": RAZORPAY_KEY_ID if PAYMENTS_ENABLED else None,
-        "plans": MEMBERSHIP_PLANS,
-        "session_price_inr": SESSION_PRICE_INR,
-        "currency": "INR",
-    }
+    s = await billing_settings()
+    return {"enabled": PAYMENTS_ENABLED, "key_id": RAZORPAY_KEY_ID if PAYMENTS_ENABLED else None, "plans": await list_plans(),
+            "session_price_inr": s["session_price_inr"], "packs": [p for p in s["packs"] if p.get("active")], "currency": "INR",
+            "auto_renew": PAYMENTS_ENABLED}
 
 
 @api_router.post("/payments/order")
 async def create_payment_order(payload: PaymentOrderRequest, user: User = Depends(get_current_user)):
-    if not PAYMENTS_ENABLED:
-        raise HTTPException(status_code=503, detail="Payments are not configured yet. Add Razorpay keys to enable checkout.")
-
+    _require_payments()
+    s = await billing_settings()
     if payload.type == "plan":
-        plan = next((p for p in MEMBERSHIP_PLANS if p["id"] == payload.plan_id), None)
-        if not plan:
+        plan = await get_plan(payload.plan_id)
+        if not plan or not plan.get("active"):
             raise HTTPException(status_code=400, detail="Invalid plan")
-        amount_inr = plan["price_inr"]
-        ref = {"plan_id": plan["id"], "plan_name": plan["name"]}
+        amount_inr, ref = plan["price_inr"], {"plan_id": plan["id"], "plan_name": plan["name"]}
+    elif payload.type == "pack":
+        pack = next((p for p in s["packs"] if p["id"] == payload.pack_id and p.get("active")), None)
+        if not pack:
+            raise HTTPException(status_code=400, detail="Invalid session pack")
+        amount_inr, ref = pack["price_inr"], {"pack_id": pack["id"], "sessions": pack["sessions"], "pack_name": pack["name"]}
     elif payload.type == "session":
         booking = await db.bookings.find_one({"id": payload.booking_id, "user_id": user.user_id}, {"_id": 0})
         if not booking:
             raise HTTPException(status_code=400, detail="Booking not found")
         if booking.get("paid"):
             raise HTTPException(status_code=409, detail="This session is already paid")
-        amount_inr = SESSION_PRICE_INR
-        ref = {"booking_id": payload.booking_id}
+        amount_inr, ref = s["session_price_inr"], {"booking_id": payload.booking_id}
     else:
         raise HTTPException(status_code=400, detail="Invalid payment type")
 
-    amount_paise = amount_inr * 100
     receipt = f"fc_{uuid.uuid4().hex[:16]}"
-    order = None
     try:
-        order = _razorpay_client().order.create({
-            "amount": amount_paise,
-            "currency": "INR",
-            "receipt": receipt,
-            "payment_capture": 1,
-        })
-    except Exception as e:
+        order = await asyncio.to_thread(_razorpay_client().order.create,
+                                        {"amount": int(amount_inr) * 100, "currency": "INR", "receipt": receipt, "payment_capture": 1,
+                                         "notes": {"user_id": user.user_id, "type": payload.type}})
+    except Exception:
         logger.exception("razorpay order failed")
-        raise HTTPException(status_code=502, detail=f"Could not create payment order: {e}")
-
-    await db.transactions.insert_one({
-        "id": str(uuid.uuid4()),
-        "user_id": user.user_id,
-        "order_id": order["id"],
-        "type": payload.type,
-        "ref": ref,
-        "amount_inr": amount_inr,
-        "status": "created",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    })
-
-    return {"order_id": order["id"], "amount": amount_paise, "currency": "INR", "key_id": RAZORPAY_KEY_ID, "receipt": receipt}
+        raise HTTPException(status_code=502, detail="Could not start the payment. Please try again.")
+    await db.transactions.insert_one({"id": str(uuid.uuid4()), "user_id": user.user_id, "order_id": order["id"], "type": payload.type,
+                                      "ref": ref, "amount_inr": amount_inr, "status": "created", "created_at": _now_iso()})
+    return {"order_id": order["id"], "amount": int(amount_inr) * 100, "currency": "INR", "key_id": RAZORPAY_KEY_ID, "receipt": receipt}
 
 
 @api_router.post("/payments/verify")
 async def verify_payment(payload: PaymentVerifyRequest, user: User = Depends(get_current_user)):
-    if not PAYMENTS_ENABLED:
-        raise HTTPException(status_code=503, detail="Payments are not configured")
-
+    _require_payments()
     txn = await db.transactions.find_one({"order_id": payload.razorpay_order_id, "user_id": user.user_id}, {"_id": 0})
     if not txn:
         raise HTTPException(status_code=404, detail="Transaction not found")
-
-    try:
-        _razorpay_client().utility.verify_payment_signature({
-            "razorpay_order_id": payload.razorpay_order_id,
-            "razorpay_payment_id": payload.razorpay_payment_id,
-            "razorpay_signature": payload.razorpay_signature,
-        })
-    except Exception:
-        await db.transactions.update_one({"order_id": payload.razorpay_order_id}, {"$set": {"status": "failed"}})
+    if not _hmac_ok(f"{payload.razorpay_order_id}|{payload.razorpay_payment_id}", payload.razorpay_signature, RAZORPAY_KEY_SECRET):
+        await db.transactions.update_one({"id": txn["id"]}, {"$set": {"status": "failed"}})
         raise HTTPException(status_code=400, detail="Payment signature verification failed")
-
-    await db.transactions.update_one(
-        {"order_id": payload.razorpay_order_id},
-        {"$set": {"status": "paid", "payment_id": payload.razorpay_payment_id, "paid_at": datetime.now(timezone.utc).isoformat()}},
-    )
-
-    if txn["type"] == "plan":
-        plan = next((p for p in MEMBERSHIP_PLANS if p["id"] == txn["ref"].get("plan_id")), None)
-        if plan:
-            expires = datetime.now(timezone.utc) + timedelta(days=plan["days"])
-            await db.users.update_one(
-                {"user_id": user.user_id},
-                {"$set": {"membership_plan": plan["id"], "membership_expires_at": expires.isoformat()}},
-            )
-    elif txn["type"] == "session":
-        await db.bookings.update_one(
-            {"id": txn["ref"].get("booking_id"), "user_id": user.user_id},
-            {"$set": {"paid": True}},
-        )
-
+    await db.transactions.update_one({"id": txn["id"]}, {"$set": {"status": "paid", "payment_id": payload.razorpay_payment_id, "paid_at": _now_iso()}})
+    await record_payment_effects({**txn, "payment_id": payload.razorpay_payment_id})
     return {"status": "success"}
+
+
+# ── auto-renewing subscriptions ──
+class SubscriptionRequest(BaseModel):
+    plan_id: str
+
+
+class SubscriptionVerifyRequest(BaseModel):
+    razorpay_payment_id: str
+    razorpay_subscription_id: str
+    razorpay_signature: str
+
+
+async def _razorpay_plan_id(plan: dict) -> str:
+    """Razorpay needs its own plan object per price; create one when the price/period changes."""
+    if plan.get("rp_plan_id") and plan.get("rp_plan_price") == plan["price_inr"] and plan.get("rp_plan_period") == f"{plan['period']}x{plan['interval']}":
+        return plan["rp_plan_id"]
+    rp = await asyncio.to_thread(_razorpay_client().plan.create, {
+        "period": plan["period"], "interval": int(plan["interval"]),
+        "item": {"name": f"FitCoach {plan['name']}", "amount": int(plan["price_inr"]) * 100, "currency": "INR"}})
+    await db.membership_plans.update_one({"id": plan["id"]}, {"$set": {"rp_plan_id": rp["id"], "rp_plan_price": plan["price_inr"],
+                                                                        "rp_plan_period": f"{plan['period']}x{plan['interval']}"}})
+    return rp["id"]
+
+
+@api_router.post("/payments/subscription")
+async def create_subscription(payload: SubscriptionRequest, user: User = Depends(require_role("client"))):
+    _require_payments()
+    plan = await get_plan(payload.plan_id)
+    if not plan or not plan.get("active"):
+        raise HTTPException(status_code=400, detail="Invalid plan")
+    doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0}) or {}
+    if doc.get("subscription_status") == "active":
+        raise HTTPException(status_code=409, detail="You already have an auto-renewing membership. Cancel it first to switch plans.")
+    try:
+        rp_plan = await _razorpay_plan_id(plan)
+        cycles = {"weekly": 520, "monthly": 120, "yearly": 10}[plan["period"]] // int(plan["interval"] or 1)
+        sub = await asyncio.to_thread(_razorpay_client().subscription.create, {
+            "plan_id": rp_plan, "total_count": max(1, cycles), "customer_notify": 1,
+            "notes": {"user_id": user.user_id, "plan_id": plan["id"]}})
+    except Exception:
+        logger.exception("razorpay subscription failed")
+        raise HTTPException(status_code=502, detail="Could not start auto-renewal. Please try again.")
+    await db.subscriptions.insert_one({"id": sub["id"], "user_id": user.user_id, "plan_id": plan["id"], "status": "created",
+                                       "created_at": _now_iso()})
+    return {"subscription_id": sub["id"], "key_id": RAZORPAY_KEY_ID, "plan_name": plan["name"], "amount": int(plan["price_inr"]) * 100}
+
+
+async def _apply_subscription_charge(sub: dict, payment_id: str, amount_inr: Optional[int] = None):
+    """One renewal = one transaction keyed by payment id, so the checkout callback and webhook can't double-count."""
+    if await db.transactions.find_one({"payment_id": payment_id}):
+        return
+    plan = await get_plan(sub["plan_id"]) or {}
+    txn = {"id": str(uuid.uuid4()), "user_id": sub["user_id"], "order_id": None, "subscription_id": sub["id"], "type": "subscription",
+           "ref": {"plan_id": sub["plan_id"], "plan_name": plan.get("name")}, "amount_inr": amount_inr or plan.get("price_inr"),
+           "status": "paid", "payment_id": payment_id, "paid_at": _now_iso(), "created_at": _now_iso()}
+    try:
+        await db.transactions.insert_one(dict(txn))
+    except Exception:
+        return  # unique payment_id: another request recorded it first
+    await db.subscriptions.update_one({"id": sub["id"]}, {"$set": {"status": "active", "last_charged_at": _now_iso()}})
+    await db.users.update_one({"user_id": sub["user_id"]}, {"$set": {"subscription_id": sub["id"], "subscription_status": "active"}})
+    await record_payment_effects(txn)
+
+
+@api_router.post("/payments/subscription/verify")
+async def verify_subscription(payload: SubscriptionVerifyRequest, user: User = Depends(require_role("client"))):
+    _require_payments()
+    sub = await db.subscriptions.find_one({"id": payload.razorpay_subscription_id, "user_id": user.user_id}, {"_id": 0})
+    if not sub:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    if not _hmac_ok(f"{payload.razorpay_payment_id}|{payload.razorpay_subscription_id}", payload.razorpay_signature, RAZORPAY_KEY_SECRET):
+        raise HTTPException(status_code=400, detail="Payment signature verification failed")
+    await _apply_subscription_charge(sub, payload.razorpay_payment_id)
+    return {"status": "success"}
+
+
+@api_router.post("/payments/subscription/cancel")
+async def cancel_subscription(user: User = Depends(require_role("client"))):
+    doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0}) or {}
+    sub_id = doc.get("subscription_id")
+    if not sub_id or doc.get("subscription_status") != "active":
+        raise HTTPException(status_code=409, detail="No auto-renewing membership to cancel")
+    if PAYMENTS_ENABLED:
+        try:
+            await asyncio.to_thread(_razorpay_client().subscription.cancel, sub_id, {"cancel_at_cycle_end": 1})
+        except Exception:
+            logger.exception("razorpay cancel failed")
+            raise HTTPException(status_code=502, detail="Could not cancel right now. Please try again.")
+    await db.subscriptions.update_one({"id": sub_id}, {"$set": {"status": "cancelled", "cancelled_at": _now_iso()}})
+    await db.users.update_one({"user_id": user.user_id}, {"$set": {"subscription_status": "cancelled"}})
+    return {"ok": True, "access_until": doc.get("membership_expires_at")}
+
+
+@api_router.post("/payments/webhook")
+async def razorpay_webhook(request: Request):
+    """Razorpay → us: renewals and subscription state changes. Configure in Razorpay Dashboard → Webhooks."""
+    body = await request.body()
+    if not RAZORPAY_WEBHOOK_SECRET or not _hmac_ok(body.decode(), request.headers.get("x-razorpay-signature", ""), RAZORPAY_WEBHOOK_SECRET):
+        raise HTTPException(status_code=400, detail="Invalid signature")
+    event = json.loads(body)
+    kind = event.get("event", "")
+    sub_entity = ((event.get("payload") or {}).get("subscription") or {}).get("entity") or {}
+    sub = await db.subscriptions.find_one({"id": sub_entity.get("id")}, {"_id": 0}) if sub_entity.get("id") else None
+    if not sub:
+        return {"ok": True, "ignored": kind}
+    if kind == "subscription.charged":
+        pay = ((event["payload"].get("payment") or {}).get("entity")) or {}
+        if pay.get("id"):
+            await _apply_subscription_charge(sub, pay["id"], (pay.get("amount") or 0) // 100 or None)
+    elif kind in ("subscription.halted", "subscription.cancelled", "subscription.completed", "subscription.paused"):
+        status = kind.split(".", 1)[1]
+        await db.subscriptions.update_one({"id": sub["id"]}, {"$set": {"status": status, "updated_at": _now_iso()}})
+        await db.users.update_one({"user_id": sub["user_id"], "subscription_id": sub["id"]}, {"$set": {"subscription_status": status}})
+        if status == "halted":
+            await push_notification(sub["user_id"], "Payment didn't go through", "We couldn't renew your membership. Update your payment method to keep your coach.", "/membership")
+    return {"ok": True}
 
 
 @api_router.get("/payments/history")
@@ -2398,6 +2708,181 @@ async def payment_history(user: User = Depends(get_current_user)):
     docs = await db.transactions.find({"user_id": user.user_id}, {"_id": 0}).to_list(200)
     docs.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     return docs
+
+
+# ── admin: plans, settings, credits, payouts ──
+class PlanIn(BaseModel):
+    name: str
+    price_inr: int
+    days: int
+    period: str = "monthly"
+    interval: int = 1
+    included_sessions: int = 0
+    unlimited_sessions: bool = False
+    blurb: str = ""
+    features: List[str] = []
+    featured: bool = False
+    active: bool = True
+    sort: int = 10
+
+
+class PackIn(BaseModel):
+    id: Optional[str] = None
+    name: str
+    sessions: int
+    price_inr: int
+    active: bool = True
+
+
+class BillingSettingsIn(BaseModel):
+    session_price_inr: int
+    trial_days: int
+    grace_days: int
+    referral_reward_days: int
+    referee_bonus_days: int
+    payout_per_client_inr: int = 0
+    payout_per_session_inr: int = 0
+    packs: List[PackIn] = []
+
+
+class CreditsIn(BaseModel):
+    delta: int
+
+
+def _clean_plan_in(p: PlanIn) -> dict:
+    if not (1 <= len(p.name.strip()) <= 40) or p.price_inr < 0 or not (1 <= p.days <= 3660):
+        raise HTTPException(status_code=400, detail="Check the plan name, price and duration")
+    if p.period not in PERIODS or not (1 <= p.interval <= 12):
+        raise HTTPException(status_code=400, detail="Billing period must be weekly, monthly or yearly")
+    return {"name": p.name.strip(), "price_inr": int(p.price_inr), "days": int(p.days), "period": p.period, "interval": int(p.interval),
+            "included_sessions": max(0, int(p.included_sessions)), "unlimited_sessions": bool(p.unlimited_sessions),
+            "blurb": _txt(p.blurb, 120), "features": [_txt(f, 80) for f in p.features if _txt(f, 80)][:8],
+            "featured": bool(p.featured), "active": bool(p.active), "sort": int(p.sort)}
+
+
+@api_router.get("/admin/plans")
+async def admin_list_plans(user: User = Depends(require_role("admin"))):
+    plans = await list_plans(include_inactive=True)
+    for p in plans:
+        p["members"] = await db.users.count_documents({"membership_plan": p["id"], "membership_expires_at": {"$gt": _now_iso()}})
+    return plans
+
+
+@api_router.post("/admin/plans")
+async def admin_create_plan(payload: PlanIn, user: User = Depends(require_role("admin"))):
+    doc = _clean_plan_in(payload)
+    doc["id"] = _slug(payload.name)
+    if doc["id"] == "trial" or await get_plan(doc["id"]):
+        doc["id"] = f"{doc['id']}-{uuid.uuid4().hex[:4]}"
+    await db.membership_plans.insert_one(dict(doc))
+    return doc
+
+
+@api_router.put("/admin/plans/{plan_id}")
+async def admin_update_plan(plan_id: str, payload: PlanIn, user: User = Depends(require_role("admin"))):
+    if not await get_plan(plan_id):
+        raise HTTPException(status_code=404, detail="Plan not found")
+    await db.membership_plans.update_one({"id": plan_id}, {"$set": _clean_plan_in(payload)})
+    return await get_plan(plan_id)
+
+
+@api_router.get("/admin/billing")
+async def admin_get_billing(user: User = Depends(require_role("admin"))):
+    return await billing_settings()
+
+
+@api_router.put("/admin/billing")
+async def admin_put_billing(payload: BillingSettingsIn, user: User = Depends(require_role("admin"))):
+    nums = [payload.session_price_inr, payload.trial_days, payload.grace_days, payload.referral_reward_days,
+            payload.referee_bonus_days, payload.payout_per_client_inr, payload.payout_per_session_inr]
+    if any(n < 0 for n in nums) or payload.trial_days > 90 or payload.grace_days > 30:
+        raise HTTPException(status_code=400, detail="Check the numbers (trial ≤ 90 days, grace ≤ 30 days, no negatives)")
+    packs = []
+    for p in payload.packs[:10]:
+        if not p.name.strip() or p.sessions < 1 or p.price_inr < 0:
+            raise HTTPException(status_code=400, detail="Each pack needs a name, at least 1 session and a price")
+        packs.append({"id": p.id or _slug(p.name), "name": _txt(p.name, 40), "sessions": int(p.sessions), "price_inr": int(p.price_inr), "active": bool(p.active)})
+    doc = {**payload.model_dump(exclude={"packs"}), "packs": packs}
+    await db.app_settings.update_one({"_id": "billing"}, {"$set": doc}, upsert=True)
+    return await billing_settings()
+
+
+@api_router.post("/admin/users/{target_id}/credits")
+async def admin_adjust_credits(target_id: str, payload: CreditsIn, user: User = Depends(require_role("admin"))):
+    doc = await db.users.find_one({"user_id": target_id, "role": "client"}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Client not found")
+    new = max(0, int(doc.get("session_credits") or 0) + payload.delta)
+    await db.users.update_one({"user_id": target_id}, {"$set": {"session_credits": new}})
+    return {"session_credits": new}
+
+
+async def _payout_report(month: str) -> dict:
+    try:
+        start = datetime.strptime(month + "-01", "%Y-%m-%d").replace(tzinfo=APP_TZ)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Month must be YYYY-MM")
+    end = (start + timedelta(days=32)).replace(day=1)
+    s_iso, e_iso = start.astimezone(timezone.utc).isoformat(), end.astimezone(timezone.utc).isoformat()
+    now_iso = _now_iso()
+    rates = await billing_settings()
+    rows = []
+    for c in await db.users.find({"role": "trainer"}, {"_id": 0}).to_list(500):
+        cid = c["user_id"]
+        field = "yoga_coach_id" if c.get("coach_type") == "yoga" else "fitness_coach_id"
+        # clients who were members at some point in the month
+        active_clients = await db.users.count_documents({"role": "client", field: cid, "membership_expires_at": {"$gte": s_iso}})
+        sessions = await db.bookings.count_documents({"trainer_id": cid, "starts_at": {"$gte": s_iso, "$lt": min(e_iso, now_iso)}})
+        calls = await db.calls.count_documents({"coach_id": cid, "started_at": {"$gte": s_iso, "$lt": e_iso}})
+        plans = await db.plans.count_documents({"approved_by": cid, "approved_at": {"$gte": s_iso, "$lt": e_iso}})
+        reviews = await db.pose_checks.count_documents({"reviewed_by": cid, "reviewed_at": {"$gte": s_iso, "$lt": e_iso}})
+        messages = await db.messages.count_documents({"sender_id": cid, "created_at": {"$gte": s_iso, "$lt": e_iso}})
+        payout = active_clients * int(rates["payout_per_client_inr"]) + sessions * int(rates["payout_per_session_inr"])
+        rows.append({"coach_id": cid, "name": c.get("name"), "email": c.get("email"), "coach_type": c.get("coach_type") or "fitness",
+                     "active_clients": active_clients, "sessions": sessions, "calls": calls, "plans_approved": plans,
+                     "pose_reviews": reviews, "messages": messages, "payout_inr": payout})
+    rows.sort(key=lambda r: (-r["payout_inr"], -r["active_clients"], r["name"] or ""))
+    revenue = 0
+    async for t in db.transactions.find({"status": "paid", "paid_at": {"$gte": s_iso, "$lt": e_iso}}, {"_id": 0, "amount_inr": 1}):
+        revenue += int(t.get("amount_inr") or 0)
+    return {"month": month, "rates": {"per_client_inr": rates["payout_per_client_inr"], "per_session_inr": rates["payout_per_session_inr"]},
+            "revenue_inr": revenue, "total_payout_inr": sum(r["payout_inr"] for r in rows), "coaches": rows}
+
+
+@api_router.get("/admin/payouts")
+async def admin_payouts(month: str = Query(...), user: User = Depends(require_role("admin"))):
+    return await _payout_report(month)
+
+
+@api_router.get("/admin/payouts.csv")
+async def admin_payouts_csv(month: str = Query(...), user: User = Depends(require_role("admin"))):
+    import csv
+    import io
+    rep = await _payout_report(month)
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Month", "Coach", "Email", "Type", "Active clients", "Sessions", "Calls", "Plans approved", "Pose reviews", "Messages", "Payout (INR)"])
+    for r in rep["coaches"]:
+        w.writerow([month, r["name"], r["email"], r["coach_type"], r["active_clients"], r["sessions"], r["calls"],
+                    r["plans_approved"], r["pose_reviews"], r["messages"], r["payout_inr"]])
+    return Response(content=buf.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="fitcoach-payouts-{month}.csv"'})
+
+
+async def send_membership_reminders():
+    """Tell clients 3 days before their membership ends (unless it auto-renews), and when it has ended."""
+    now = datetime.now(timezone.utc)
+    soon = (now + timedelta(days=3)).isoformat()
+    async for u in db.users.find({"role": "client", "membership_expires_at": {"$gt": now.isoformat(), "$lte": soon},
+                                  "subscription_status": {"$ne": "active"}}, {"_id": 0}):
+        if u.get("expiry_notice_for") != u["membership_expires_at"]:
+            await db.users.update_one({"user_id": u["user_id"]}, {"$set": {"expiry_notice_for": u["membership_expires_at"]}})
+            label = "Your free trial" if u.get("membership_plan") == "trial" else "Your membership"
+            await push_notification(u["user_id"], f"{label} ends soon", "Renew now to keep your coach, plans and sessions.", "/membership")
+    async for u in db.users.find({"role": "client", "membership_expires_at": {"$lte": now.isoformat(), "$gt": (now - timedelta(days=2)).isoformat()}}, {"_id": 0}):
+        if u.get("expired_notice_for") != u["membership_expires_at"]:
+            await db.users.update_one({"user_id": u["user_id"]}, {"$set": {"expired_notice_for": u["membership_expires_at"]}})
+            await push_notification(u["user_id"], "Your membership has ended", "Renew to pick up where you left off with your coach.", "/membership")
 
 
 @api_router.get("/admin/email/status")
@@ -2468,10 +2953,14 @@ async def create_indexes():
         await db.file_blobs.create_index("storage_path", unique=True)
         await db.push_subscriptions.create_index("endpoint", unique=True)
         await db.push_subscriptions.create_index("user_id")
+        await db.transactions.create_index("payment_id", unique=True, partialFilterExpression={"payment_id": {"$type": "string"}})
+        await db.users.create_index("referral_code", unique=True, partialFilterExpression={"referral_code": {"$type": "string"}})
+        await db.membership_plans.create_index("id", unique=True)
     except Exception as e:
         logger.warning(f"Index creation skipped: {e}")
     await seed_roles()
     await migrate_v2()
+    await seed_billing()
     try:
         await load_vapid_keys()
     except Exception:
@@ -2495,6 +2984,7 @@ def _start_scheduler():
         _scheduler = AsyncIOScheduler(timezone="UTC")
         _scheduler.add_job(send_due_reminders, "interval", minutes=5, id="reminders", replace_existing=True)
         _scheduler.add_job(send_session_alerts, "interval", minutes=1, id="session_alerts", replace_existing=True)
+        _scheduler.add_job(send_membership_reminders, "interval", minutes=30, id="membership_reminders", replace_existing=True)
         _scheduler.start()
         logger.info("Reminder scheduler started (email_configured=%s)", email_configured())
     except Exception:
@@ -2535,12 +3025,15 @@ async def seed_roles():
 
 
 async def migrate_v2():
-    """Idempotent: map v1 programmes to v2 goals and give every trainer a coach type."""
+    """Idempotent: map v1 programmes to v2 goals, give every trainer a coach type, and give existing clients
+    without a membership one free trial so nobody is locked out the moment billing goes live."""
     for old, new in LEGACY_FOCUS.items():
         await db.users.update_many({"focus": old}, {"$set": {"focus": new}})
     async for t in db.users.find({"role": "trainer", "coach_type": {"$in": [None, ""]}}, {"_id": 0}):
         ctype = "yoga" if "yoga" in (t.get("specialty") or "").lower() else "fitness"
         await db.users.update_one({"user_id": t["user_id"]}, {"$set": {"coach_type": ctype}})
+    async for c in db.users.find({"role": "client", "membership_expires_at": {"$in": [None, ""]}, "trial_granted": {"$ne": True}}, {"_id": 0, "user_id": 1}):
+        await start_trial(c["user_id"])
 
 
 @app.on_event("shutdown")

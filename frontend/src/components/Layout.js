@@ -19,7 +19,10 @@ export default function Layout() {
 
   let nav;
   if (role === "admin") {
-    nav = [{ feature: "admin", path: "/admin", label: "Admin Console", icon: "ShieldCheck" }];
+    nav = [
+      { feature: "admin", path: "/admin", label: "Admin Console", icon: "ShieldCheck", end: true },
+      { feature: "billing", path: "/admin/billing", label: "Billing & payouts", icon: "Wallet" },
+    ];
   } else if (role === "trainer") {
     nav = [
       { feature: "trainer", path: "/trainer", label: "Clients & Today", icon: "LayoutDashboard", end: true },

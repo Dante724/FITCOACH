@@ -17,6 +17,11 @@ api.interceptors.request.use((config) => {
   if (t) config.headers.Authorization = `Bearer ${t}`;
   return config;
 });
+// 402 = the client's membership has lapsed; the app shell shows the renewal screen.
+api.interceptors.response.use((res) => res, (error) => {
+  if (error?.response?.status === 402) window.dispatchEvent(new CustomEvent("fc:membership-required"));
+  return Promise.reject(error);
+});
 
 // Uploaded photos are served by the API at /api/files/...; <img> tags can't send headers,
 // so add the token as a query parameter. External URLs (e.g. Google profile photos) pass through.

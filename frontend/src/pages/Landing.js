@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { api } from "@/lib/api";
 import * as Icons from "lucide-react";
 import Logo from "@/components/Logo";
 
@@ -22,7 +24,7 @@ const STEPS = [
   { n: "03", title: "Follow an approved plan", desc: "AI drafts it in minutes. Your coach checks and approves every plan, then adjusts it as you progress." },
 ];
 
-const PLANS = [
+const FALLBACK_PLANS = [
   { name: "Monthly", price: "15,000", period: "per month", features: ["Your own assigned coach", "AI food tracking", "1 video session a week", "Progress tracking"] },
   { name: "Quarterly", price: "30,000", period: "per 3 months", featured: true, features: ["Everything in Monthly", "Coach-approved nutrition plan", "2 video sessions a week", "Priority booking"] },
   { name: "Annual", price: "85,000", period: "per year", features: ["Everything in Quarterly", "Quarterly assessments", "Unlimited video sessions", "Best value"] },
@@ -37,6 +39,17 @@ const FACTS = [
 export default function Landing() {
   const navigate = useNavigate();
   const go = () => navigate("/login");
+  const [pricing, setPricing] = useState({ plans: FALLBACK_PLANS, session: 1000, trial: 7 });
+  useEffect(() => {
+    api.get("/plans").then(({ data }) => {
+      if (!data.plans?.length) return;
+      const term = (p) => { const u = { weekly: "week", monthly: "month", yearly: "year" }[p.period] || "month"; return p.interval > 1 ? `per ${p.interval} ${u}s` : `per ${u}`; };
+      setPricing({
+        plans: data.plans.map((p) => ({ name: p.name, price: Number(p.price_inr).toLocaleString("en-IN"), period: term(p), featured: p.featured, features: p.features || [] })),
+        session: data.session_price_inr, trial: data.trial_days,
+      });
+    }).catch(() => {});
+  }, []);
 
   return (
     <div className="site">
@@ -111,9 +124,11 @@ export default function Landing() {
       <section id="pricing" className="site-section">
         <div className="site-wrap">
           <h2>Pricing</h2>
-          <p style={{ color: "var(--text-2)", marginBottom: 32 }}>Pay-as-you-go sessions are ₹1,000 each.</p>
+          <p style={{ color: "var(--text-2)", marginBottom: 32 }}>
+            {pricing.trial > 0 ? `Start with a ${pricing.trial}-day free trial. ` : ""}Extra sessions are ₹{Number(pricing.session).toLocaleString("en-IN")} each.
+          </p>
           <div className="site-grid-3">
-            {PLANS.map((p) => (
+            {pricing.plans.map((p) => (
               <div key={p.name} className={p.featured ? "clay card-dark" : "clay"} style={{ padding: 26, display: "flex", flexDirection: "column" }}>
                 <div className="row" style={{ justifyContent: "space-between" }}>
                   <div style={{ fontWeight: 500 }}>{p.name}</div>

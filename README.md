@@ -43,6 +43,20 @@ and plan updates arrive even when it's closed — no app store needed.
 - Push keys (VAPID) are generated on first start and stored in MongoDB; nothing to configure.
   Requires HTTPS in production (Render provides it).
 
+## Payments & memberships (Razorpay)
+
+- New clients get a free trial (7 days by default; a friend's referral link adds 7 more). When a
+  membership ends there are 3 grace days, then workouts, yoga, chat, pose checks, food and meal plans
+  show a renewal screen. Progress, photos and the membership page always stay open.
+- **Admin → Billing & payouts** edits plan prices, durations, included sessions, session packs,
+  trial/grace length, referral rewards and coach payout rates, and exports a monthly payout CSV.
+- To take payments set `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` (test keys first). Clients can then
+  subscribe (auto-renew) or pay once, and buy session packs.
+- For auto-renewal, add a webhook in the Razorpay Dashboard → Webhooks pointing to
+  `https://<your-api>.onrender.com/api/payments/webhook` with the events `subscription.charged`,
+  `subscription.halted`, `subscription.cancelled` and `subscription.completed`,
+  and put its secret in `RAZORPAY_WEBHOOK_SECRET`.
+
 ## AI (optional)
 
 Set `GEMINI_API_KEY` (Google AI Studio). Without it, coaches start plans from a built-in template and food
