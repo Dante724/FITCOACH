@@ -8,6 +8,7 @@ import NotificationBell from "@/components/NotificationBell";
 import Logo from "@/components/Logo";
 import Avatar from "@/components/Avatar";
 import CallCenter from "@/components/CallCenter";
+import { canPromptInstall, promptInstall, onInstallAvailability } from "@/lib/push";
 
 export default function Layout() {
   const { user, logout } = useAuth();
@@ -37,6 +38,8 @@ export default function Layout() {
   const roleLabel = role === "trainer" ? `${user?.coach_type === "yoga" ? "Yoga" : "Fitness"} coach` : role.charAt(0).toUpperCase() + role.slice(1);
   const [drawer, setDrawer] = useState(false);
   const [unread, setUnread] = useState(0);
+  const [installable, setInstallable] = useState(canPromptInstall());
+  useEffect(() => onInstallAvailability(setInstallable), []);
 
   useEffect(() => { setDrawer(false); }, [location.pathname]);
   useEffect(() => {
@@ -72,6 +75,12 @@ export default function Layout() {
             );
           })}
         </nav>
+        {installable && (
+          <button className="nav-link" onClick={promptInstall} data-testid="sidebar-install"
+            style={{ border: "1px solid rgba(201,164,92,0.4)", background: "rgba(201,164,92,0.1)", cursor: "pointer", fontFamily: "inherit", marginTop: 8 }}>
+            <Icons.Download size={17} strokeWidth={1.75} color="var(--ink)" /> <span style={{ flex: 1, textAlign: "left" }}>Install app</span>
+          </button>
+        )}
         <div className="row" style={{ borderTop: "1px solid var(--border)", padding: "14px 6px 0", marginTop: 12 }}>
           <div data-testid="profile-link" onClick={() => navigate("/profile")} className="row min0" style={{ flex: 1, cursor: "pointer", gap: 10 }}>
             <Avatar name={user?.name} picture={user?.picture} size={30} />

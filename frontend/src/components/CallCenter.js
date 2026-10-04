@@ -2,7 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
 import { api } from "@/lib/api";
-import { desktopAlert, desktopAlertsSupported } from "@/lib/calls";
+import { desktopAlert } from "@/lib/calls";
+import { pushState, enablePush } from "@/lib/push";
+import { useToast } from "@/context/ToastContext";
+
+const PROMPT_KEY = "fc_push_prompt_dismissed";
+const promptSnoozed = () => { try { return Date.now() - Number(localStorage.getItem(PROMPT_KEY) || 0) < 7 * 86400000; } catch { return false; } };
+const snoozePrompt = () => { try { localStorage.setItem(PROMPT_KEY, String(Date.now())); } catch { /* private mode */ } };
 
 // Soft two-tone ring generated in the browser (no audio files needed).
 function useRingtone() {
@@ -43,8 +49,14 @@ export default function CallCenter() {
   const [incoming, setIncoming] = useState(null);
   const [soon, setSoon] = useState(null);
   const [dismissed, setDismissed] = useState(() => new Set());
-  const [askAlerts, setAskAlerts] = useState(() => desktopAlertsSupported() && Notification.permission === "default");
+  const { push } = useToast();
+  const [notifState, setNotifState] = useState(null); // on | off | blocked | unsupported | install-first
+  const [snoozed, setSnoozed] = useState(promptSnoozed);
+  const pushOn = notifState === "on";
+  useEffect(() => { pushState().then(setNotifState).catch(() => setNotifState("unsupported")); }, []);
   const ring = useRingtone();
+  const pushOnRef = useRef(false);
+  pushOnRef.current = pushOn;
   const seen = useRef({ calls: new Set(), notes: null });
 
   const poll = useCallback(async () => {
@@ -54,7 +66,7 @@ export default function CallCenter() {
       setIncoming(call);
       if (call && !seen.current.calls.has(call.id)) {
         seen.current.calls.add(call.id);
-        if (document.hidden) desktopAlert(`Incoming call from ${call.peer_name}`, "Tap to answer in FitCoach.", () => navigate(`/call/live/${call.id}`));
+        if (document.hidden && !pushOnRef.current) desktopAlert(`Incoming call from ${call.peer_name}`, "Tap to answer in FitCoach.", () => navigate(`/call/live/${call.id}`));
       }
       setSoon(data.starting_soon.find((s) => s.minutes >= -45 && s.minutes <= 10) || null);
     } catch { /* offline */ }
@@ -66,7 +78,7 @@ export default function CallCenter() {
       const unread = data.notifications.filter((n) => !n.read);
       if (seen.current.notes) {
         unread.filter((n) => !seen.current.notes.has(n.id) && !n.title.startsWith("Incoming call"))
-          .forEach((n) => document.hidden && desktopAlert(n.title, n.body, () => n.link && navigate(n.link)));
+          .forEach((n) => document.hidden && !pushOnRef.current && desktopAlert(n.title, n.body, () => n.link && navigate(n.link)));
       }
       seen.current.notes = new Set(data.notifications.map((n) => n.id));
     } catch { /* offline */ }
@@ -88,14 +100,21 @@ export default function CallCenter() {
     setIncoming(null);
     await api.post(`/calls/${id}/decline`).catch(() => {});
   };
-  const enableAlerts = async () => {
-    const p = await Notification.requestPermission().catch(() => "denied");
-    setAskAlerts(false);
-    if (p === "granted") desktopAlert("Desktop alerts are on", "We'll let you know about calls and sessions while FitCoach is open.");
+  const turnOnNotifications = async () => {
+    try {
+      await enablePush();
+      setNotifState("on");
+      push("Notifications are on for this device.", "success");
+    } catch (e) {
+      push(e.message || "Couldn't turn on notifications.", "error");
+      setNotifState(await pushState().catch(() => "unsupported"));
+    }
   };
+  const dismissPrompt = () => { snoozePrompt(); setSnoozed(true); };
+  const askNotifications = !snoozed && (notifState === "off" || notifState === "install-first");
 
   const showSoon = soon && !dismissed.has(soon.booking_id) && !incoming;
-  const bannerUp = showSoon || (askAlerts && !incoming);
+  const bannerUp = showSoon || (askNotifications && !incoming);
   useEffect(() => {
     document.body.classList.toggle("has-banner", !!bannerUp);
     return () => document.body.classList.remove("has-banner");
@@ -133,12 +152,26 @@ export default function CallCenter() {
         </div>
       )}
 
-      {askAlerts && !incoming && !showSoon && (
-        <div className="soon-banner fade-up" data-testid="enable-alerts">
-          <Icons.BellRing size={18} color="var(--gold)" style={{ flexShrink: 0 }} />
-          <div style={{ flex: 1, fontSize: 13.5 }}>Get desktop alerts for incoming calls and sessions?</div>
-          <button className="btn btn-primary" onClick={enableAlerts}>Turn on</button>
-          <button className="icon-btn" onClick={() => setAskAlerts(false)} aria-label="Not now"><Icons.X size={16} /></button>
+      {askNotifications && !incoming && !showSoon && (
+        <div className="soon-banner fade-up" data-testid="enable-notifications">
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--gold-soft)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Icons.BellRing size={17} color="var(--gold)" />
+          </div>
+          {notifState === "install-first" ? (
+            <div className="min0" style={{ flex: 1, fontSize: 13.5 }}>
+              <div style={{ fontWeight: 600 }}>Get call alerts on your iPhone</div>
+              <div style={{ color: "var(--text-2)", fontSize: 12.5 }}>Tap <Icons.Share size={12} /> Share, then <strong>Add to Home Screen</strong>. Open FitCoach from there and turn on notifications.</div>
+            </div>
+          ) : (
+            <>
+              <div className="min0" style={{ flex: 1, fontSize: 13.5 }}>
+                <div style={{ fontWeight: 600 }}>Never miss a call</div>
+                <div style={{ color: "var(--text-2)", fontSize: 12.5 }}>Get calls, reminders and messages even when FitCoach is closed.</div>
+              </div>
+              <button className="btn btn-primary" onClick={turnOnNotifications} data-testid="turn-on-notifications">Turn on</button>
+            </>
+          )}
+          <button className="icon-btn" onClick={dismissPrompt} aria-label="Not now"><Icons.X size={16} /></button>
         </div>
       )}
     </>

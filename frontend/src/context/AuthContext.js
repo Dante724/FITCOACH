@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
 import { api, setToken } from "@/lib/api";
+import { syncPushForSignedInUser, detachPushOnLogout } from "@/lib/push";
 
 const AuthContext = createContext(null);
 
@@ -11,6 +12,7 @@ export function AuthProvider({ children }) {
     try {
       const res = await api.get("/auth/me");
       setUser(res.data);
+      syncPushForSignedInUser();
     } catch (e) {
       if (e?.response?.status === 401) setToken(null);
       setUser(null);
@@ -25,6 +27,7 @@ export function AuthProvider({ children }) {
     const { access_token: token, ...profile } = data;
     setToken(token);
     setUser(profile);
+    syncPushForSignedInUser();
     return profile;
   }, []);
 
@@ -34,6 +37,7 @@ export function AuthProvider({ children }) {
   const emailRegister = useCallback(async (name, email, password) => signedIn((await api.post("/auth/register", { name, email, password })).data), [signedIn]);
 
   const logout = useCallback(async () => {
+    await detachPushOnLogout();
     try { await api.post("/auth/logout"); } catch { /* offline: still sign out locally */ }
     setToken(null);
     setUser(null);

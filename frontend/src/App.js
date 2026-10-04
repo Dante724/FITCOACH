@@ -1,6 +1,6 @@
 import "@/App.css";
-import { lazy, Suspense } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { lazy, Suspense, useEffect } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ToastProvider } from "@/context/ToastContext";
 import { roleHome } from "@/lib/focus";
@@ -45,6 +45,18 @@ function RequireAuth({ children, roles, requireFocus }) {
   if (roles && !roles.includes(user.role)) return <Navigate to={roleHome(user)} replace />;
   if (requireFocus && user.role === "client" && !user.focus) return <Navigate to="/focus" replace />;
   return children;
+}
+
+// The service worker posts {type:"navigate"} when a notification is tapped while the app is open.
+function NotificationRouter() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return undefined;
+    const onMessage = (e) => { if (e.data?.type === "navigate" && e.data.url) navigate(e.data.url); };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [navigate]);
+  return null;
 }
 
 function AppRouter() {
@@ -96,6 +108,7 @@ export default function App() {
       <BrowserRouter>
         <AuthProvider>
           <ToastProvider>
+            <NotificationRouter />
             <AppRouter />
           </ToastProvider>
         </AuthProvider>

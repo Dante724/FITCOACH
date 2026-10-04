@@ -29,6 +29,20 @@ reminders and calls. `REACT_APP_BACKEND_URL` is baked in at build time — redep
 3. Put the client ID (`…apps.googleusercontent.com`) in the API's `GOOGLE_CLIENT_ID`. The "Continue with Google"
    button appears automatically. Existing accounts with the same email are linked, not duplicated.
 
+## Install as an app + notifications
+
+FitCoach is an installable web app (PWA) with push notifications, so calls, session reminders, messages
+and plan updates arrive even when it's closed — no app store needed.
+
+- **Android / desktop Chrome & Edge:** an **Install app** button appears in the sidebar and in
+  Profile → App & notifications. Then tap **Turn on** for notifications.
+- **iPhone / iPad (iOS 16.4+):** in Safari tap **Share → Add to Home Screen**, open FitCoach from the
+  Home Screen, then turn on notifications (Apple only allows web push for Home Screen apps).
+- Incoming calls show **Answer / Decline** on the notification. Each device is linked to whoever is
+  signed in and unlinked on logout.
+- Push keys (VAPID) are generated on first start and stored in MongoDB; nothing to configure.
+  Requires HTTPS in production (Render provides it).
+
 ## AI (optional)
 
 Set `GEMINI_API_KEY` (Google AI Studio). Without it, coaches start plans from a built-in template and food

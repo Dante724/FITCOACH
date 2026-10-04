@@ -65,6 +65,9 @@ EMAIL_ENABLED = os.environ.get('EMAIL_ENABLED', 'true').lower() == 'true'
 REMINDER_HOURS_BEFORE = int(os.environ.get('REMINDER_HOURS_BEFORE', '24'))
 # Session dates/times are entered as local wall-clock time in the business's timezone.
 APP_TZ = ZoneInfo(os.environ.get('APP_TIMEZONE', 'Asia/Kolkata'))
+# Web Push (notifications when the app is closed). Keys are generated and stored in MongoDB automatically;
+# set VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY (PEM) only if you want to manage them yourself.
+VAPID_SUBJECT = os.environ.get('VAPID_SUBJECT', '').strip()
 # Optional TURN relay for calls on restrictive networks (STUN alone works for most home/mobile networks).
 TURN_URLS = [u.strip() for u in os.environ.get('TURN_URLS', '').split(',') if u.strip()]
 TURN_USERNAME = os.environ.get('TURN_USERNAME', '')
@@ -397,13 +400,21 @@ def require_role(*roles):
     return dep
 
 
-async def push_notification(user_id: str, title: str, body: str, link: str = ""):
+_bg_tasks: set = set()  # keep references so background pushes aren't garbage-collected mid-flight
+
+
+async def push_notification(user_id: str, title: str, body: str, link: str = "", push: Optional[dict] = None):
+    """Store an in-app notification and also deliver it as a Web Push to the user's devices."""
     if not user_id:
         return
     await db.notifications.insert_one({
         "id": str(uuid.uuid4()), "user_id": user_id, "title": title, "body": body,
         "link": link, "read": False, "created_at": datetime.now(timezone.utc).isoformat(),
     })
+    payload = {"title": title, "body": body, "url": link or "/", "tag": (push or {}).get("tag") or link or title, **(push or {})}
+    task = asyncio.create_task(send_web_push(user_id, payload))
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
 
 
 def email_configured() -> bool:
@@ -1853,6 +1864,126 @@ async def review_pose_check(check_id: str, payload: PoseReview, user: User = Dep
     return {**doc, **update}
 
 
+# ───────────────────────────── Web Push ─────────────────────────────
+_vapid = {"public": None, "key": None}
+
+
+def _b64url(raw: bytes) -> str:
+    import base64
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+
+async def load_vapid_keys():
+    """Use VAPID keys from the environment, else the pair stored in MongoDB, else generate and store one."""
+    from py_vapid import Vapid
+    from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+    pem = os.environ.get("VAPID_PRIVATE_KEY", "").strip().replace("\\n", "\n")
+    if not pem:
+        doc = await db.app_settings.find_one({"_id": "vapid"})
+        if not doc:
+            v = Vapid()
+            v.generate_keys()
+            doc = {"_id": "vapid", "private_pem": v.private_pem().decode(), "created_at": datetime.now(timezone.utc).isoformat()}
+            try:
+                await db.app_settings.insert_one(dict(doc))
+            except Exception:  # another worker won the race; use its key
+                doc = await db.app_settings.find_one({"_id": "vapid"})
+        pem = doc["private_pem"]
+    key = Vapid.from_pem(pem.encode())
+    _vapid["key"] = key
+    _vapid["public"] = _b64url(key.public_key.public_bytes(Encoding.X962, PublicFormat.UncompressedPoint))
+
+
+def _send_one(sub: dict, payload: dict) -> Optional[int]:
+    """Blocking send; returns an HTTP status when the push service rejected the subscription."""
+    from pywebpush import webpush, WebPushException
+    subject = VAPID_SUBJECT or f"mailto:{ADMIN_EMAIL or 'admin@fitcoach.app'}"
+    try:
+        webpush(subscription_info={"endpoint": sub["endpoint"], "keys": sub["keys"]}, data=json.dumps(payload),
+                vapid_private_key=_vapid["key"], vapid_claims={"sub": subject},
+                ttl=int(payload.get("ttl") or 3600), headers={"Urgency": payload.get("urgency", "normal")}, timeout=10)
+    except WebPushException as e:
+        return e.response.status_code if e.response is not None else 0
+    except Exception:
+        logger.exception("web push failed")
+    return None
+
+
+async def send_web_push(user_id: str, payload: dict) -> int:
+    if not _vapid["key"]:
+        return 0
+    subs = await db.push_subscriptions.find({"user_id": user_id}, {"_id": 0}).to_list(20)
+    sent = 0
+    for sub in subs:
+        status = await asyncio.to_thread(_send_one, sub, payload)
+        if status in (404, 410):  # the browser unsubscribed or the subscription expired
+            await db.push_subscriptions.delete_one({"endpoint": sub["endpoint"]})
+        elif status is None:
+            sent += 1
+    return sent
+
+
+class PushSubscription(BaseModel):
+    endpoint: str
+    keys: dict
+    user_agent: Optional[str] = None
+
+
+class PushUnsubscribe(BaseModel):
+    endpoint: str
+
+
+@api_router.get("/push/config")
+async def push_config(user: User = Depends(get_current_user)):
+    count = await db.push_subscriptions.count_documents({"user_id": user.user_id})
+    return {"public_key": _vapid["public"], "enabled": bool(_vapid["public"]), "devices": count}
+
+
+@api_router.post("/push/subscribe")
+async def push_subscribe(payload: PushSubscription, user: User = Depends(get_current_user)):
+    if not payload.endpoint.startswith("https://") or not {"p256dh", "auth"} <= set(payload.keys):
+        raise HTTPException(status_code=400, detail="Invalid push subscription")
+    await db.push_subscriptions.update_one(
+        {"endpoint": payload.endpoint},
+        {"$set": {"endpoint": payload.endpoint, "keys": {"p256dh": payload.keys["p256dh"], "auth": payload.keys["auth"]},
+                  "user_id": user.user_id, "user_agent": _txt(payload.user_agent, 200), "updated_at": _now_iso()}},
+        upsert=True)
+    return {"ok": True}
+
+
+@api_router.post("/push/unsubscribe")
+async def push_unsubscribe(payload: PushUnsubscribe, user: User = Depends(get_current_user)):
+    await db.push_subscriptions.delete_one({"endpoint": payload.endpoint, "user_id": user.user_id})
+    return {"ok": True}
+
+
+@api_router.post("/push/test")
+async def push_test(user: User = Depends(get_current_user)):
+    sent = await send_web_push(user.user_id, {"title": "Notifications are on", "body": "You'll hear from FitCoach even when the app is closed.",
+                                              "url": "/", "tag": "push-test"})
+    return {"sent": sent}
+
+
+def call_decline_token(call_id: str, user_id: str) -> str:
+    return jwt.encode({"sub": user_id, "call": call_id, "type": "call_decline",
+                       "exp": datetime.now(timezone.utc) + timedelta(minutes=2)}, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+@api_router.post("/calls/{call_id}/decline-push")
+async def decline_from_notification(call_id: str, t: str = Query(...)):
+    """The 'Decline' button on a call notification (the service worker has no login token, so it uses a signed link)."""
+    try:
+        claims = jwt.decode(t, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Link expired")
+    if claims.get("type") != "call_decline" or claims.get("call") != call_id:
+        raise HTTPException(status_code=401, detail="Invalid link")
+    user_doc = await db.users.find_one({"user_id": claims["sub"]}, {"_id": 0})
+    if not user_doc:
+        raise HTTPException(status_code=404, detail="User not found")
+    return await decline_call(call_id, User(**user_doc))
+
+
 # ───────────────────────────── Coaching: messages ─────────────────────────────
 async def _thread_access(user: User, client_id: str, coach_id: str) -> dict:
     client_doc = await _client_access(user, client_id)
@@ -2032,7 +2163,10 @@ async def join_call(call_id: str, user: User = Depends(get_current_user)):
     await db.call_signals.delete_many({"call_id": call_id, "to": user.user_id})
     if call["kind"] == "instant" and call["status"] == "ringing" and user.user_id == call["created_by"] and not call.get("notified"):
         await db.calls.update_one({"id": call_id}, {"$set": {"notified": True}})
-        await push_notification(peer_id, f"Incoming call from {user.name}", "Tap to answer.", f"/call/live/{call_id}")
+        await push_notification(peer_id, f"Incoming call from {user.name}", "Video call · tap to answer", f"/call/live/{call_id}", push={
+            "kind": "call", "tag": f"call-{call_id}", "requireInteraction": True, "urgency": "high", "ttl": 45,
+            "actions": [{"action": "answer", "title": "Answer"}, {"action": "decline", "title": "Decline"}],
+            "decline_url": f"/api/calls/{call_id}/decline-push?t={call_decline_token(call_id, peer_id)}"})
     return _call_out(await db.calls.find_one({"id": call_id}, {"_id": 0}), user)
 
 
@@ -2076,7 +2210,8 @@ async def leave_call(call_id: str, user: User = Depends(get_current_user)):
     update = {f"present.{user.user_id}": None}
     if call["status"] == "ringing" and call["kind"] == "instant":
         update["status"] = "missed"
-        await push_notification(peer_id, f"Missed call from {user.name}", "Call them back from Messages or your dashboard.", "/dashboard" if user.role == "trainer" else f"/trainer/clients/{user.user_id}")
+        await push_notification(peer_id, f"Missed call from {user.name}", "Call them back from Messages or your dashboard.",
+                                "/dashboard" if user.role == "trainer" else f"/trainer/clients/{user.user_id}", push={"tag": f"call-{call_id}"})
     elif call["status"] == "active" and not _is_fresh((call.get("present") or {}).get(peer_id)):
         update.update({"status": "ended", "ended_at": _now_iso()})
     await db.calls.update_one({"id": call_id}, {"$set": update})
@@ -2118,6 +2253,10 @@ async def calls_live(user: User = Depends(get_current_user)):
     return {"incoming": incoming, "starting_soon": soon}
 
 
+def minutes_label_soon(label: str) -> bool:
+    return "10 minutes" in label
+
+
 async def send_session_alerts():
     """In-app reminders to both sides about an hour and 10 minutes before each booked session."""
     now = datetime.now(timezone.utc)
@@ -2132,7 +2271,8 @@ async def send_session_alerts():
             continue
         await db.bookings.update_one({"id": b["id"]}, {"$set": flags})
         for uid, other in ((b["user_id"], b.get("trainer_name")), (b["trainer_id"], b.get("client_name"))):
-            await push_notification(uid, f"Session {label}", f"Video session with {other} at {b['time']}. Join from the app.", f"/call/{b['id']}")
+            await push_notification(uid, f"Session {label}", f"Video session with {other} at {b['time']}. Join from the app.", f"/call/{b['id']}",
+                                    push={"tag": f"session-{b['id']}", "urgency": "high" if minutes_label_soon(label) else "normal"})
 
 class PaymentOrderRequest(BaseModel):
     type: str  # "plan" or "session"
@@ -2326,10 +2466,16 @@ async def create_indexes():
         await db.calls.create_index("id", unique=True)
         await db.call_signals.create_index([("call_id", 1), ("to", 1)])
         await db.file_blobs.create_index("storage_path", unique=True)
+        await db.push_subscriptions.create_index("endpoint", unique=True)
+        await db.push_subscriptions.create_index("user_id")
     except Exception as e:
         logger.warning(f"Index creation skipped: {e}")
     await seed_roles()
     await migrate_v2()
+    try:
+        await load_vapid_keys()
+    except Exception:
+        logger.exception("Web Push disabled: could not load VAPID keys")
     _start_scheduler()
     logger.info("AI %s, Google sign-in %s", "on" if GEMINI_API_KEY else "off (set GEMINI_API_KEY)",
                 "on" if GOOGLE_CLIENT_ID else "off (set GOOGLE_CLIENT_ID)")

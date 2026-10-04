@@ -307,5 +307,7 @@ class TestPhotosInMongo:
         tok = ctx["other"].headers["Authorization"].split(" ", 1)[1]
         assert requests.get(f"{BASE_URL}{r.json()['picture']}", params={"auth": tok}).status_code == 200
 
-    def test_google_login_not_configured(self):
-        assert requests.post(f"{API}/auth/google", json={"credential": "x"}).status_code == 503
+    def test_google_login_rejects_bogus_credentials(self):
+        configured = requests.get(f"{API}/auth/config").json()["google_client_id"]
+        # 503 when Google sign-in isn't configured, 401 when it is but the token is fake
+        assert requests.post(f"{API}/auth/google", json={"credential": "x"}).status_code == (401 if configured else 503)

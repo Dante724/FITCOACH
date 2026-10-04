@@ -3,18 +3,10 @@ Google sign-in, tested in-process with Google's token check simulated (no networ
 Run from backend/:  python -m pytest tests/test_google_login.py
 """
 import os
-import sys
-import importlib
 
 import pytest
 
-os.environ.update({"MONGO_URL": "mongodb://mock", "DB_NAME": "google_test", "JWT_SECRET": "test-secret",
-                   "GOOGLE_CLIENT_ID": "fitcoach-test.apps.googleusercontent.com", "EMAIL_ENABLED": "false"})
-import motor.motor_asyncio  # noqa: E402
-import mongomock_motor  # noqa: E402
-motor.motor_asyncio.AsyncIOMotorClient = mongomock_motor.AsyncMongoMockClient
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-server = importlib.import_module("server")
+from inprocess import server
 from fastapi.testclient import TestClient  # noqa: E402
 
 CLIENT_ID = os.environ["GOOGLE_CLIENT_ID"]

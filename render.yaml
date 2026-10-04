@@ -55,6 +55,12 @@ services:
       - path: /mediapipe/*
         name: Cache-Control
         value: public, max-age=604800
+      - path: /sw.js                # always fetch the latest service worker so updates roll out
+        name: Cache-Control
+        value: no-cache
+      - path: /manifest.json
+        name: Cache-Control
+        value: no-cache
     routes:
       - type: rewrite        # single-page app: let React Router handle every path
         source: /*

@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import * as Icons from "lucide-react";
 import PageHeader from "@/components/PageHeader";
+import AppSettingsCard from "@/components/AppSettingsCard";
 import { api, fileSrc } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
@@ -93,6 +94,8 @@ export default function Profile() {
             {savingName ? <div className="spinner" style={{ width: 15, height: 15 }} /> : <Icons.Check size={16} />}Save changes
           </button>
         </div>
+
+        <AppSettingsCard />
       </div>
     </div>
   );
