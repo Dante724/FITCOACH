@@ -120,7 +120,8 @@ function PoseReviewCard({ check, canReview, onDone }) {
   return (
     <div className="clay fade-up" style={{ padding: 18 }} data-testid={`pose-review-${check.id}`}>
       <div className="grid-2" style={{ gap: 16 }}>
-        <img src={check.snapshot} alt={`${check.pose_label} snapshot`} style={{ width: "100%", maxHeight: 420, objectFit: "contain", borderRadius: 14, background: "#11141b" }} />
+        {check.snapshot ? <img src={check.snapshot} alt={`${check.pose_label} snapshot`} style={{ width: "100%", maxHeight: 420, objectFit: "contain", borderRadius: 14, background: "#11141b" }} />
+          : <div className="clay-inset empty" style={{ minHeight: 200, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><Icons.ImageOff size={18} /> The client turned off photo storage</div>}
         <div className="min0">
           <div className="row" style={{ gap: 12, marginBottom: 12 }}>
             <ScoreRing score={reviewed ? check.coach_score : check.score} size={64} />
@@ -251,6 +252,17 @@ export default function ClientDetail() {
               <Icons.Video size={13} /> {b.date} · {b.time}
             </button>
           ))}
+        </div>
+      )}
+      {user.role === "admin" && (
+        <div className="row-wrap" style={{ marginBottom: 18 }}>
+          <button className="btn btn-ghost" style={{ color: "var(--accent)" }} data-testid="admin-delete-client" onClick={async () => {
+            const typed = window.prompt(`Delete ${client.name}'s account and all their data? This can't be undone.\nType the client's name to confirm:`);
+            if (typed == null) return;
+            if (typed.trim().toLowerCase() !== (client.name || "").trim().toLowerCase()) { push("Name didn't match — nothing was deleted.", "error"); return; }
+            try { await api.delete(`/admin/users/${client.user_id}`); push("Client account and data deleted.", "success"); navigate("/admin"); }
+            catch (e) { push(e?.response?.data?.detail || "Could not delete.", "error"); }
+          }}><Icons.UserX size={16} /> Delete account (on request)</button>
         </div>
       )}
       {scheduling && <ScheduleModal clientId={clientId} clientName={client.name} onClose={() => setScheduling(false)} onDone={() => { setScheduling(false); load(); }} />}

@@ -114,7 +114,7 @@ function SettingsTab() {
   const setPack = (i, patch) => setS((x) => ({ ...x, packs: x.packs.map((p, j) => (j === i ? { ...p, ...patch } : p)) }));
   const save = async () => {
     setSaving(true);
-    try { setS((await api.put("/admin/billing", s)).data); push("Billing settings saved.", "success"); }
+    try { const { trial_feature_options: opts, ...body } = s; setS({ ...(await api.put("/admin/billing", body)).data, trial_feature_options: opts }); push("Billing settings saved.", "success"); }
     catch (e) { push(e?.response?.data?.detail || "Couldn't save settings.", "error"); } finally { setSaving(false); }
   };
   return (
@@ -125,6 +125,24 @@ function SettingsTab() {
           <Num label="Free trial for new clients" value={s.trial_days} onChange={set("trial_days")} suffix="days" testid="trial-days" />
           <Num label="Grace period after expiry" value={s.grace_days} onChange={set("grace_days")} suffix="days" />
           <Num label="Single session price" value={s.session_price_inr} onChange={set("session_price_inr")} suffix="₹" />
+        </div>
+      </div>
+      <div className="clay" style={{ padding: 22 }} data-testid="trial-settings">
+        <div className="eyebrow" style={{ marginBottom: 4 }}>What the free trial includes</div>
+        <div style={{ fontSize: 12.5, color: "var(--text-3)", marginBottom: 14 }}>Everything else unlocks when they choose a plan. Progress tracking, check-ins and targets are always included.</div>
+        <div className="row-wrap" style={{ gap: 8, marginBottom: 16 }}>
+          {Object.entries(s.trial_feature_options || {}).map(([k, label]) => {
+            const on = (s.trial_features || []).includes(k);
+            return (
+              <button key={k} type="button" className={`pill${on ? " on" : ""}`} aria-pressed={on} data-testid={`trial-feature-${k}`}
+                onClick={() => setS((x) => ({ ...x, trial_features: on ? x.trial_features.filter((f) => f !== k) : [...(x.trial_features || []), k] }))}>
+                {on && <Icons.Check size={13} style={{ verticalAlign: -2, marginRight: 4 }} />}{label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="grid-stats" style={{ gap: 14 }}>
+          <Num label="Free intro video sessions" value={s.trial_session_credits} onChange={set("trial_session_credits")} suffix="sessions" />
         </div>
       </div>
       <div className="clay" style={{ padding: 22 }}>

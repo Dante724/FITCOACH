@@ -21,6 +21,8 @@ export default function Layout() {
   if (role === "admin") {
     nav = [
       { feature: "admin", path: "/admin", label: "Admin Console", icon: "ShieldCheck", end: true },
+      { feature: "insights", path: "/admin/insights", label: "Insights", icon: "ChartNoAxesCombined" },
+      { feature: "leads", path: "/admin/leads", label: "Leads", icon: "PhoneIncoming" },
       { feature: "billing", path: "/admin/billing", label: "Billing & payouts", icon: "Wallet" },
     ];
   } else if (role === "trainer") {

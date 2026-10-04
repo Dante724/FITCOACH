@@ -31,11 +31,13 @@ def _login(email, password):
 @pytest.fixture(scope="module")
 def ctx():
     email = f"v2client_{uuid.uuid4().hex[:8]}@example.com"
-    r = requests.post(f"{API}/auth/register", json={"name": "Asha Test", "email": email, "password": "Passw0rd!"})
+    r = requests.post(f"{API}/auth/register", json={"name": "Asha Test", "email": email, "password": "Passw0rd!",
+                                                    "consent": True, "photo_consent": True})
     assert r.status_code == 200, r.text
     client = requests.Session()
     client.headers["Authorization"] = f"Bearer {r.cookies.get('access_token')}"
     client.me = r.json()
+    _login(*ADMIN).put(f"{API}/admin/users/{client.me['user_id']}/membership", json={"plan_id": "monthly"})  # full member, not trial
     return {"client": client, "cid": client.me["user_id"], "admin": _login(*ADMIN), "fit": _login(*FITNESS),
             "other": _login(*OTHER_FITNESS), "yoga": _login(*YOGA), "plans": {}}
 
@@ -198,7 +200,8 @@ class TestPoseChecks:
 
     def test_client_without_yoga_coach_is_refused(self):
         email = f"v2fit_{uuid.uuid4().hex[:8]}@example.com"
-        r = requests.post(f"{API}/auth/register", json={"name": "Fit Only", "email": email, "password": "Passw0rd!"})
+        r = requests.post(f"{API}/auth/register", json={"name": "Fit Only", "email": email, "password": "Passw0rd!", "consent": True, "photo_consent": True})
+        _login(*ADMIN).put(f"{API}/admin/users/{r.json()['user_id']}/membership", json={"plan_id": "monthly"})
         s = requests.Session()
         s.headers["Authorization"] = f"Bearer {r.cookies.get('access_token')}"
         s.put(f"{API}/profile/intake", json={"focus": "fat_loss"})

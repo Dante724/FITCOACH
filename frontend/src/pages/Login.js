@@ -26,6 +26,8 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [consent, setConsent] = useState({ consent: false, photo_consent: false, marketing: false });
+  const needsConsent = tab === "register" && !consent.consent;
 
   if (loading) return null;
   if (user) return <Navigate to={roleHome(user)} replace />;
@@ -37,7 +39,7 @@ export default function Login() {
     try {
       const u = tab === "login"
         ? await emailLogin(email.trim(), password)
-        : await emailRegister(name.trim(), email.trim(), password, referral.trim());
+        : await emailRegister(name.trim(), email.trim(), password, referral.trim(), consent);
       clearReferral();
       navigate(roleHome(u), { replace: true });
     } catch (err) {
@@ -105,17 +107,36 @@ export default function Login() {
                 {referral && <div style={{ fontSize: 12, color: "var(--teal)", marginTop: 6 }}>A friend's code — you'll get extra free days.</div>}
               </div>
             )}
-            <button type="submit" disabled={busy} data-testid={tab === "login" ? "email-login-btn" : "email-register-btn"} className="btn btn-primary" style={{ width: "100%", minHeight: 44 }}>
+            {tab === "register" && (
+              <div className="stack" style={{ gap: 10, marginBottom: 18 }} data-testid="signup-consent">
+                <label className="row consent-row">
+                  <input type="checkbox" checked={consent.consent} onChange={(e) => setConsent((c) => ({ ...c, consent: e.target.checked }))} data-testid="consent-health" />
+                  <span>I'm 18 or older and agree to the <Link to="/terms" target="_blank">Terms</Link> and <Link to="/privacy" target="_blank">Privacy policy</Link>, and allow FitCoach to use my health details (measurements, meals, check-ins) so my coach can coach me.</span>
+                </label>
+                <label className="row consent-row">
+                  <input type="checkbox" checked={consent.photo_consent} onChange={(e) => setConsent((c) => ({ ...c, photo_consent: e.target.checked }))} data-testid="consent-photos" />
+                  <span>Store my progress photos and pose-check snapshots <span style={{ color: "var(--text-3)" }}>(optional — you can change this later)</span></span>
+                </label>
+                <label className="row consent-row">
+                  <input type="checkbox" checked={consent.marketing} onChange={(e) => setConsent((c) => ({ ...c, marketing: e.target.checked }))} />
+                  <span>Send me tips and offers <span style={{ color: "var(--text-3)" }}>(optional)</span></span>
+                </label>
+              </div>
+            )}
+            <button type="submit" disabled={busy || needsConsent} data-testid={tab === "login" ? "email-login-btn" : "email-register-btn"} className="btn btn-primary" style={{ width: "100%", minHeight: 44 }}>
               {busy ? "Please wait..." : tab === "login" ? "Sign in" : "Create account"}
             </button>
           </form>
 
-          <GoogleButton onError={setError} onCredential={async (credential) => {
-            setError(""); setBusy(true);
-            try { const u = await googleLogin(credential, referral.trim()); clearReferral(); navigate(roleHome(u), { replace: true }); }
-            catch (err) { setError(formatApiErrorDetail(err.response?.data?.detail) || "Google sign-in failed."); }
-            finally { setBusy(false); }
-          }} />
+          <div style={needsConsent ? { opacity: 0.45, pointerEvents: "none" } : undefined} aria-disabled={needsConsent || undefined}>
+            <GoogleButton onError={setError} onCredential={async (credential) => {
+              setError(""); setBusy(true);
+              try { const u = await googleLogin(credential, referral.trim(), tab === "register" ? consent : {}); clearReferral(); navigate(roleHome(u), { replace: true }); }
+              catch (err) { setError(formatApiErrorDetail(err.response?.data?.detail) || "Google sign-in failed."); }
+              finally { setBusy(false); }
+            }} />
+          </div>
+          {needsConsent && <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 8, textAlign: "center" }}>Tick the first box to create your account.</div>}
         </div>
       </div>
     </div>

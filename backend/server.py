@@ -11,6 +11,7 @@ import asyncio
 import logging
 import uuid
 import secrets
+import hashlib
 from email.message import EmailMessage
 from pathlib import Path
 from typing import List, Optional
@@ -221,6 +222,7 @@ class User(BaseModel):
     session_credits: Optional[int] = None
     subscription_status: Optional[str] = None
     referral_code: Optional[str] = None
+    consents: Optional[dict] = None
     created_at: Optional[str] = None
 
 
@@ -231,6 +233,9 @@ class AuthResponse(User):
 class GoogleLoginRequest(BaseModel):
     credential: str
     referral_code: Optional[str] = None
+    consent: bool = False          # health-data consent ticked on the sign-up form
+    photo_consent: bool = False
+    marketing: bool = False
 
 
 class FocusUpdate(BaseModel):
@@ -262,6 +267,9 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
     referral_code: Optional[str] = None
+    consent: bool = False
+    photo_consent: bool = False
+    marketing: bool = False
 
 
 class LoginRequest(BaseModel):
@@ -449,6 +457,7 @@ DEFAULT_BILLING = {
     "session_price_inr": 1000, "trial_days": 7, "grace_days": 3,
     "referral_reward_days": 7, "referee_bonus_days": 7,
     "payout_per_client_inr": 0, "payout_per_session_inr": 0,
+    "trial_features": ["workouts", "messages", "food"], "trial_session_credits": 1,
     "packs": [
         {"id": "pack5", "name": "5 sessions", "sessions": 5, "price_inr": 4500, "active": True},
         {"id": "pack10", "name": "10 sessions", "sessions": 10, "price_inr": 8500, "active": True},
@@ -457,6 +466,12 @@ DEFAULT_BILLING = {
 RAZORPAY_WEBHOOK_SECRET = os.environ.get("RAZORPAY_WEBHOOK_SECRET", "").strip()
 PERIODS = {"weekly", "monthly", "yearly"}
 MEMBERSHIP_REQUIRED = "Your membership has ended — renew to keep working with your coach."
+TRIAL_LOCKED = "This isn't part of the free trial — choose a plan to unlock it."
+# What a free-trial client can use; the admin picks which of these the trial includes.
+TRIAL_FEATURES = {
+    "workouts": "Training & yoga plans", "messages": "Chat with your coach", "food": "AI food tracking",
+    "meal_plans": "Nutrition plans", "pose_check": "Yoga pose checks", "calls": "Instant video calls",
+}
 
 
 def _slug(text: str) -> str:
@@ -500,6 +515,7 @@ def membership_status(u: dict, settings: dict) -> dict:
         "unlimited_sessions": bool(unlimited and unlimited > now),
         "auto_renew": u.get("subscription_status") == "active",
         "subscription_status": u.get("subscription_status"),
+        "trial_features": list(settings.get("trial_features") or []) if u.get("membership_plan") == "trial" else None,
     }
 
 
@@ -510,6 +526,26 @@ async def require_member(user: User = Depends(get_current_user)) -> User:
         if not membership_status(doc, await billing_settings())["has_access"]:
             raise HTTPException(status_code=402, detail=MEMBERSHIP_REQUIRED)
     return user
+
+
+async def check_feature(user: User, feature: str):
+    """Membership gate plus the free-trial feature list (clients only)."""
+    if user.role != "client":
+        return
+    doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0}) or {}
+    settings = await billing_settings()
+    st = membership_status(doc, settings)
+    if not st["has_access"]:
+        raise HTTPException(status_code=402, detail=MEMBERSHIP_REQUIRED)
+    if st["is_trial"] and feature not in (settings.get("trial_features") or []):
+        raise HTTPException(status_code=402, detail=TRIAL_LOCKED)
+
+
+def require_feature(feature: str):
+    async def dep(user: User = Depends(get_current_user)) -> User:
+        await check_feature(user, feature)
+        return user
+    return dep
 
 
 async def activate_membership(user_id: str, plan: dict, source: str, ref: Optional[str] = None, notify: bool = True) -> str:
@@ -537,6 +573,9 @@ async def start_trial(user_id: str, bonus_days: int = 0):
     days = int(s.get("trial_days") or 0) + int(bonus_days or 0)
     if days > 0:
         await activate_membership(user_id, {"id": "trial", "name": "Free trial", "days": days}, "trial", notify=False)
+        intro = int(s.get("trial_session_credits") or 0)
+        if intro > 0:
+            await db.users.update_one({"user_id": user_id}, {"$inc": {"session_credits": intro}})
     await db.users.update_one({"user_id": user_id}, {"$set": {"trial_granted": True}})
 
 
@@ -742,7 +781,8 @@ def _humanize_until(dt: datetime) -> str:
 @api_router.get("/auth/config")
 async def auth_config():
     """Public settings the login page needs at runtime."""
-    return {"google_client_id": GOOGLE_CLIENT_ID or None}
+    return {"google_client_id": GOOGLE_CLIENT_ID or None, "privacy_contact": PRIVACY_CONTACT_EMAIL or ADMIN_EMAIL or None,
+            "consent_version": CONSENT_VERSION}
 
 
 @api_router.post("/auth/google", response_model=AuthResponse)
@@ -775,6 +815,9 @@ async def google_login(payload: GoogleLoginRequest, response: Response):
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
         await start_trial(user_id, bonus_days=await apply_referral_on_signup(user_id, payload.referral_code))
+        await on_client_signup(user_id, email)
+    if payload.consent:
+        await record_consent(user_id, health=True, photos=payload.photo_consent, marketing=payload.marketing, only_if_missing=True)
     token = create_access_token(user_id, email)
     set_access_cookie(response, token)
     user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
@@ -806,6 +849,9 @@ async def register(payload: RegisterRequest, response: Response):
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
     await start_trial(user_id, bonus_days=await apply_referral_on_signup(user_id, payload.referral_code))
+    await on_client_signup(user_id, email)
+    if payload.consent:
+        await record_consent(user_id, health=True, photos=payload.photo_consent, marketing=payload.marketing)
     token = create_access_token(user_id, email)
     set_access_cookie(response, token)
     user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
@@ -1045,6 +1091,8 @@ async def create_booking(payload: BookingCreate, request: Request, background: B
         st = membership_status(me, await billing_settings())
         if not st["has_access"] and st["credits"] < 1:
             raise HTTPException(status_code=402, detail=MEMBERSHIP_REQUIRED)
+        if st["is_trial"] and st["credits"] < 1 and not st["unlimited_sessions"]:
+            raise HTTPException(status_code=402, detail="You've used your free intro session — get a session pack or choose a plan to book more.")
     return await _create_booking(user.model_dump(), trainer, payload.date, payload.time, request, background, check_availability=True)
 
 
@@ -1377,6 +1425,7 @@ async def upload_progress_photo(
     note: Optional[str] = Form(None),
     user: User = Depends(get_current_user),
 ):
+    await require_photo_consent(user)
     record = await store_image(file, user.user_id, "progress")
     stored_path = record["storage_path"]
     url = file_url(stored_path)
@@ -1412,6 +1461,7 @@ async def delete_progress_photo(photo_id: str, user: User = Depends(get_current_
 # ───────────────────────────── Workouts ─────────────────────────────
 @api_router.get("/workouts/plan")
 async def workout_plan(type: str = "workout", user: User = Depends(require_member)):
+    await check_feature(user, "meal_plans" if type == "meal" else "workouts")
     """The client's coach-approved plan of this type, or null while the coach prepares it."""
     if type not in PLAN_TYPES:
         raise HTTPException(status_code=400, detail="Invalid plan type")
@@ -1459,7 +1509,7 @@ def _extract_json(text: str) -> dict:
 
 
 @api_router.post("/food/analyze")
-async def analyze_food(payload: FoodAnalyzeRequest, user: User = Depends(require_member)):
+async def analyze_food(payload: FoodAnalyzeRequest, user: User = Depends(require_feature("food"))):
     description = payload.description.strip()
     if not (2 <= len(description) <= 1000):
         raise HTTPException(status_code=400, detail="Describe your meal in a few words (up to 1000 characters)")
@@ -1938,6 +1988,10 @@ async def discard_plan(plan_id: str, user: User = Depends(require_role("trainer"
 @api_router.get("/my/plans")
 async def my_plans(user: User = Depends(require_member)):
     docs = await db.plans.find({"client_id": user.user_id, "status": "active"}, {"_id": 0}).to_list(10)
+    me = await db.users.find_one({"user_id": user.user_id}, {"_id": 0}) or {}
+    if me.get("membership_plan") == "trial":  # plans outside the trial stay hidden until they join
+        allowed = (await billing_settings()).get("trial_features") or []
+        docs = [d for d in docs if ("meal_plans" if d["type"] == "meal" else "workouts") in allowed]
     return {d["type"]: d for d in docs}
 
 
@@ -2415,7 +2469,8 @@ def _pose_out(doc: dict, viewer: User) -> dict:
 
 
 @api_router.post("/pose-checks")
-async def create_pose_check(payload: PoseCheckCreate, user: User = Depends(require_role("client")), _m: User = Depends(require_member)):
+async def create_pose_check(payload: PoseCheckCreate, user: User = Depends(require_role("client")), _m: User = Depends(require_feature("pose_check"))):
+    await require_photo_consent(user)
     if user.focus not in YOGA_FOCUS or not user.yoga_coach_id:
         raise HTTPException(status_code=400, detail="Pose checks are reviewed by your yoga coach — one hasn't been assigned yet")
     snap = payload.snapshot
@@ -2613,7 +2668,7 @@ async def list_messages(client_id: str, coach_id: str, user: User = Depends(get_
 
 
 @api_router.post("/messages/{client_id}/{coach_id}")
-async def send_message(client_id: str, coach_id: str, payload: MessageCreate, user: User = Depends(require_member)):
+async def send_message(client_id: str, coach_id: str, payload: MessageCreate, user: User = Depends(require_feature("messages"))):
     if user.role == "admin":
         raise HTTPException(status_code=403, detail="Admins can read but not post in coaching chats")
     await _thread_access(user, client_id, coach_id)
@@ -2638,7 +2693,7 @@ async def send_message(client_id: str, coach_id: str, payload: MessageCreate, us
 
 @api_router.post("/messages/{client_id}/{coach_id}/voice")
 async def send_voice_note(client_id: str, coach_id: str, file: UploadFile = File(...), duration: float = Form(0),
-                          user: User = Depends(require_member)):
+                          user: User = Depends(require_feature("messages"))):
     if user.role == "admin":
         raise HTTPException(status_code=403, detail="Admins can read but not post in coaching chats")
     await _thread_access(user, client_id, coach_id)
@@ -2745,7 +2800,7 @@ async def call_ice_servers(user: User = Depends(get_current_user)):
 
 
 @api_router.post("/calls/instant")
-async def start_instant_call(payload: InstantCallRequest, user: User = Depends(require_role("client", "trainer")), _m: User = Depends(require_member)):
+async def start_instant_call(payload: InstantCallRequest, user: User = Depends(require_role("client", "trainer")), _m: User = Depends(require_feature("calls"))):
     client_doc, coach_doc = await _pair(user, payload.peer_id)
     # reuse a call between this pair that is still ringing or live
     recent = (datetime.now(timezone.utc) - RING_TIMEOUT).isoformat()
@@ -3176,6 +3231,8 @@ class BillingSettingsIn(BaseModel):
     payout_per_client_inr: int = 0
     payout_per_session_inr: int = 0
     packs: List[PackIn] = []
+    trial_features: Optional[List[str]] = None
+    trial_session_credits: Optional[int] = None
 
 
 class CreditsIn(BaseModel):
@@ -3221,7 +3278,7 @@ async def admin_update_plan(plan_id: str, payload: PlanIn, user: User = Depends(
 
 @api_router.get("/admin/billing")
 async def admin_get_billing(user: User = Depends(require_role("admin"))):
-    return await billing_settings()
+    return {**await billing_settings(), "trial_feature_options": TRIAL_FEATURES}
 
 
 @api_router.put("/admin/billing")
@@ -3235,7 +3292,11 @@ async def admin_put_billing(payload: BillingSettingsIn, user: User = Depends(req
         if not p.name.strip() or p.sessions < 1 or p.price_inr < 0:
             raise HTTPException(status_code=400, detail="Each pack needs a name, at least 1 session and a price")
         packs.append({"id": p.id or _slug(p.name), "name": _txt(p.name, 40), "sessions": int(p.sessions), "price_inr": int(p.price_inr), "active": bool(p.active)})
-    doc = {**payload.model_dump(exclude={"packs"}), "packs": packs}
+    if payload.trial_features is not None and not set(payload.trial_features) <= set(TRIAL_FEATURES):
+        raise HTTPException(status_code=400, detail="Unknown trial feature")
+    if payload.trial_session_credits is not None and not 0 <= payload.trial_session_credits <= 10:
+        raise HTTPException(status_code=400, detail="Free intro sessions must be between 0 and 10")
+    doc = {**payload.model_dump(exclude={"packs"}, exclude_none=True), "packs": packs}
     await db.app_settings.update_one({"_id": "billing"}, {"$set": doc}, upsert=True)
     return await billing_settings()
 
@@ -3318,6 +3379,395 @@ async def send_membership_reminders():
             await push_notification(u["user_id"], "Your membership has ended", "Renew to pick up where you left off with your coach.", "/membership")
 
 
+# ───────────────────────────── Consent & privacy (DPDP Act) ─────────────────────────────
+CONSENT_VERSION = "2026-10"
+PRIVACY_CONTACT_EMAIL = os.environ.get("PRIVACY_CONTACT_EMAIL", "").strip()
+PHOTO_CONSENT_REQUIRED = "Turn on photo storage in Privacy settings to upload photos."
+
+
+class ConsentIn(BaseModel):
+    health_data: bool
+    photos: bool = False
+    marketing: bool = False
+
+
+class DeleteAccountIn(BaseModel):
+    confirm: str
+
+
+async def record_consent(user_id: str, health: Optional[bool] = None, photos: Optional[bool] = None,
+                         marketing: Optional[bool] = None, only_if_missing: bool = False) -> dict:
+    """Store what the person agreed to, with timestamps, and keep an audit trail of every change."""
+    doc = (await db.users.find_one({"user_id": user_id}, {"_id": 0, "consents": 1}) or {}).get("consents") or {}
+    if only_if_missing and doc.get("health_data"):
+        return doc
+    now = _now_iso()
+    new = dict(doc)
+    for key, val in (("health_data", health), ("photos", photos), ("marketing", marketing)):
+        if val is True:
+            new[key] = doc.get(key) or now
+        elif val is False:
+            new[key] = None
+    new.update({"version": CONSENT_VERSION, "updated_at": now})
+    await db.users.update_one({"user_id": user_id}, {"$set": {"consents": new}})
+    changes = {k: bool(new.get(k)) for k in ("health_data", "photos", "marketing") if bool(new.get(k)) != bool(doc.get(k))}
+    if changes:
+        await db.consent_log.insert_one({"id": str(uuid.uuid4()), "user_id": user_id, "changes": changes,
+                                         "version": CONSENT_VERSION, "at": now})
+    return new
+
+
+async def require_photo_consent(user: User):
+    if user.role != "client":
+        return
+    doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0, "consents": 1}) or {}
+    if not (doc.get("consents") or {}).get("photos"):
+        raise HTTPException(status_code=403, detail=PHOTO_CONSENT_REQUIRED)
+
+
+async def _delete_files(query: dict) -> int:
+    files = await db.files.find(query, {"_id": 0, "storage_path": 1}).to_list(5000)
+    paths = [f["storage_path"] for f in files]
+    if paths:
+        await db.file_blobs.delete_many({"storage_path": {"$in": paths}})
+        await db.files.delete_many({"storage_path": {"$in": paths}})
+    return len(paths)
+
+
+async def _erase_photos(user_id: str) -> int:
+    n = await _delete_files({"owner_id": user_id, "kind": "progress"})
+    await db.progress_photos.delete_many({"user_id": user_id})
+    await db.pose_checks.update_many({"client_id": user_id, "snapshot": {"$ne": None}}, {"$set": {"snapshot": None, "snapshot_removed": True}})
+    return n
+
+
+@api_router.post("/me/consent", response_model=User)
+async def set_consent(payload: ConsentIn, user: User = Depends(get_current_user)):
+    if user.role == "client" and not payload.health_data:
+        raise HTTPException(status_code=400, detail="Coaching needs your health data. If you'd rather not share it, you can delete your account.")
+    before = (await db.users.find_one({"user_id": user.user_id}, {"_id": 0, "consents": 1}) or {}).get("consents") or {}
+    await record_consent(user.user_id, health=payload.health_data, photos=payload.photos, marketing=payload.marketing)
+    if before.get("photos") and not payload.photos:
+        await _erase_photos(user.user_id)  # withdrawing consent means we stop keeping the photos
+    return User(**await db.users.find_one({"user_id": user.user_id}, {"_id": 0}))
+
+
+EXPORT_COLLECTIONS = [  # (collection, field that holds the person's id)
+    ("progress", "user_id"), ("progress_photos", "user_id"), ("daily_logs", "user_id"), ("food_logs", "user_id"),
+    ("workout_sessions", "user_id"), ("plans", "client_id"), ("pose_checks", "client_id"), ("messages", "client_id"),
+    ("bookings", "user_id"), ("transactions", "user_id"), ("membership_events", "user_id"), ("notifications", "user_id"),
+    ("consent_log", "user_id"), ("referrals", "referee_id"),
+]
+
+
+@api_router.get("/me/export")
+async def export_my_data(user: User = Depends(get_current_user)):
+    """Everything we hold about the signed-in person, as one JSON file (right to access)."""
+    me = await db.users.find_one({"user_id": user.user_id}, {"_id": 0, "password_hash": 0, "google_sub": 0}) or {}
+    out = {"exported_at": _now_iso(), "account": me}
+    for coll, field in EXPORT_COLLECTIONS:
+        out[coll] = await db[coll].find({field: user.user_id}, {"_id": 0}).to_list(10000)
+    out["files"] = await db.files.find({"owner_id": user.user_id, "is_deleted": False}, {"_id": 0, "storage_path": 1, "kind": 1, "created_at": 1}).to_list(5000)
+    for f in out["files"]:
+        f["url"] = file_url(f.pop("storage_path"))
+    body = json.dumps(out, default=str, ensure_ascii=False, indent=1)
+    return Response(content=body, media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="fitcoach-data-{datetime.now(APP_TZ).date().isoformat()}.json"'})
+
+
+async def erase_client(user_id: str, by: str):
+    """Delete a client's account and personal data (right to erasure). Payment records are kept,
+    without name or email, because tax law requires them."""
+    u = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    if u.get("role") != "client":
+        raise HTTPException(status_code=400, detail="Only client accounts can be deleted here — ask an admin to change the role first")
+    if u.get("subscription_id") and u.get("subscription_status") == "active" and RAZORPAY_KEY_ID:
+        try:
+            await asyncio.to_thread(_razorpay_client().subscription.cancel, u["subscription_id"], {"cancel_at_cycle_end": 0})
+        except Exception:
+            logger.exception("Could not cancel subscription for deleted account")
+    await _delete_files({"owner_id": user_id})
+    for coll, field in [("progress", "user_id"), ("progress_photos", "user_id"), ("daily_logs", "user_id"), ("food_logs", "user_id"),
+                        ("workout_sessions", "user_id"), ("plans", "client_id"), ("pose_checks", "client_id"), ("messages", "client_id"),
+                        ("bookings", "user_id"), ("calls", "client_id"), ("notifications", "user_id"), ("dismissed_reminders", "user_id"),
+                        ("push_subscriptions", "user_id"), ("ai_summaries", "client_id"), ("membership_events", "user_id"),
+                        ("consent_log", "user_id"), ("subscriptions", "user_id"), ("referrals", "referee_id"), ("referrals", "referrer_id")]:
+        await db[coll].delete_many({field: user_id})
+    await db.leads.delete_many({"email": u.get("email")})
+    await db.login_attempts.delete_many({"identifier": {"$regex": f":{re.escape(u.get('email') or '')}$"}})
+    await db.transactions.update_many({"user_id": user_id}, {"$set": {"user_id": "deleted", "anonymized": True}})
+    await db.users.delete_one({"user_id": user_id})
+    await db.deletion_log.insert_one({"id": str(uuid.uuid4()), "by": by, "at": _now_iso()})
+
+
+@api_router.delete("/me")
+async def delete_my_account(payload: DeleteAccountIn, response: Response, user: User = Depends(get_current_user)):
+    if payload.confirm.strip().upper() != "DELETE":
+        raise HTTPException(status_code=400, detail='Type DELETE to confirm')
+    if user.role != "client":
+        raise HTTPException(status_code=400, detail="Coach and admin accounts are removed by an administrator")
+    await erase_client(user.user_id, by="self")
+    response.delete_cookie("access_token", path="/", secure=True, samesite="none")
+    return {"ok": True}
+
+
+@api_router.delete("/admin/users/{target_id}")
+async def admin_delete_client(target_id: str, user: User = Depends(require_role("admin"))):
+    await erase_client(target_id, by=f"admin:{user.user_id}")
+    return {"ok": True}
+
+
+# ───────────────────────────── Consultation leads ─────────────────────────────
+LEAD_STATUSES = ["new", "contacted", "scheduled", "converted", "lost"]
+LEAD_SLOTS = {"morning": "Morning (9–12)", "afternoon": "Afternoon (12–4)", "evening": "Evening (4–8)"}
+LEAD_RETENTION_DAYS = 180
+
+
+class LeadIn(BaseModel):
+    name: str
+    phone: str
+    email: Optional[str] = None
+    goal: Optional[str] = None
+    preferred_date: Optional[str] = None
+    preferred_slot: Optional[str] = None
+    message: Optional[str] = None
+    consent: bool = False
+    website: Optional[str] = None  # honeypot — real people never fill this in
+
+
+class LeadUpdate(BaseModel):
+    status: Optional[str] = None
+    note: Optional[str] = None
+
+
+def _norm_phone(raw: str) -> Optional[str]:
+    digits = re.sub(r"\D", "", raw or "")
+    if len(digits) == 12 and digits.startswith("91"):
+        digits = digits[2:]
+    elif len(digits) == 11 and digits.startswith("0"):
+        digits = digits[1:]
+    return f"+91{digits}" if re.fullmatch(r"[6-9]\d{9}", digits) else None
+
+
+async def on_client_signup(user_id: str, email: str):
+    """If this person booked a consultation first, mark the lead as converted."""
+    await db.leads.update_many({"email": email.lower(), "status": {"$ne": "converted"}},
+                               {"$set": {"status": "converted", "user_id": user_id, "converted_at": _now_iso()}})
+
+
+@api_router.post("/leads")
+async def create_lead(payload: LeadIn, request: Request):
+    """Public: someone books a free consultation call from the landing page."""
+    if payload.website:
+        return {"ok": True}
+    if not payload.consent:
+        raise HTTPException(status_code=400, detail="Please agree to be contacted about your consultation")
+    name = _txt(payload.name, 80)
+    phone = _norm_phone(payload.phone)
+    if not name:
+        raise HTTPException(status_code=400, detail="Please enter your name")
+    if not phone:
+        raise HTTPException(status_code=400, detail="Please enter a valid 10-digit Indian mobile number")
+    email = (payload.email or "").strip().lower() or None
+    if email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        raise HTTPException(status_code=400, detail="That email doesn't look right")
+    today = datetime.now(APP_TZ).date()
+    date = None
+    if payload.preferred_date:
+        try:
+            d = datetime.fromisoformat(payload.preferred_date).date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date")
+        if not today <= d <= today + timedelta(days=30):
+            raise HTTPException(status_code=400, detail="Pick a day in the next 30 days")
+        date = d.isoformat()
+    slot = payload.preferred_slot if payload.preferred_slot in LEAD_SLOTS else None
+    ip_hash = hashlib.sha256(f"{get_client_ip(request)}|{JWT_SECRET}".encode()).hexdigest()[:16]
+    hour_ago = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    if await db.leads.count_documents({"ip_hash": ip_hash, "created_at": {"$gte": hour_ago}}) >= 5:
+        raise HTTPException(status_code=429, detail="Too many requests — please try again later")
+    fields = {"name": name, "phone": phone, "email": email, "goal": payload.goal if payload.goal in VALID_FOCUS else None,
+              "preferred_date": date, "preferred_slot": slot, "message": _txt(payload.message, 600) or None,
+              "consent_at": _now_iso(), "updated_at": _now_iso()}
+    week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    existing = await db.leads.find_one({"phone": phone, "status": {"$in": ["new", "contacted", "scheduled"]}, "created_at": {"$gte": week_ago}})
+    if existing:
+        await db.leads.update_one({"id": existing["id"]}, {"$set": fields})
+        return {"ok": True}
+    lead = {"id": str(uuid.uuid4()), **fields, "status": "new", "notes": [], "source": "landing", "ip_hash": ip_hash, "created_at": _now_iso()}
+    await db.leads.insert_one(dict(lead))
+    when = " · ".join(x for x in (date and datetime.fromisoformat(date).strftime("%d %b"), slot and LEAD_SLOTS[slot].split(" ")[0]) if x)
+    async for admin in db.users.find({"role": "admin"}, {"_id": 0, "user_id": 1}):
+        await push_notification(admin["user_id"], "New consultation request", f"{name}{' · ' + GOAL_TEXT.get(lead['goal'], '') if lead['goal'] else ''}{' · ' + when if when else ''}", "/admin/leads")
+    return {"ok": True}
+
+
+@api_router.get("/admin/leads")
+async def admin_leads(status: Optional[str] = None, user: User = Depends(require_role("admin"))):
+    q = {"status": status} if status in LEAD_STATUSES else {}
+    leads = await db.leads.find(q, {"_id": 0, "ip_hash": 0}).sort("created_at", -1).to_list(500)
+    counts = {s: await db.leads.count_documents({"status": s}) for s in LEAD_STATUSES}
+    return {"leads": leads, "counts": counts, "slots": LEAD_SLOTS}
+
+
+@api_router.put("/admin/leads/{lead_id}")
+async def admin_update_lead(lead_id: str, payload: LeadUpdate, user: User = Depends(require_role("admin"))):
+    lead = await db.leads.find_one({"id": lead_id}, {"_id": 0})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    update: dict = {"$set": {"updated_at": _now_iso()}}
+    if payload.status is not None:
+        if payload.status not in LEAD_STATUSES:
+            raise HTTPException(status_code=400, detail="Invalid status")
+        update["$set"]["status"] = payload.status
+    note = _txt(payload.note, 500)
+    if note:
+        update["$push"] = {"notes": {"text": note, "by": user.name, "at": _now_iso()}}
+    await db.leads.update_one({"id": lead_id}, update)
+    return await db.leads.find_one({"id": lead_id}, {"_id": 0, "ip_hash": 0})
+
+
+@api_router.delete("/admin/leads/{lead_id}")
+async def admin_delete_lead(lead_id: str, user: User = Depends(require_role("admin"))):
+    await db.leads.delete_one({"id": lead_id})
+    return {"ok": True}
+
+
+async def purge_old_leads():
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=LEAD_RETENTION_DAYS)).isoformat()
+    res = await db.leads.delete_many({"created_at": {"$lt": cutoff}})
+    if res.deleted_count:
+        logger.info("Purged %s leads older than %s days", res.deleted_count, LEAD_RETENTION_DAYS)
+
+
+# ───────────────────────────── Admin insights ─────────────────────────────
+def _median(vals: List[float]) -> Optional[float]:
+    if not vals:
+        return None
+    v = sorted(vals)
+    mid = len(v) // 2
+    return v[mid] if len(v) % 2 else (v[mid - 1] + v[mid]) / 2
+
+
+async def coach_response_times(since: datetime) -> List[dict]:
+    """Per coach: how quickly they answer client messages (minutes) and what's still waiting."""
+    now = datetime.now(timezone.utc)
+    coaches = await db.users.find({"role": "trainer"}, {"_id": 0, "user_id": 1, "name": 1, "coach_type": 1}).to_list(200)
+    msgs = await db.messages.find({"created_at": {"$gte": since.isoformat()}}, {"_id": 0, "client_id": 1, "coach_id": 1, "sender_id": 1, "created_at": 1}).to_list(50000)
+    threads: dict = {}
+    for m in msgs:
+        threads.setdefault((m["coach_id"], m["client_id"]), []).append(m)
+    out = []
+    for c in coaches:
+        waits, waiting, overdue = [], 0, 0
+        for (coach_id, client_id), items in threads.items():
+            if coach_id != c["user_id"]:
+                continue
+            items.sort(key=lambda m: m["created_at"])
+            pending = None
+            for m in items:
+                if m["sender_id"] == client_id:
+                    pending = pending or _parse_dt(m["created_at"])
+                elif m["sender_id"] == coach_id and pending:
+                    waits.append((_parse_dt(m["created_at"]) - pending).total_seconds() / 60)
+                    pending = None
+            if pending:
+                waiting += 1
+                overdue += (now - pending) > timedelta(hours=24)
+        clients = await db.users.count_documents({"role": "client", "$or": [{"fitness_coach_id": c["user_id"]}, {"yoga_coach_id": c["user_id"]}]})
+        drafts = await db.plans.count_documents({"coach_id": c["user_id"], "status": "draft"})
+        out.append({"coach_id": c["user_id"], "name": c.get("name"), "coach_type": c.get("coach_type") or "fitness", "clients": clients,
+                    "replies": len(waits), "median_minutes": round(_median(waits)) if waits else None,
+                    "within_24h_pct": round(100 * sum(w <= 1440 for w in waits) / len(waits)) if waits else None,
+                    "waiting": waiting, "overdue": overdue, "open_drafts": drafts})
+    out.sort(key=lambda r: (-(r["overdue"]), -(r["median_minutes"] or 0)))
+    return out
+
+
+@api_router.get("/admin/insights")
+async def admin_insights(user: User = Depends(require_role("admin"))):
+    now = datetime.now(timezone.utc)
+    settings = await billing_settings()
+    clients = await db.users.find({"role": "client"}, {"_id": 0, "user_id": 1, "name": 1, "created_at": 1, "membership_plan": 1,
+                                                       "membership_expires_at": 1, "trial_granted": 1, "subscription_status": 1}).to_list(100000)
+    paid = await db.transactions.find({"status": "paid"}, {"_id": 0, "user_id": 1, "type": 1, "amount_inr": 1, "paid_at": 1}).to_list(100000)
+    plan_paid = sorted([t for t in paid if t["type"] in ("plan", "subscription")], key=lambda t: t.get("paid_at") or "")
+    first_paid: dict = {}
+    for t in plan_paid:
+        first_paid.setdefault(t["user_id"], t.get("paid_at"))
+
+    # sign-ups per week (Monday-start, India time), oldest first
+    today = now.astimezone(APP_TZ).date()
+    monday = today - timedelta(days=today.weekday())
+    weeks = [monday - timedelta(weeks=i) for i in range(7, -1, -1)]
+    signups = []
+    for i, start in enumerate(weeks):
+        end = weeks[i + 1] if i + 1 < len(weeks) else monday + timedelta(days=7)
+        n = sum(1 for c in clients if (d := _parse_dt(c.get("created_at"))) and start <= d.astimezone(APP_TZ).date() < end)
+        signups.append({"week": start.isoformat(), "count": n})
+
+    status_counts = {"paid_active": 0, "trial": 0, "grace": 0, "lapsed": 0, "auto_renew": 0}
+    trial_dropoffs, paid_dropoffs = [], []
+    month_ago = now - timedelta(days=30)
+    for c in clients:
+        st = membership_status({**c, "role": "client"}, settings)
+        exp = _parse_dt(c.get("membership_expires_at"))
+        if st["active"]:
+            status_counts["trial" if st["is_trial"] else "paid_active"] += 1
+        elif st["in_grace"]:
+            status_counts["grace"] += 1
+        elif exp:
+            status_counts["lapsed"] += 1
+        if c.get("subscription_status") == "active":
+            status_counts["auto_renew"] += 1
+        if exp and month_ago <= exp <= now:
+            row = {"user_id": c["user_id"], "name": c.get("name"), "plan": c.get("membership_plan"), "expired_at": exp.isoformat(), "in_grace": st["in_grace"]}
+            (trial_dropoffs if st["is_trial"] else paid_dropoffs).append(row)
+
+    recent = [c for c in clients if c.get("trial_granted") and (d := _parse_dt(c.get("created_at"))) and d >= now - timedelta(days=90)]
+    converted = [c for c in recent if c["user_id"] in first_paid]
+    trial_over = [c for c in recent if c["user_id"] not in first_paid and c.get("membership_plan") == "trial"
+                  and (e := _parse_dt(c.get("membership_expires_at"))) and e <= now]
+
+    renewals = new_paid = 0
+    for t in plan_paid:
+        at = _parse_dt(t.get("paid_at"))
+        if at and at >= month_ago:
+            if first_paid.get(t["user_id"]) == t.get("paid_at"):
+                new_paid += 1
+            else:
+                renewals += 1
+    renew_base = renewals + len(paid_dropoffs)
+
+    def month_revenue(offset: int) -> int:
+        first = today.replace(day=1)
+        for _ in range(offset):
+            first = (first - timedelta(days=1)).replace(day=1)
+        nxt = (first + timedelta(days=32)).replace(day=1)
+        return sum(int(t.get("amount_inr") or 0) for t in paid
+                   if (d := _parse_dt(t.get("paid_at"))) and first <= d.astimezone(APP_TZ).date() < nxt)
+
+    lead_counts = {s: await db.leads.count_documents({"status": s}) for s in LEAD_STATUSES}
+    leads_30d = await db.leads.count_documents({"created_at": {"$gte": month_ago.isoformat()}})
+    paid_dropoffs.sort(key=lambda r: r["expired_at"], reverse=True)
+    trial_dropoffs.sort(key=lambda r: r["expired_at"], reverse=True)
+    return {
+        "generated_at": _now_iso(), "clients_total": len(clients), "signups": signups,
+        "signups_30d": sum(1 for c in clients if (d := _parse_dt(c.get("created_at"))) and d >= month_ago),
+        "status": status_counts,
+        "trial_conversion": {"converted": len(converted), "ended_unpaid": len(trial_over),
+                             "rate": round(100 * len(converted) / (len(converted) + len(trial_over))) if (converted or trial_over) else None},
+        "renewals_30d": renewals, "new_paid_30d": new_paid,
+        "renewal_rate": round(100 * renewals / renew_base) if renew_base else None,
+        "dropoffs": {"paid": paid_dropoffs[:20], "trial": trial_dropoffs[:20], "paid_count": len(paid_dropoffs), "trial_count": len(trial_dropoffs)},
+        "revenue": {"this_month": month_revenue(0), "last_month": month_revenue(1)},
+        "leads": {"counts": lead_counts, "last_30d": leads_30d},
+        "coaches": await coach_response_times(month_ago),
+    }
+
+
 @api_router.get("/admin/email/status")
 async def admin_email_status(user: User = Depends(require_role("admin"))):
     return {
@@ -3389,6 +3839,8 @@ async def create_indexes():
         await db.transactions.create_index("payment_id", unique=True, partialFilterExpression={"payment_id": {"$type": "string"}})
         await db.users.create_index("referral_code", unique=True, partialFilterExpression={"referral_code": {"$type": "string"}})
         await db.membership_plans.create_index("id", unique=True)
+        await db.leads.create_index([("status", 1), ("created_at", -1)])
+        await db.leads.create_index("id", unique=True)
         await db.daily_logs.create_index([("user_id", 1), ("date", 1)], unique=True)
         await db.plan_templates.create_index([("coach_id", 1), ("type", 1)])
         await db.ai_summaries.create_index([("client_id", 1), ("viewer_id", 1), ("week", 1)], unique=True)
@@ -3421,6 +3873,7 @@ def _start_scheduler():
         _scheduler.add_job(send_due_reminders, "interval", minutes=5, id="reminders", replace_existing=True)
         _scheduler.add_job(send_session_alerts, "interval", minutes=1, id="session_alerts", replace_existing=True)
         _scheduler.add_job(send_membership_reminders, "interval", minutes=30, id="membership_reminders", replace_existing=True)
+        _scheduler.add_job(purge_old_leads, "interval", hours=24, id="purge_leads", replace_existing=True)
         _scheduler.start()
         logger.info("Reminder scheduler started (email_configured=%s)", email_configured())
     except Exception:

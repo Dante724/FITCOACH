@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import * as Icons from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import AppSettingsCard from "@/components/AppSettingsCard";
+import { PrivacyCard } from "@/components/Privacy";
 import { api, fileSrc } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
@@ -96,6 +97,7 @@ export default function Profile() {
         </div>
 
         <AppSettingsCard />
+        <PrivacyCard />
       </div>
     </div>
   );

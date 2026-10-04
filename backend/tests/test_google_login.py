@@ -55,7 +55,7 @@ def api(monkeypatch):
 
 
 def test_config_exposes_client_id(api):
-    assert api.get("/api/auth/config").json() == {"google_client_id": CLIENT_ID}
+    assert api.get("/api/auth/config").json()["google_client_id"] == CLIENT_ID
 
 
 def test_new_google_user_is_created_and_signed_in(api):

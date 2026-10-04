@@ -54,6 +54,8 @@ def rz(monkeypatch):
 @pytest.fixture()
 def api(rz):
     with TestClient(server.app) as c:
+        # billing maths below is written without the free intro session or trial feature limits
+        run(server.db.app_settings.update_one({"_id": "billing"}, {"$set": {"trial_session_credits": 0, "trial_features": list(server.TRIAL_FEATURES)}}, upsert=True))
         yield c
 
 

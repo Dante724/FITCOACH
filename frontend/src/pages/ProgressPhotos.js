@@ -3,6 +3,8 @@ import * as Icons from "lucide-react";
 import { api, fileSrc } from "@/lib/api";
 import { useToast } from "@/context/ToastContext";
 import { localDate } from "@/lib/focus";
+import { useAuth } from "@/context/AuthContext";
+import { PhotoConsentCard } from "@/components/Privacy";
 
 const today = () => localDate();
 const fmtDate = (d) => { try { return new Date(d + "T00:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }); } catch { return d; } };
@@ -36,6 +38,7 @@ function CompareBar({ photos, onClose }) {
 }
 
 export default function ProgressPhotos() {
+  const { user } = useAuth();
   const { push } = useToast();
   const fileRef = useRef(null);
   const [photos, setPhotos] = useState([]);
@@ -101,6 +104,10 @@ export default function ProgressPhotos() {
 
   const selPhotos = selected.map((id) => photos.find((p) => p.id === id)).filter(Boolean)
     .sort((x, y) => (x.date || "").localeCompare(y.date || ""));
+
+  if (user?.role === "client" && !user?.consents?.photos) {
+    return <div data-testid="progress-photos"><PhotoConsentCard />{photos.length === 0 && <div className="clay-inset" style={{ padding: 14, fontSize: 13, color: "var(--text-3)" }}>Your timeline will appear here once you add photos.</div>}</div>;
+  }
 
   return (
     <div data-testid="progress-photos">

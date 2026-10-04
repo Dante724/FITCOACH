@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import * as Icons from "lucide-react";
 import Logo from "@/components/Logo";
+import ConsultForm from "@/components/ConsultForm";
 
 const IMG = {
   strength: "https://images.unsplash.com/photo-1637430308606-86576d8fef3c?crop=entropy&cs=srgb&fm=jpg&q=80&w=800",
@@ -60,6 +61,7 @@ export default function Landing() {
             <a href="#programs">Programmes</a>
             <a href="#how">How it works</a>
             <a href="#pricing">Pricing</a>
+            <a href="#consult">Free consultation</a>
           </nav>
           <div className="row" style={{ gap: 8 }}>
             <button className="btn" data-testid="nav-login-btn" onClick={go}>Log in</button>
@@ -68,13 +70,20 @@ export default function Landing() {
         </div>
       </header>
 
+      {new URLSearchParams(window.location.search).get("deleted") && (
+        <div className="site-wrap" style={{ paddingTop: 16 }}>
+          <div className="clay-inset row" style={{ padding: "12px 16px", gap: 10, fontSize: 14 }} role="status" data-testid="deleted-banner">
+            <Icons.CircleCheck size={17} color="var(--teal)" style={{ flexShrink: 0 }} /> Your account and personal data have been deleted. Thanks for training with us.
+          </div>
+        </div>
+      )}
       <section className="site-wrap site-hero fade-up">
         <div className="eyebrow" style={{ marginBottom: 22 }}>Online coaching · Fitness, nutrition & yoga</div>
         <h1>Your own coach.<br /><span className="serif-italic">Plans they actually approve.</span></h1>
         <p className="site-lead">AI drafts your training and meal plans in minutes. A certified coach checks every one, tracks your progress and is a message away.</p>
         <div className="row-wrap" style={{ marginTop: 32, gap: 10 }}>
           <button className="btn btn-primary" data-testid="hero-signup-btn" onClick={go} style={{ padding: "12px 20px" }}>Start training <Icons.ArrowRight size={16} /></button>
-          <a href="#how" className="btn btn-ghost" style={{ padding: "12px 20px" }}>How it works</a>
+          <a href="#consult" className="btn btn-ghost" data-testid="hero-consult-btn" style={{ padding: "12px 20px" }}><Icons.PhoneCall size={16} /> Book a free consultation</a>
         </div>
         <div className="site-grid-3" style={{ marginTop: 72 }}>
           {FACTS.map(([icon, title, desc]) => {
@@ -121,11 +130,37 @@ export default function Landing() {
         </div>
       </section>
 
+      <section id="consult" className="site-section">
+        <div className="site-wrap consult-grid">
+          <div>
+            <div className="eyebrow" style={{ marginBottom: 14 }}>Free · 15 minutes · No obligation</div>
+            <h2>Talk to a coach first.</h2>
+            <p style={{ color: "var(--text-2)", margin: "8px 0 24px", lineHeight: 1.6, maxWidth: 420 }}>
+              Not sure which programme fits? Book a free call. A coach will ask about your goal, routine and any injuries, and tell you honestly what to expect.
+            </p>
+            <div className="stack" style={{ gap: 14 }}>
+              {[["PhoneCall", "We call you", "At the time you pick — no apps or links needed."],
+                ["ClipboardCheck", "Get a clear plan", "What training and food would look like for you."],
+                ["Gift", `Then try it free`, pricing.trial > 0 ? `Start a ${pricing.trial}-day free trial if it feels right.` : "Join only if it feels right."]].map(([icon, title, desc]) => {
+                const Icon = Icons[icon];
+                return (
+                  <div key={title} className="row" style={{ alignItems: "flex-start", gap: 12 }}>
+                    <Icon size={18} strokeWidth={1.75} color="var(--gold)" style={{ marginTop: 2, flexShrink: 0 }} />
+                    <div><div style={{ fontWeight: 500 }}>{title}</div><div style={{ fontSize: 14, color: "var(--text-2)" }}>{desc}</div></div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <ConsultForm />
+        </div>
+      </section>
+
       <section id="pricing" className="site-section">
         <div className="site-wrap">
           <h2>Pricing</h2>
           <p style={{ color: "var(--text-2)", marginBottom: 32 }}>
-            {pricing.trial > 0 ? `Start with a ${pricing.trial}-day free trial. ` : ""}Extra sessions are ₹{Number(pricing.session).toLocaleString("en-IN")} each.
+            {pricing.trial > 0 ? `Start with a ${pricing.trial}-day free trial, including an intro video session. ` : ""}Extra sessions are ₹{Number(pricing.session).toLocaleString("en-IN")} each.
           </p>
           <div className="site-grid-3">
             {pricing.plans.map((p) => (
@@ -161,7 +196,11 @@ export default function Landing() {
       <footer style={{ borderTop: "1px solid var(--border)" }}>
         <div className="site-wrap row" style={{ justifyContent: "space-between", padding: "24px", flexWrap: "wrap" }}>
           <Logo size={22} />
-          <div style={{ fontSize: 13, color: "var(--text-3)" }}>© {new Date().getFullYear()} FitCoach</div>
+          <div className="row" style={{ gap: 18, fontSize: 13, color: "var(--text-3)" }}>
+            <Link to="/privacy" style={{ color: "inherit" }}>Privacy</Link>
+            <Link to="/terms" style={{ color: "inherit" }}>Terms</Link>
+            <span>© {new Date().getFullYear()} FitCoach</span>
+          </div>
         </div>
       </footer>
     </div>

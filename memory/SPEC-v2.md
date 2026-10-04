@@ -153,6 +153,11 @@ Start with **8–10 common poses** (Warrior I/II, Tree, Triangle, Downward Dog, 
 | Plan templates + copy another client's plan into a draft | ✅ Built + tested |
 | Coach quick replies in chat ({name} placeholder) | ✅ Built + tested |
 | AI-written weekly summary per client (cached per week, rule-based fallback, suggested message → chat) | ✅ Built + tested (AI mocked in tests) |
+| Free consultation booking on the website → Admin Leads (status, notes, auto-convert on signup, 6-month retention) | ✅ Built + tested |
+| Limited free trial (admin picks included features + free intro sessions) with upgrade screens | ✅ Built + tested |
+| DPDP consent at signup/first login (health required, photos/offers optional) + audit log; photo consent gate; withdraw deletes photos | ✅ Built + tested |
+| Data export (JSON) and account deletion (self or admin); payments kept anonymised; /privacy and /terms pages | ✅ Built + tested (legal text needs lawyer review) |
+| Admin insights: sign-ups, trial conversion, renewals, drop-offs, revenue, leads, coach reply times | ✅ Built + tested |
 
 ## 10. Open questions
 - Coach payouts: salary or per-client? (affects admin reporting)

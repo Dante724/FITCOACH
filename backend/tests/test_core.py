@@ -34,10 +34,13 @@ def login(email, password):
 
 def register(name="Core Tester"):
     email = f"core_{uuid.uuid4().hex[:10]}@example.com"
-    r = requests.post(f"{API}/auth/register", json={"name": name, "email": email, "password": "Passw0rd!"}, timeout=15)
+    r = requests.post(f"{API}/auth/register", json={"name": name, "email": email, "password": "Passw0rd!",
+                                                    "consent": True, "photo_consent": True}, timeout=15)
     assert r.status_code == 200, r.text
     s = session_for(r.json()["access_token"])
     s.me, s.email = r.json(), email
+    # these suites exercise full-member features, not the limited free trial
+    login(*ADMIN).put(f"{API}/admin/users/{s.me['user_id']}/membership", json={"plan_id": "monthly"})
     return s
 
 

@@ -9,13 +9,16 @@ import { POSES, POSE_KEYS, matchPose } from "@/lib/poses";
 import { timeAgo } from "@/lib/focus";
 import { useToast } from "@/context/ToastContext";
 import useCoaches from "@/lib/useCoaches";
+import { useAuth } from "@/context/AuthContext";
+import { PhotoConsentCard } from "@/components/Privacy";
 
 function HistoryItem({ c }) {
   const reviewed = c.status === "reviewed";
   const flags = reviewed ? c.coach_flags : c.flags;
   return (
     <div className="clay-inset" style={{ padding: 14, display: "flex", gap: 14, flexWrap: "wrap" }} data-testid="pose-history-item">
-      <img src={c.snapshot} alt={`${c.pose_label} snapshot`} style={{ width: 96, height: 128, objectFit: "cover", borderRadius: 12, flexShrink: 0, background: "#11141b" }} />
+      {c.snapshot ? <img src={c.snapshot} alt={`${c.pose_label} snapshot`} style={{ width: 96, height: 128, objectFit: "cover", borderRadius: 12, flexShrink: 0, background: "#11141b" }} />
+        : <div style={{ width: 96, height: 128, borderRadius: 12, flexShrink: 0, background: "var(--surface-2)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-3)" }} title="Photo deleted"><Icons.ImageOff size={20} /></div>}
       <div className="min0" style={{ flex: "1 1 200px" }}>
         <div className="row" style={{ justifyContent: "space-between", marginBottom: 6 }}>
           <div style={{ fontWeight: 600 }}>{c.pose_label} <span style={{ fontSize: 12, color: "var(--text-3)", fontWeight: 500 }}>· {timeAgo(c.created_at)}</span></div>
@@ -35,6 +38,8 @@ function HistoryItem({ c }) {
 
 // Yoga pose check: live on-device tracking, then a 10s hold that's sent to the yoga coach for review.
 export default function PoseCheck() {
+  const { user } = useAuth();
+  const photosOk = !!user?.consents?.photos;
   const { push } = useToast();
   const coaches = useCoaches();
   const [params, setParams] = useSearchParams();
@@ -114,10 +119,11 @@ export default function PoseCheck() {
               </div>
               <CheckList checks={result.checks} />
               {result.snapshot && <img src={result.snapshot} alt="Snapshot of your hold" style={{ width: "100%", borderRadius: 12, marginTop: 14 }} />}
+              {coaches?.yoga && !photosOk && <div style={{ marginTop: 14 }}><PhotoConsentCard what="pose-check snapshots for your coach" /></div>}
               <div className="row-wrap" style={{ marginTop: 14 }}>
-                {coaches?.yoga
+                {coaches?.yoga && photosOk
                   ? <button className="btn btn-primary" data-testid="pose-send" onClick={send} disabled={sending || !result.snapshot} style={{ flex: 1 }}><Icons.Send size={16} /> {sending ? "Sending…" : `Send to ${coaches.yoga.name.split(" ")[0]}`}</button>
-                  : <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>You can send checks once your yoga coach is assigned.</div>}
+                  : !coaches?.yoga && <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>You can send checks once your yoga coach is assigned.</div>}
                 <button className="btn btn-ghost" onClick={() => setResult(null)}><Icons.RotateCcw size={16} /> Try again</button>
               </div>
             </div>

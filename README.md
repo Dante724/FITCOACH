@@ -57,6 +57,21 @@ and plan updates arrive even when it's closed — no app store needed.
   `subscription.halted`, `subscription.cancelled` and `subscription.completed`,
   and put its secret in `RAZORPAY_WEBHOOK_SECRET`.
 
+## Leads, trial and privacy
+
+- **Free consultation:** the website has a "Book a free consultation" form. Requests appear under
+  **Admin → Leads** (admins also get a notification). Leads are marked "Signed up" automatically when the
+  person registers with the same email, and are deleted after 6 months.
+- **Free trial:** Admin → Billing & payouts → "What the free trial includes" picks which features trial
+  clients get (default: training plans, chat, food tracking) and how many free intro sessions (default 1).
+- **Consent & privacy (DPDP Act):** sign-up asks for consent to health data (required), photo storage and
+  offers (optional), with a timestamped audit log. Clients can download their data or delete their account
+  from Profile → Privacy & data; admins can delete a client on request from the client's page. Set
+  `PRIVACY_CONTACT_EMAIL` to your grievance contact. The privacy policy and terms at `/privacy` and `/terms`
+  are a starting template — have a lawyer review them before launch.
+- **Insights:** Admin → Insights shows sign-ups, trial conversion, renewals, drop-offs, revenue, leads and
+  coach reply times.
+
 ## AI (optional)
 
 Set `GEMINI_API_KEY` (Google AI Studio). Without it, coaches start plans from a built-in template, the weekly

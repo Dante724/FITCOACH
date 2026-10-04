@@ -2,6 +2,7 @@
 Web Push, tested in-process with the push service simulated: key management, subscriptions,
 fan-out of notifications, call notifications with Answer/Decline, and cleanup of dead subscriptions.
 """
+import asyncio
 import time
 import uuid
 
@@ -51,8 +52,9 @@ def api(fake):
 
 
 def register(api, name="Push Tester"):
-    r = api.post("/api/auth/register", json={"name": name, "email": f"push_{uuid.uuid4().hex[:8]}@example.com", "password": "Passw0rd!"})
+    r = api.post("/api/auth/register", json={"name": name, "email": f"push_{uuid.uuid4().hex[:8]}@example.com", "password": "Passw0rd!", "consent": True})
     tok = r.json()["access_token"]
+    asyncio.run(server.activate_membership(r.json()["user_id"], asyncio.run(server.get_plan("monthly")), "test"))
     return {"Authorization": f"Bearer {tok}"}, r.json()
 
 

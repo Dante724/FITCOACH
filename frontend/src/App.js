@@ -25,6 +25,11 @@ import Profile from "@/pages/Profile";
 import AdminBilling from "@/pages/AdminBilling";
 import MembershipGate from "@/components/MembershipGate";
 import { rememberReferral } from "@/lib/membership";
+import Legal from "@/pages/Legal";
+import { ConsentScreen } from "@/components/Privacy";
+
+const AdminLeads = lazy(() => import("@/pages/AdminLeads"));
+const AdminInsights = lazy(() => import("@/pages/AdminInsights"));
 
 // Pose tracking pulls in MediaPipe, so only load it when a client opens Pose Check.
 const PoseCheck = lazy(() => import("@/pages/PoseCheck"));
@@ -46,6 +51,7 @@ function RequireAuth({ children, roles, requireFocus }) {
   if (loading) return <Loader />;
   if (!user) return <Navigate to="/login" replace />;
   if (roles && !roles.includes(user.role)) return <Navigate to={roleHome(user)} replace />;
+  if (user.role === "client" && !user.consents?.health_data) return <ConsentScreen />;
   if (requireFocus && user.role === "client" && !user.focus) return <Navigate to="/focus" replace />;
   return children;
 }
@@ -79,6 +85,8 @@ function AppRouter() {
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/privacy" element={<Legal page="privacy" />} />
+      <Route path="/terms" element={<Legal page="terms" />} />
       <Route path="/r/:code" element={<ReferralLanding />} />
       <Route path="/focus" element={<RequireAuth roles={CLIENT_ROLES}><FocusSelect /></RequireAuth>} />
       <Route path="/call/live/:callId" element={<RequireAuth><LiveCall /></RequireAuth>} />
@@ -86,20 +94,22 @@ function AppRouter() {
 
       <Route element={<RequireAuth roles={CLIENT_ROLES} requireFocus><Layout /></RequireAuth>}>
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/workouts" element={<MembershipGate><Workouts kind="workout" /></MembershipGate>} />
-        <Route path="/yoga" element={<MembershipGate><Workouts kind="yoga" /></MembershipGate>} />
-        <Route path="/messages" element={<MembershipGate><Messages /></MembershipGate>} />
-        <Route path="/pose-check" element={<MembershipGate><Suspense fallback={<div className="spinner" style={{ margin: "80px auto" }} />}><PoseCheck /></Suspense></MembershipGate>} />
+        <Route path="/workouts" element={<MembershipGate feature="workouts"><Workouts kind="workout" /></MembershipGate>} />
+        <Route path="/yoga" element={<MembershipGate feature="workouts"><Workouts kind="yoga" /></MembershipGate>} />
+        <Route path="/messages" element={<MembershipGate feature="messages"><Messages /></MembershipGate>} />
+        <Route path="/pose-check" element={<MembershipGate feature="pose_check"><Suspense fallback={<div className="spinner" style={{ margin: "80px auto" }} />}><PoseCheck /></Suspense></MembershipGate>} />
         <Route path="/booking" element={<Booking />} />
         <Route path="/progress" element={<Progress />} />
-        <Route path="/food" element={<MembershipGate><FoodTrack /></MembershipGate>} />
-        <Route path="/meal-plans" element={<MembershipGate><MealPlans /></MembershipGate>} />
+        <Route path="/food" element={<MembershipGate feature="food"><FoodTrack /></MembershipGate>} />
+        <Route path="/meal-plans" element={<MembershipGate feature="meal_plans"><MealPlans /></MembershipGate>} />
         <Route path="/membership" element={<Membership />} />
       </Route>
 
       <Route element={<RequireAuth roles={ADMIN_ROLES}><Layout /></RequireAuth>}>
         <Route path="/admin" element={<AdminPanel />} />
         <Route path="/admin/billing" element={<AdminBilling />} />
+        <Route path="/admin/leads" element={<Suspense fallback={<div className="spinner" style={{ margin: "80px auto" }} />}><AdminLeads /></Suspense>} />
+        <Route path="/admin/insights" element={<Suspense fallback={<div className="spinner" style={{ margin: "80px auto" }} />}><AdminInsights /></Suspense>} />
         <Route path="/admin/clients/:clientId" element={<ClientDetail />} />
       </Route>
 

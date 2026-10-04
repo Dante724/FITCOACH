@@ -43,6 +43,8 @@ services:
         sync: false
       - key: RAZORPAY_WEBHOOK_SECRET
         sync: false
+      - key: PRIVACY_CONTACT_EMAIL
+        sync: false
 
   - type: web
     name: fitcoach-web
