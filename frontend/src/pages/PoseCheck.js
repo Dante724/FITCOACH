@@ -18,7 +18,7 @@ function HistoryItem({ c }) {
       <img src={c.snapshot} alt={`${c.pose_label} snapshot`} style={{ width: 96, height: 128, objectFit: "cover", borderRadius: 12, flexShrink: 0, background: "#11141b" }} />
       <div className="min0" style={{ flex: "1 1 200px" }}>
         <div className="row" style={{ justifyContent: "space-between", marginBottom: 6 }}>
-          <div style={{ fontWeight: 700 }}>{c.pose_label} <span style={{ fontSize: 12, color: "var(--text-3)", fontWeight: 500 }}>· {timeAgo(c.created_at)}</span></div>
+          <div style={{ fontWeight: 600 }}>{c.pose_label} <span style={{ fontSize: 12, color: "var(--text-3)", fontWeight: 500 }}>· {timeAgo(c.created_at)}</span></div>
           <ScoreRing score={reviewed ? c.coach_score : c.score} size={46} />
         </div>
         {reviewed
@@ -108,7 +108,7 @@ export default function PoseCheck() {
               <div className="row" style={{ gap: 14, marginBottom: 14 }}>
                 <ScoreRing score={result.score} />
                 <div className="min0">
-                  <div style={{ fontWeight: 800, fontSize: 17 }}>{POSES[pose].label}</div>
+                  <div style={{ fontWeight: 600, fontSize: 17 }}>{POSES[pose].label}</div>
                   <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>Automatic result · {result.flags.length ? `${result.flags.length} thing${result.flags.length > 1 ? "s" : ""} to work on` : "looking good"}</div>
                 </div>
               </div>

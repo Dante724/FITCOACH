@@ -80,13 +80,13 @@ export default function Booking() {
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 22 }}>
             {trainers.map((t) => (
               <button key={t.trainer_id} data-testid={`trainer-${t.trainer_id}`} onClick={() => setTrainerId(t.trainer_id)}
-                className="clay-inset" style={{ border: trainerId === t.trainer_id ? "2px solid var(--accent)" : "2px solid transparent", cursor: "pointer", padding: "12px 14px", display: "flex", alignItems: "center", gap: 13, textAlign: "left" }}>
-                <div style={{ width: 40, height: 40, borderRadius: "50%", background: "linear-gradient(135deg, var(--accent), #7c6bd6)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700 }}>{t.initials}</div>
+                className="clay-inset" style={{ border: trainerId === t.trainer_id ? "1px solid var(--ink)" : "1px solid transparent", cursor: "pointer", padding: "12px 14px", display: "flex", alignItems: "center", gap: 13, textAlign: "left" }}>
+                <div style={{ width: 40, height: 40, borderRadius: "50%", background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 600 }}>{t.initials}</div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700 }}>{t.name}</div>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{t.name}</div>
                   <div style={{ fontSize: 12, color: "var(--text-3)" }}>{t.specialty}</div>
                 </div>
-                {trainerId === t.trainer_id && <Icons.Check size={18} color="var(--accent)" />}
+                {trainerId === t.trainer_id && <Icons.Check size={18} color="var(--text)" />}
               </button>
             ))}
             {trainers.length === 0 && <div className="clay-inset" style={{ fontSize: 13.5, color: "var(--text-2)", padding: 16 }}>You can book sessions once your coach has been assigned.</div>}
@@ -103,8 +103,8 @@ export default function Booking() {
               {slots.map((s) => (
                 <button key={s} data-testid={`slot-${s}`} onClick={() => setTime(s)}
                   className={time === s ? "" : "clay-inset"}
-                  style={{ padding: "11px 0", borderRadius: 12, border: time === s ? "2px solid var(--accent)" : "none", cursor: "pointer",
-                    background: time === s ? "var(--accent-soft)" : undefined, color: "var(--text)", fontWeight: 600, fontSize: 13.5 }}>
+                  style={{ padding: "11px 0", borderRadius: 12, border: time === s ? "1px solid var(--ink)" : "1px solid transparent", cursor: "pointer",
+                    background: time === s ? "var(--ink)" : undefined, color: time === s ? "#fff" : "var(--text)", fontWeight: 500, fontSize: 13.5 }}>
                   {s}
                 </button>
               ))}
@@ -131,11 +131,11 @@ export default function Booking() {
               {bookings.map((b) => (
                 <div key={b.id} className="clay-inset" style={{ padding: "15px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                   <div style={{ width: 44, height: 44, borderRadius: 12, background: "var(--teal-soft)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--teal)" }}>
-                    <span style={{ fontSize: 16, fontWeight: 800, lineHeight: 1 }}>{new Date(b.date + "T12:00").getDate()}</span>
+                    <span style={{ fontSize: 16, fontWeight: 600, lineHeight: 1 }}>{new Date(b.date + "T12:00").getDate()}</span>
                     <span style={{ fontSize: 10, fontWeight: 600 }}>{new Date(b.date + "T12:00").toLocaleDateString("en-US", { month: "short" })}</span>
                   </div>
                   <div style={{ flex: 1, minWidth: 120 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700 }}>{b.trainer_name} · {b.time}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>{b.trainer_name} · {b.time}</div>
                     <div style={{ fontSize: 12, color: "var(--text-3)" }}>{b.specialty}</div>
                   </div>
                   <button data-testid={`join-${b.id}`} className="btn btn-ghost" onClick={() => navigate(`/call/${b.id}`)} style={{ padding: "8px 13px", fontSize: 12.5, color: "var(--teal)" }}>

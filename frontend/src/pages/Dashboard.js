@@ -9,11 +9,11 @@ import Avatar from "@/components/Avatar";
 function StatCard({ icon: Icon, label, value, unit, accent, delay }) {
   return (
     <div className="clay fade-up stat-card" style={{ padding: 20, animationDelay: `${delay}ms` }}>
-      <div className="stat-icon" style={{ width: 40, height: 40, borderRadius: 12, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
+      <div className="stat-icon" style={{ width: 40, height: 40, borderRadius: 12, background: "var(--surface-2)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
         <Icon size={20} color={accent} />
       </div>
       <div style={{ fontSize: 12.5, color: "var(--text-3)", fontWeight: 600, marginBottom: 4 }}>{label}</div>
-      <div className="display" style={{ fontSize: 26, fontWeight: 800 }}>
+      <div className="display" style={{ fontSize: 26, fontWeight: 600 }}>
         {value}{unit && <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-2)" }}> {unit}</span>}
       </div>
     </div>
@@ -25,11 +25,11 @@ function CoachCard({ type, coach, unread, navigate }) {
   if (!coach) {
     return (
       <div className="clay-inset row" style={{ padding: 14 }} data-testid={`coach-pending-${type}`}>
-        <div style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-          <Icons.Hourglass size={20} color="var(--accent)" />
+        <div style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--surface-2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <Icons.Hourglass size={18} strokeWidth={1.75} color="var(--text-2)" />
         </div>
         <div className="min0">
-          <div style={{ fontSize: 14, fontWeight: 700 }}>Matching your {label.toLowerCase()}</div>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>Matching your {label.toLowerCase()}</div>
           <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>We'll notify you as soon as they're assigned.</div>
         </div>
       </div>
@@ -39,7 +39,7 @@ function CoachCard({ type, coach, unread, navigate }) {
     <div className="clay-inset row" style={{ padding: 14 }} data-testid={`coach-${type}`}>
       <Avatar name={coach.name} picture={coach.picture} size={44} />
       <div className="min0" style={{ flex: 1 }}>
-        <div className="truncate" style={{ fontSize: 14.5, fontWeight: 700 }}>{coach.name}</div>
+        <div className="truncate" style={{ fontSize: 14.5, fontWeight: 600 }}>{coach.name}</div>
         <div className="truncate" style={{ fontSize: 12.5, color: "var(--text-3)" }}>{label}</div>
       </div>
       <button className="btn btn-ghost" onClick={() => navigate(askCoachPath(coach.user_id))} style={{ padding: "9px 14px", fontSize: 13, position: "relative" }}>
@@ -57,7 +57,7 @@ function PlanPreview({ plan, type, navigate }) {
       <div className="row" style={{ justifyContent: "space-between", marginBottom: 14 }}>
         <div className="min0">
           <div className="eyebrow">{PLAN_LABEL[type]}</div>
-          <h3 className="display truncate" style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>{plan ? plan.content.title : "Being prepared"}</h3>
+          <h3 className="display truncate" style={{ fontSize: 18, fontWeight: 600, marginTop: 4 }}>{plan ? plan.content.title : "Being prepared"}</h3>
         </div>
         {plan && <button className="btn btn-ghost" onClick={() => navigate(path)} style={{ padding: "9px 16px", fontSize: 13 }}>Open</button>}
       </div>
@@ -75,8 +75,8 @@ function PlanPreview({ plan, type, navigate }) {
       )}
       {plan && type === "meal" && (
         <div className="row-wrap">
-          <span className="chip chip-accent">{Math.round(plan.content.total_calories)} kcal / day</span>
-          <span className="chip chip-teal">{Math.round(plan.content.total_protein_g)} g protein</span>
+          <span className="chip chip-neutral">{Math.round(plan.content.total_calories)} kcal / day</span>
+          <span className="chip chip-neutral">{Math.round(plan.content.total_protein_g)} g protein</span>
           <span className="chip chip-neutral">{plan.content.meals?.length} meals</span>
         </div>
       )}
@@ -118,8 +118,8 @@ export default function Dashboard() {
     <div>
       <div className="fade-up" style={{ marginBottom: 24 }}>
         <div className="eyebrow" style={{ marginBottom: 8 }}>{new Date().toLocaleDateString("en-IN", { weekday: "long", month: "long", day: "numeric" })}</div>
-        <h1 style={{ fontSize: 32, fontWeight: 800 }}>{greet}, {user?.name?.split(" ")[0]}</h1>
-        {focus && <p style={{ fontSize: 14.5, color: "var(--text-2)", marginTop: 8 }}>Goal: <strong style={{ color: focus.accent }}>{focus.label}</strong></p>}
+        <h1 style={{ fontSize: 28 }}>{greet}, {user?.name?.split(" ")[0]}</h1>
+        {focus && <p style={{ fontSize: 14.5, color: "var(--text-2)", marginTop: 8 }}>Goal: <span style={{ color: "var(--text)" }}>{focus.label}</span></p>}
       </div>
 
       <div className="clay fade-up" style={{ padding: 20, marginBottom: 18 }}>
@@ -133,7 +133,7 @@ export default function Dashboard() {
 
       <div className="grid-stats" style={{ marginBottom: 18 }}>
         <StatCard icon={Icons.Weight} label="Latest weight" value={latest.weight ?? "—"} unit={latest.weight ? "kg" : ""} accent="var(--accent)" delay={0} />
-        <StatCard icon={Icons.Dumbbell} label="Sessions this week" value={sessions.filter((s) => new Date(s.created_at).getTime() >= weekAgo).length} accent="#7c6bd6" delay={60} />
+        <StatCard icon={Icons.Dumbbell} label="Sessions this week" value={sessions.filter((s) => new Date(s.created_at).getTime() >= weekAgo).length} accent="var(--violet)" delay={60} />
         <StatCard icon={Icons.CalendarDays} label="Upcoming calls" value={upcoming.length} accent="var(--teal)" delay={120} />
         {hasFeature(user?.focus, "food")
           ? <StatCard icon={Icons.Utensils} label="Meals logged today" value={foods.filter((f) => (f.created_at || "").slice(0, 10) === today).length} accent="var(--amber)" delay={180} />

@@ -31,7 +31,7 @@ export default function Messages() {
       {coaches && list.length === 0 && (
         <div className="clay empty" style={{ padding: "56px 20px" }}>
           <Icons.UserRoundSearch size={36} style={{ opacity: 0.55, marginBottom: 10 }} />
-          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>Your coach hasn't been assigned yet</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>Your coach hasn't been assigned yet</div>
           <div>You'll be able to message them here as soon as they are.</div>
         </div>
       )}
@@ -50,7 +50,7 @@ export default function Messages() {
           <div className="row" style={{ padding: "4px 6px 12px" }}>
             <Avatar name={active.name} picture={active.picture} size={38} />
             <div className="min0">
-              <div style={{ fontWeight: 700, fontSize: 14.5 }}>{active.name}</div>
+              <div style={{ fontWeight: 600, fontSize: 14.5 }}>{active.name}</div>
               <div style={{ fontSize: 12, color: "var(--text-3)" }}>{active.type === "yoga" ? "Yoga coach" : "Fitness & nutrition coach"}</div>
             </div>
           </div>

@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
-import { Zap, Activity, CalendarCheck, Utensils, AlertCircle } from "lucide-react";
+import { Link, Navigate, useNavigate } from "react-router-dom";
+import { AlertCircle, ArrowLeft } from "lucide-react";
+import Logo from "@/components/Logo";
 import { useAuth } from "@/context/AuthContext";
 import { roleHome } from "@/lib/focus";
 
@@ -44,57 +45,36 @@ export default function Login() {
 
   const tabBtn = (key, label) => (
     <button type="button" data-testid={`auth-tab-${key}`} onClick={() => { setTab(key); setError(""); }}
-      style={{ flex: 1, padding: "10px 0", fontSize: 14, fontWeight: 700, cursor: "pointer", border: "none", background: "transparent",
-        color: tab === key ? "var(--accent)" : "var(--text-3)", borderBottom: tab === key ? "2px solid var(--accent)" : "2px solid transparent", fontFamily: "inherit" }}>
+      className={`tab${tab === key ? " active" : ""}`} style={{ flex: 1, justifyContent: "center" }}>
       {label}
     </button>
   );
 
   return (
-    <div style={{ minHeight: "100vh", display: "grid", gridTemplateColumns: "1.05fr 0.95fr", gap: 0 }}>
-      {/* Hero */}
-      <div style={{ position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between", padding: "52px 56px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 42, height: 42, borderRadius: 13, background: "linear-gradient(135deg, var(--accent), var(--accent-2))", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 8px 18px rgba(224,92,55,0.4)" }}>
-            <Zap size={22} color="#fff" fill="#fff" />
-          </div>
-          <span className="display" style={{ fontSize: 23, fontWeight: 800 }}>FitCoach</span>
+    <div className="split">
+      <div className="split-aside" style={{ background: "var(--surface-2)", borderRight: "1px solid var(--border)", padding: "40px 48px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+        <Link to="/" style={{ color: "inherit", textDecoration: "none" }}><Logo /></Link>
+        <div className="fade-up" style={{ maxWidth: 420 }}>
+          <h1 style={{ fontSize: 40, letterSpacing: "-0.035em", marginBottom: 14 }}>Your own coach.<br /><span style={{ color: "var(--text-3)" }}>Plans they approve.</span></h1>
+          <p style={{ fontSize: 15, color: "var(--text-2)", lineHeight: 1.65 }}>Training, nutrition and yoga plans drafted by AI and checked by a certified coach, with progress tracking and chat in one place.</p>
         </div>
-
-        <div className="fade-up">
-          <div className="chip chip-accent" style={{ marginBottom: 22 }}>Personal training, elevated</div>
-          <h1 className="display" style={{ fontSize: 58, fontWeight: 800, lineHeight: 1.02, marginBottom: 20 }}>
-            Train with<br /><span style={{ color: "var(--accent)" }}>intelligence.</span>
-          </h1>
-          <p style={{ fontSize: 16, color: "var(--text-2)", lineHeight: 1.7, maxWidth: 400 }}>
-            Book sessions, track your progress, log meals with AI nutrition analysis and work with your own coach — all in one focused workspace.
-          </p>
-          <div style={{ display: "flex", gap: 14, marginTop: 34 }}>
-            {[{ i: Activity, t: "Progress tracking" }, { i: CalendarCheck, t: "Easy booking" }, { i: Utensils, t: "AI food tracking" }].map(({ i: Ic, t }) => (
-              <div key={t} className="clay-sm" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8, flex: 1 }}>
-                <Ic size={20} color="var(--accent)" />
-                <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-2)" }}>{t}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>Evidence-based protocols · ACE · NASM · ACSM</div>
+        <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>Certified coaches · ACE · NASM · ACSM</div>
       </div>
 
-      {/* Auth card */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 40 }}>
-        <div className="glass fade-up" style={{ width: "100%", maxWidth: 400, padding: "40px 38px" }}>
-          <h2 className="display" style={{ fontSize: 26, fontWeight: 700, marginBottom: 4 }}>{tab === "login" ? "Welcome back" : "Create account"}</h2>
-          <p style={{ fontSize: 14, color: "var(--text-2)", marginBottom: 22 }}>Access your training workspace.</p>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "40px 20px" }}>
+        <div className="fade-up" style={{ width: "100%", maxWidth: 360 }}>
+          <Link to="/" className="row" style={{ color: "var(--text-3)", fontSize: 13, textDecoration: "none", marginBottom: 32, gap: 6 }}><ArrowLeft size={14} /> Back to site</Link>
+          <h2 style={{ fontSize: 24, marginBottom: 4 }}>{tab === "login" ? "Welcome back" : "Create your account"}</h2>
+          <p style={{ fontSize: 14, color: "var(--text-2)", marginBottom: 24 }}>{tab === "login" ? "Sign in to continue." : "It takes less than a minute."}</p>
 
-          <div style={{ display: "flex", gap: 24, borderBottom: "1px solid rgba(139,150,172,0.2)", marginBottom: 22 }}>
+          <div className="row" style={{ gap: 6, marginBottom: 22 }}>
             {tabBtn("login", "Sign in")}
             {tabBtn("register", "Create account")}
           </div>
 
           {error && (
-            <div data-testid="auth-error" style={{ display: "flex", alignItems: "center", gap: 8, padding: "11px 14px", borderRadius: 12, background: "var(--accent-soft)", color: "var(--accent)", fontSize: 13, marginBottom: 16 }}>
-              <AlertCircle size={16} /> {error}
+            <div data-testid="auth-error" className="row" style={{ padding: "10px 12px", borderRadius: 10, background: "var(--accent-soft)", color: "var(--accent)", fontSize: 13, marginBottom: 16, gap: 8 }}>
+              <AlertCircle size={16} style={{ flexShrink: 0 }} /> {error}
             </div>
           )}
 
@@ -113,19 +93,19 @@ export default function Login() {
               <label className="label">Password</label>
               <input className="field" type="password" data-testid="auth-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={tab === "register" ? "Min 8 characters" : "Enter password"} required />
             </div>
-            <button type="submit" disabled={busy} data-testid={tab === "login" ? "email-login-btn" : "email-register-btn"} className="btn btn-primary" style={{ width: "100%", padding: 14, fontSize: 15 }}>
+            <button type="submit" disabled={busy} data-testid={tab === "login" ? "email-login-btn" : "email-register-btn"} className="btn btn-primary" style={{ width: "100%", minHeight: 44 }}>
               {busy ? "Please wait..." : tab === "login" ? "Sign in" : "Create account"}
             </button>
           </form>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "22px 0" }}>
-            <div style={{ flex: 1, height: 1, background: "rgba(139,150,172,0.2)" }} />
+          <div className="row" style={{ gap: 12, margin: "20px 0" }}>
+            <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
             <span style={{ fontSize: 12, color: "var(--text-3)" }}>or</span>
-            <div style={{ flex: 1, height: 1, background: "rgba(139,150,172,0.2)" }} />
+            <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
           </div>
 
-          <button type="button" data-testid="google-login-btn" onClick={login} className="btn" style={{ width: "100%", padding: "13px", background: "#fff", color: "var(--text)", boxShadow: "0 8px 22px rgba(70,85,120,0.14)", fontSize: 14.5 }}>
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="" width={20} height={20} />
+          <button type="button" data-testid="google-login-btn" onClick={login} className="btn btn-ghost" style={{ width: "100%", minHeight: 44 }}>
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="" width={18} height={18} />
             Continue with Google
           </button>
         </div>

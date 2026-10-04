@@ -18,11 +18,11 @@ function DaysEditor({ content, setContent, yoga }) {
       {days.map((d, i) => (
         <div key={i} className="clay-inset" style={{ padding: 14 }}>
           <div className="row" style={{ marginBottom: 10 }}>
-            <input className="field" value={d.name} onChange={(e) => patchDay(i, { name: e.target.value })} placeholder="Day name" style={{ flex: 1, fontWeight: 700 }} aria-label="Day name" />
+            <input className="field" value={d.name} onChange={(e) => patchDay(i, { name: e.target.value })} placeholder="Day name" style={{ flex: 1, fontWeight: 600 }} aria-label="Day name" />
             <input className="field" value={d.focus} onChange={(e) => patchDay(i, { focus: e.target.value })} placeholder="Focus" style={{ flex: 1 }} aria-label="Day focus" />
             <button className="icon-btn" title="Remove day" onClick={() => setDays(days.filter((_, j) => j !== i))}><Icons.Trash2 size={16} /></button>
           </div>
-          <div className="ex-row" style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", padding: "0 2px 4px" }}>
+          <div className="ex-row" style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", padding: "0 2px 4px" }}>
             <span>{yoga ? "Pose" : "Exercise"}</span><span>{yoga ? "Rounds" : "Sets"}</span><span>{yoga ? "Hold" : "Reps"}</span><span className="ex-rest">Rest</span><span />
           </div>
           <div className="stack" style={{ gap: 8 }}>
@@ -61,10 +61,10 @@ function MealsEditor({ content, setContent }) {
   return (
     <div className="stack" style={{ gap: 14 }}>
       <div className="row-wrap" style={{ fontSize: 13, color: "var(--text-2)" }}>
-        <span className="chip chip-accent">{total("calories")} kcal</span>
-        <span className="chip chip-teal">P {total("protein_g")}g</span>
-        <span className="chip chip-amber">C {total("carbs_g")}g</span>
-        <span className="chip chip-violet">F {total("fat_g")}g</span>
+        <span className="chip chip-neutral">{total("calories")} kcal</span>
+        <span className="chip chip-neutral">P {total("protein_g")}g</span>
+        <span className="chip chip-neutral">C {total("carbs_g")}g</span>
+        <span className="chip chip-neutral">F {total("fat_g")}g</span>
       </div>
       {meals.map((m, i) => (
         <div key={i} className="clay-inset" style={{ padding: 14 }}>
@@ -79,7 +79,7 @@ function MealsEditor({ content, setContent }) {
             placeholder="One item per line, with portions" style={{ resize: "vertical", fontSize: 13.5, lineHeight: 1.6 }} aria-label="Items" />
           <div className="grid-macros" style={{ marginTop: 8 }}>
             {[["calories", "kcal"], ["protein_g", "Protein g"], ["carbs_g", "Carbs g"], ["fat_g", "Fat g"]].map(([k, label]) => (
-              <label key={k} style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)" }}>{label}
+              <label key={k} style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)" }}>{label}
                 <input className="field" type="number" min="0" value={m[k]} onChange={(e) => patch(i, { [k]: e.target.value })} style={{ padding: "9px 10px", marginTop: 4 }} />
               </label>
             ))}

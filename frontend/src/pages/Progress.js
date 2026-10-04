@@ -25,10 +25,10 @@ export function Sparkline({ data }) {
   const area = `${line} L${sx(pts.length - 1)},${H} L${sx(0)},${H} Z`;
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: 150 }}>
-      <defs><linearGradient id="wg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="rgba(224,92,55,0.28)" /><stop offset="100%" stopColor="rgba(224,92,55,0)" /></linearGradient></defs>
+      <defs><linearGradient id="wg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="rgba(12,12,14,0.08)" /><stop offset="100%" stopColor="rgba(12,12,14,0)" /></linearGradient></defs>
       <path d={area} fill="url(#wg)" />
-      <path d={line} fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-      {pts.map((v, i) => <circle key={`${i}-${v}`} cx={sx(i)} cy={sy(v)} r="3.5" fill="var(--accent)" />)}
+      <path d={line} fill="none" stroke="var(--ink)" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+      {pts.map((v, i) => <circle key={`${i}-${v}`} cx={sx(i)} cy={sy(v)} r="3" fill="var(--ink)" />)}
     </svg>
   );
 }
@@ -68,14 +68,12 @@ export default function Progress() {
       <PageHeader eyebrow="Progress Tracker" title="Body Progress" subtitle="Log measurements over time and watch your trend take shape."
         action={tab === "measurements" ? <button className="btn btn-primary" data-testid="log-progress-btn" onClick={() => setOpen(true)}><Icons.Plus size={18} /> Log today</button> : null} />
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 22 }}>
+      <div className="tabs">
         {[["measurements", "Measurements", "Ruler"], ["photos", "Photos", "Images"]].map(([id, label, icon]) => {
           const Icon = Icons[icon] || Icons.Circle;
           const active = tab === id;
           return (
-            <button key={id} data-testid={`tab-${id}`} onClick={() => setTab(id)}
-              style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 18px", borderRadius: 999, border: "none", cursor: "pointer", fontSize: 13.5, fontWeight: 700,
-                color: active ? "#fff" : "var(--text-2)", background: active ? "linear-gradient(135deg, var(--accent), var(--accent-2))" : "var(--clay-inset, rgba(0,0,0,0.05))", transition: "all 0.18s ease" }}>
+            <button key={id} data-testid={`tab-${id}`} onClick={() => setTab(id)} className={`tab${active ? " active" : ""}`}>
               <Icon size={16} /> {label}
             </button>
           );
@@ -94,7 +92,7 @@ export default function Progress() {
           return (
             <div key={fid} className="clay fade-up" style={{ padding: 20, animationDelay: `${i * 60}ms` }}>
               <div style={{ fontSize: 12.5, color: "var(--text-3)", fontWeight: 600, marginBottom: 8 }}>{f.label}</div>
-              <div className="display" style={{ fontSize: 26, fontWeight: 800 }}>{val ?? "—"}<span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-2)" }}> {val != null ? f.unit : ""}</span></div>
+              <div className="display" style={{ fontSize: 26, fontWeight: 600 }}>{val ?? "—"}<span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-2)" }}> {val != null ? f.unit : ""}</span></div>
               {diff !== null ? (
                 <div style={{ fontSize: 12, marginTop: 6, color: better ? "var(--teal)" : "var(--accent)", display: "flex", alignItems: "center", gap: 3 }}>
                   {diff < 0 ? <Icons.ArrowDown size={13} /> : <Icons.ArrowUp size={13} />} {Math.abs(diff)} {f.unit} vs last
@@ -108,7 +106,7 @@ export default function Progress() {
       <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 18 }}>
         <div className="clay fade-up" style={{ padding: 26 }}>
           <div className="eyebrow" style={{ marginBottom: 6 }}>Trend</div>
-          <h3 className="display" style={{ fontSize: 17, fontWeight: 700, marginBottom: 16 }}>Weight over time</h3>
+          <h3 className="display" style={{ fontSize: 17, fontWeight: 600, marginBottom: 16 }}>Weight over time</h3>
           <Sparkline data={entries} />
         </div>
         <div className="clay fade-up" style={{ padding: 26, animationDelay: "80ms" }}>
@@ -117,7 +115,7 @@ export default function Progress() {
             {FIELDS.map((f) => (
               <div key={f.id} style={{ display: "flex", justifyContent: "space-between", padding: "11px 0", borderBottom: "1px solid rgba(139,150,172,0.16)" }}>
                 <span style={{ fontSize: 13.5, color: "var(--text-2)" }}>{f.label}</span>
-                <span style={{ fontSize: 13.5, fontWeight: 700 }}>{latest[f.id] != null ? `${latest[f.id]} ${f.unit}` : "—"}</span>
+                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{latest[f.id] != null ? `${latest[f.id]} ${f.unit}` : "—"}</span>
               </div>
             ))}
           </div>
@@ -135,7 +133,7 @@ export default function Progress() {
           <div data-testid="progress-list">
             {[...entries].reverse().map((e) => (
               <div key={e.id} className="clay-inset" style={{ padding: "13px 16px", marginBottom: 9, display: "grid", gridTemplateColumns: "120px repeat(4, 1fr) 40px", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 700 }}>{e.date}</span>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>{e.date}</span>
                 <span style={{ fontSize: 13 }}>{e.weight != null ? `${e.weight} kg` : "—"}</span>
                 <span style={{ fontSize: 13 }}>{e.body_fat != null ? `${e.body_fat} %` : "—"}</span>
                 <span style={{ fontSize: 13 }}>{e.waist != null ? `${e.waist} cm` : "—"}</span>
@@ -152,7 +150,7 @@ export default function Progress() {
         <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(27,33,48,0.45)", backdropFilter: "blur(6px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div onClick={(e) => e.stopPropagation()} className="glass fade-up" style={{ width: "100%", maxWidth: 460, padding: 30 }} data-testid="progress-modal">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-              <h3 className="display" style={{ fontSize: 20, fontWeight: 700 }}>Log measurements</h3>
+              <h3 className="display" style={{ fontSize: 20, fontWeight: 600 }}>Log measurements</h3>
               <Icons.X size={20} style={{ cursor: "pointer", color: "var(--text-3)" }} onClick={() => setOpen(false)} />
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 13 }}>

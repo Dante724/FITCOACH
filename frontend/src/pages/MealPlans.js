@@ -26,14 +26,14 @@ export default function MealPlans() {
       {plan === null && (
         <div className="clay fade-up empty" data-testid="meal-pending" style={{ padding: "56px 20px" }}>
           <Icons.UtensilsCrossed size={38} style={{ opacity: 0.55, marginBottom: 12 }} />
-          <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Your coach is preparing your nutrition plan</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>Your coach is preparing your nutrition plan</div>
           <div style={{ maxWidth: 420, margin: "0 auto", lineHeight: 1.6 }}>Meanwhile, keep logging your meals in Food Log — it helps your coach set the right targets.</div>
           <button className="btn btn-primary" onClick={() => navigate("/food")} style={{ marginTop: 18 }}><Icons.Utensils size={17} /> Open Food Log</button>
         </div>
       )}
       {plan && (
         <div className="clay fade-up" style={{ padding: 22 }}>
-          <h3 className="display" style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>{plan.content.title}</h3>
+          <h3 className="display" style={{ fontSize: 20, fontWeight: 600, marginBottom: 4 }}>{plan.content.title}</h3>
           {plan.content.summary && <p style={{ fontSize: 13.5, color: "var(--text-2)", marginBottom: 12, lineHeight: 1.6 }}>{plan.content.summary}</p>}
           <div style={{ marginBottom: 18 }}><ApprovedBy plan={plan} /></div>
           <MealPlanView content={plan.content} />

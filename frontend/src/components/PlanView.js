@@ -2,10 +2,10 @@ import * as Icons from "lucide-react";
 
 export function MealPlanView({ content }) {
   const totals = [
-    ["Calories", content.total_calories, "", "var(--accent)"],
-    ["Protein", content.total_protein_g, "g", "var(--teal)"],
-    ["Carbs", content.total_carbs_g, "g", "var(--amber)"],
-    ["Fat", content.total_fat_g, "g", "#7c6bd6"],
+    ["Calories", content.total_calories, "", "var(--text)"],
+    ["Protein", content.total_protein_g, "g", "var(--text)"],
+    ["Carbs", content.total_carbs_g, "g", "var(--text)"],
+    ["Fat", content.total_fat_g, "g", "var(--text)"],
   ];
   return (
     <div>
@@ -13,7 +13,7 @@ export function MealPlanView({ content }) {
         {totals.map(([label, v, unit, color]) => (
           <div key={label} className="clay-inset" style={{ padding: "12px 10px", textAlign: "center" }}>
             <div style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 600 }}>{label}</div>
-            <div className="display" style={{ fontSize: 19, fontWeight: 800, color }}>{Math.round(v || 0)}<span style={{ fontSize: 11, fontWeight: 500 }}>{unit}</span></div>
+            <div className="display" style={{ fontSize: 19, fontWeight: 600, color }}>{Math.round(v || 0)}<span style={{ fontSize: 11, fontWeight: 500 }}>{unit}</span></div>
           </div>
         ))}
       </div>
@@ -23,9 +23,9 @@ export function MealPlanView({ content }) {
             <div className="row" style={{ justifyContent: "space-between", marginBottom: 6, flexWrap: "wrap" }}>
               <div className="min0">
                 <div className="eyebrow" style={{ fontSize: 10.5 }}>{m.meal}</div>
-                <div style={{ fontSize: 15, fontWeight: 700 }}>{m.name}</div>
+                <div style={{ fontSize: 15, fontWeight: 600 }}>{m.name}</div>
               </div>
-              <span className="chip chip-accent">{Math.round(m.calories)} kcal</span>
+              <span className="chip chip-neutral">{Math.round(m.calories)} kcal</span>
             </div>
             <ul style={{ margin: "6px 0 8px 18px", fontSize: 13.5, color: "var(--text-2)", lineHeight: 1.7 }}>
               {m.items.map((it, j) => <li key={j}>{it}</li>)}
@@ -61,12 +61,12 @@ export function DaysPlanView({ content, yoga, done, onToggle, day, onDay }) {
               <button key={`${day}-${i}`} data-testid={`exercise-${i}`} onClick={() => onToggle?.(i)} disabled={!onToggle}
                 className="clay-inset" style={{ border: "none", cursor: onToggle ? "pointer" : "default", padding: "13px 14px", display: "flex", gap: 12, textAlign: "left", alignItems: "flex-start", color: "var(--text)" }}>
                 {onToggle && (
-                  <div style={{ width: 24, height: 24, marginTop: 1, borderRadius: 8, background: checked ? "var(--teal)" : "transparent", border: checked ? "none" : "2px solid rgba(139,150,172,0.4)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <div style={{ width: 24, height: 24, marginTop: 1, borderRadius: 8, background: checked ? "var(--ink)" : "transparent", border: checked ? "none" : "2px solid rgba(139,150,172,0.4)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                     {checked && <Icons.Check size={15} color="#fff" />}
                   </div>
                 )}
                 <div className="min0" style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14.5, fontWeight: 700, textDecoration: checked ? "line-through" : "none", color: checked ? "var(--text-3)" : "var(--text)" }}>{ex.name}</div>
+                  <div style={{ fontSize: 14.5, fontWeight: 600, textDecoration: checked ? "line-through" : "none", color: checked ? "var(--text-3)" : "var(--text)" }}>{ex.name}</div>
                   {ex.notes && <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 3, lineHeight: 1.5 }}>{ex.notes}</div>}
                 </div>
                 <div style={{ textAlign: "right", flexShrink: 0 }}>

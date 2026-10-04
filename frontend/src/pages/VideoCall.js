@@ -57,7 +57,7 @@ export default function VideoCall() {
           <button className="btn btn-ghost" data-testid="leave-call-btn" onClick={() => navigate(-1)} style={{ padding: "8px 16px", fontSize: 13.5 }}><Icons.ArrowLeft size={16} /> Leave</button>
           {session && (
             <div>
-              <div style={{ fontSize: 14, fontWeight: 700 }}>Session with {session.with}</div>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>Session with {session.with}</div>
               <div style={{ fontSize: 12, color: "var(--text-3)" }}>{session.date} · {session.time} · {session.specialty}</div>
             </div>
           )}

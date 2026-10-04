@@ -11,7 +11,7 @@ function Macro({ label, value, unit, color }) {
   return (
     <div className="clay-inset" style={{ padding: "12px 14px", textAlign: "center" }}>
       <div style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 600 }}>{label}</div>
-      <div className="display" style={{ fontSize: 19, fontWeight: 800, color }}>{value}<span style={{ fontSize: 11, fontWeight: 500 }}>{unit}</span></div>
+      <div className="display" style={{ fontSize: 19, fontWeight: 600, color }}>{value}<span style={{ fontSize: 11, fontWeight: 500 }}>{unit}</span></div>
     </div>
   );
 }
@@ -71,7 +71,7 @@ export default function FoodTrack() {
                   <div key={l.id} className="clay-inset" style={{ padding: 16 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                       <div>
-                        <div style={{ fontSize: 15, fontWeight: 700 }}>{l.result?.meal_name || "Meal"}</div>
+                        <div style={{ fontSize: 15, fontWeight: 600 }}>{l.result?.meal_name || "Meal"}</div>
                         <div style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 2 }}>{l.description}</div>
                       </div>
                       <div className="row" style={{ gap: 2, flexShrink: 0 }}>
@@ -85,10 +85,10 @@ export default function FoodTrack() {
                       </div>
                     </div>
                     <div className="grid-macros">
-                      <Macro label="Calories" value={Math.round(l.result?.calories || 0)} unit="" color="var(--accent)" />
-                      <Macro label="Protein" value={Math.round(l.result?.protein_g || 0)} unit="g" color="var(--teal)" />
-                      <Macro label="Carbs" value={Math.round(l.result?.carbs_g || 0)} unit="g" color="var(--amber)" />
-                      <Macro label="Fat" value={Math.round(l.result?.fat_g || 0)} unit="g" color="#7c6bd6" />
+                      <Macro label="Calories" value={Math.round(l.result?.calories || 0)} unit="" color="var(--text)" />
+                      <Macro label="Protein" value={Math.round(l.result?.protein_g || 0)} unit="g" color="var(--text)" />
+                      <Macro label="Carbs" value={Math.round(l.result?.carbs_g || 0)} unit="g" color="var(--text)" />
+                      <Macro label="Fat" value={Math.round(l.result?.fat_g || 0)} unit="g" color="var(--text)" />
                     </div>
                     {l.result?.notes && <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 12, lineHeight: 1.6 }}>{l.result.notes}</div>}
                   </div>
@@ -102,20 +102,20 @@ export default function FoodTrack() {
           <div className="clay fade-up" style={{ padding: 24, animationDelay: "80ms" }}>
             <div className="eyebrow" style={{ marginBottom: 14 }}>Today's totals</div>
             <div style={{ textAlign: "center", marginBottom: 8 }}>
-              <div className="display" style={{ fontSize: 40, fontWeight: 800, color: "var(--accent)" }}>{Math.round(totalCal)}</div>
+              <div className="display" style={{ fontSize: 40, fontWeight: 600, color: "var(--text)" }}>{Math.round(totalCal)}</div>
               <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>calories</div>
             </div>
             <div className="clay-inset" style={{ padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
               <span style={{ fontSize: 13, color: "var(--text-2)" }}>Protein</span>
-              <span style={{ fontSize: 15, fontWeight: 700, color: "var(--teal)" }}>{Math.round(totalProt)} g</span>
+              <span style={{ fontSize: 15, fontWeight: 600, color: "var(--teal)" }}>{Math.round(totalProt)} g</span>
             </div>
             <div className="clay-inset" style={{ padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
               <span style={{ fontSize: 13, color: "var(--text-2)" }}>Meals logged</span>
-              <span style={{ fontSize: 15, fontWeight: 700 }}>{todayLogs.length}</span>
+              <span style={{ fontSize: 15, fontWeight: 600 }}>{todayLogs.length}</span>
             </div>
           </div>
           <div className="glass fade-up" style={{ padding: 20, animationDelay: "140ms" }}>
-            <Icons.Info size={18} color="var(--teal)" style={{ marginBottom: 8 }} />
+            <Icons.Info size={18} color="var(--text)" style={{ marginBottom: 8 }} />
             <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.7 }}>Estimates are AI-generated for guidance. Be specific with portions for more accurate results.</div>
           </div>
         </div>

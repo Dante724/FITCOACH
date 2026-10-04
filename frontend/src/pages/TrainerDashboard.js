@@ -9,15 +9,15 @@ import { useToast } from "@/context/ToastContext";
 import { GOAL_LABEL, PLAN_LABEL } from "@/lib/focus";
 
 const KIND = {
-  session: { icon: "Video", color: "var(--teal)" },
-  approve: { icon: "BadgeCheck", color: "var(--accent)" },
-  message: { icon: "MessageCircle", color: "#7c6bd6" },
-  pose_review: { icon: "ScanEye", color: "#7c6bd6" },
-  needs_plan: { icon: "ClipboardPlus", color: "var(--amber)" },
+  session: { icon: "Video", color: "var(--text-2)" },
+  approve: { icon: "BadgeCheck", color: "var(--text-2)" },
+  message: { icon: "MessageCircle", color: "var(--text-2)" },
+  pose_review: { icon: "ScanEye", color: "var(--text-2)" },
+  needs_plan: { icon: "ClipboardPlus", color: "var(--text-2)" },
   plateau: { icon: "TrendingDown", color: "var(--accent)" },
   off_track: { icon: "TriangleAlert", color: "var(--accent)" },
-  inactive: { icon: "Moon", color: "var(--text-3)" },
-  no_food: { icon: "Utensils", color: "var(--text-3)" },
+  inactive: { icon: "Moon", color: "var(--text-2)" },
+  no_food: { icon: "Utensils", color: "var(--text-2)" },
 };
 
 function AttentionItem({ item, onAction, busy }) {
@@ -35,11 +35,11 @@ function AttentionItem({ item, onAction, busy }) {
 
   return (
     <div className="clay-inset" style={{ padding: "12px 14px", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }} data-testid={`attention-${item.kind}`}>
-      <div style={{ width: 38, height: 38, borderRadius: 11, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-        <Icon size={18} color={meta.color} />
+      <div style={{ width: 38, height: 38, borderRadius: 11, background: "var(--surface-2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Icon size={17} strokeWidth={1.75} color={meta.color} />
       </div>
       <div className="min0" style={{ flex: "1 1 180px", cursor: "pointer" }} onClick={() => onAction("open", item)}>
-        <div style={{ fontSize: 14, fontWeight: 700 }}>{item.client_name}</div>
+        <div style={{ fontSize: 14, fontWeight: 600 }}>{item.client_name}</div>
         <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>{item.text}</div>
       </div>
       <button className={item.kind === "approve" || item.kind === "session" ? "btn btn-primary" : "btn btn-ghost"} disabled={busy === item.id}
@@ -54,11 +54,11 @@ function ClientCard({ c, onOpen }) {
   const { brief } = c;
   return (
     <button className="clay fade-up" onClick={onOpen} data-testid={`client-card-${c.user_id}`}
-      style={{ padding: 18, border: "none", cursor: "pointer", textAlign: "left", color: "var(--text)", display: "flex", flexDirection: "column", gap: 10 }}>
+      style={{ padding: 18, cursor: "pointer", textAlign: "left", color: "var(--text)", display: "flex", flexDirection: "column", gap: 10 }}>
       <div className="row">
         <Avatar name={c.name} picture={c.picture} size={42} />
         <div className="min0" style={{ flex: 1 }}>
-          <div className="truncate" style={{ fontSize: 15, fontWeight: 700 }}>{c.name}</div>
+          <div className="truncate" style={{ fontSize: 15, fontWeight: 600 }}>{c.name}</div>
           <div style={{ fontSize: 12, color: "var(--text-3)" }}>{GOAL_LABEL[c.focus] || "No goal yet"}</div>
         </div>
         {c.pending_pose > 0 && <span className="chip chip-violet" title="Pose checks to review"><Icons.ScanEye size={12} /> {c.pending_pose}</span>}

@@ -55,7 +55,7 @@ export default function Workouts({ kind = "workout" }) {
       {plan === null && (
         <div className="clay fade-up empty" data-testid="plan-pending" style={{ padding: "56px 20px" }}>
           <Icons.ClipboardList size={38} style={{ opacity: 0.55, marginBottom: 12 }} />
-          <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Your coach is preparing your {yoga ? "practice" : "plan"}</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>Your coach is preparing your {yoga ? "practice" : "plan"}</div>
           <div style={{ maxWidth: 420, margin: "0 auto", lineHeight: 1.6 }}>Plans are drafted from your goals and checked by your coach before they reach you. You'll get a notification when it's ready.</div>
         </div>
       )}
@@ -63,12 +63,12 @@ export default function Workouts({ kind = "workout" }) {
       {plan && (
         <div className="grid-main-side">
           <div className="clay fade-up min0" style={{ padding: 22 }}>
-            <h3 className="display" style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>{plan.content.title}</h3>
+            <h3 className="display" style={{ fontSize: 20, fontWeight: 600, marginBottom: 4 }}>{plan.content.title}</h3>
             {plan.content.summary && <p style={{ fontSize: 13.5, color: "var(--text-2)", marginBottom: 12, lineHeight: 1.6 }}>{plan.content.summary}</p>}
             <div style={{ marginBottom: 16 }}><ApprovedBy plan={plan} /></div>
             <div className="row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
               <div className="eyebrow">Today's session</div>
-              <span className="chip chip-accent">{completed}/{total} done</span>
+              <span className="chip chip-neutral">{completed}/{total} done</span>
             </div>
             <div className="progress-track" style={{ marginBottom: 14 }}><div className="progress-fill" style={{ width: `${pct}%` }} /></div>
             <DaysPlanView content={plan.content} yoga={yoga} day={day} onDay={(i) => { setDay(i); setDone({}); }}
@@ -77,7 +77,7 @@ export default function Workouts({ kind = "workout" }) {
               const checkable = [...new Set(current.exercises.map((e) => matchPose(e.name)).filter(Boolean))];
               return checkable.length > 0 && (
                 <div className="clay-inset" style={{ padding: "12px 14px", marginTop: 14 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-2)", marginBottom: 8 }}><Icons.ScanEye size={14} /> Check your form with the camera</div>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-2)", marginBottom: 8 }}><Icons.ScanEye size={14} /> Check your form with the camera</div>
                   <div className="row-wrap" style={{ gap: 8 }}>
                     {checkable.map((k) => (
                       <button key={k} className="btn btn-ghost" data-testid={`check-form-${k}`} onClick={() => navigate(`/pose-check?pose=${k}`)} style={{ padding: "8px 13px", fontSize: 12.5 }}>{POSES[k].label}</button>
@@ -103,7 +103,7 @@ export default function Workouts({ kind = "workout" }) {
                 {sessions.map((s) => (
                   <div key={s.id} className="clay-inset" style={{ padding: "13px 14px" }}>
                     <div className="row" style={{ justifyContent: "space-between", marginBottom: 4 }}>
-                      <span className="truncate" style={{ fontSize: 13.5, fontWeight: 700 }}>{s.name}</span>
+                      <span className="truncate" style={{ fontSize: 13.5, fontWeight: 600 }}>{s.name}</span>
                       <span style={{ fontSize: 11.5, color: "var(--text-3)", flexShrink: 0 }}>{(s.created_at || "").slice(0, 10)}</span>
                     </div>
                     <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>{s.exercises?.length || 0} {yoga ? "poses" : "exercises"} · {s.notes}</div>

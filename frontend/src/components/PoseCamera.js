@@ -234,8 +234,8 @@ export default function PoseCamera({ poseKey, onResult }) {
 
       {!showVideo && (
         <div className="clay-inset" style={{ padding: "34px 18px", textAlign: "center" }}>
-          <Icons.PersonStanding size={40} color="var(--accent)" style={{ marginBottom: 10 }} />
-          <div style={{ fontWeight: 700, fontSize: 15.5, marginBottom: 4 }}>{def?.label} <span style={{ color: "var(--text-3)", fontWeight: 500 }}>· {def?.sanskrit}</span></div>
+          <Icons.PersonStanding size={36} strokeWidth={1.5} color="var(--text)" style={{ marginBottom: 10 }} />
+          <div style={{ fontWeight: 600, fontSize: 15.5, marginBottom: 4 }}>{def?.label} <span style={{ color: "var(--text-3)", fontWeight: 500 }}>· {def?.sanskrit}</span></div>
           <div style={{ fontSize: 13.5, color: "var(--text-2)", marginBottom: 6 }}>{def?.tip} Prop your phone up about 2–3 metres away.</div>
           <div style={{ fontSize: 12, color: "var(--text-3)" }}><Icons.ShieldCheck size={13} /> Tracking runs on your device. Only one still photo is shared with your coach.</div>
         </div>

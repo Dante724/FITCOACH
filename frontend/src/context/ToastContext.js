@@ -19,10 +19,10 @@ export function ToastProvider({ children }) {
       <div className="toast-wrap">
         {toasts.map((t) => (
           <div key={t.id} className="glass fade-up" data-testid="toast"
-            style={{ display: "flex", alignItems: "center", gap: 10, padding: "13px 16px", borderRadius: 14, maxWidth: 320, borderLeft: `3px solid ${t.type === "error" ? "var(--accent)" : "var(--teal)"}` }}>
-            {t.type === "error" ? <AlertCircle size={18} color="var(--accent)" /> : <CheckCircle2 size={18} color="var(--teal)" />}
+            style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", borderRadius: 10, maxWidth: 340, background: "var(--ink)", color: "#fff", border: "none", boxShadow: "var(--shadow-pop)" }}>
+            {t.type === "error" ? <AlertCircle size={18} color="#ff9b7d" /> : <CheckCircle2 size={18} color="#7fd6ae" />}
             <span style={{ fontSize: 13.5, fontWeight: 500, flex: 1 }}>{t.message}</span>
-            <X size={16} style={{ cursor: "pointer", color: "var(--text-3)" }} onClick={() => remove(t.id)} />
+            <X size={16} style={{ cursor: "pointer", color: "rgba(255,255,255,0.6)" }} onClick={() => remove(t.id)} />
           </div>
         ))}
       </div>

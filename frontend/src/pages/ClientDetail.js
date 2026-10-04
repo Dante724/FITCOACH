@@ -52,7 +52,7 @@ function PlanSection({ type, plans, clientId, onChanged }) {
                 <span className="chip chip-teal"><Icons.BadgeCheck size={13} /> Live · approved {timeAgo(active.approved_at)}</span>
                 {active.reason && <span className="chip chip-neutral">Why: {active.reason}</span>}
               </div>
-              <h3 className="display" style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>{active.content.title}</h3>
+              <h3 className="display" style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>{active.content.title}</h3>
               {type === "meal" ? <MealPlanView content={active.content} /> : <DaysPlanView content={active.content} yoga={type === "yoga"} day={day} onDay={setDay} />}
             </div>
           ) : (
@@ -119,14 +119,14 @@ function PoseReviewCard({ check, canReview, onDone }) {
           <div className="row" style={{ gap: 12, marginBottom: 12 }}>
             <ScoreRing score={reviewed ? check.coach_score : check.score} size={64} />
             <div className="min0">
-              <div style={{ fontWeight: 800, fontSize: 16 }}>{check.pose_label}</div>
+              <div style={{ fontWeight: 600, fontSize: 16 }}>{check.pose_label}</div>
               <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>{timeAgo(check.created_at)} · auto score {check.score}{check.frames ? ` · ${check.frames} frames` : ""}</div>
             </div>
           </div>
           <CheckList checks={check.checks} />
           {reviewed ? (
             <div className="clay-inset" style={{ padding: 12, marginTop: 14, fontSize: 13.5 }}>
-              <div style={{ fontWeight: 700, marginBottom: 6 }}><Icons.BadgeCheck size={14} color="var(--teal)" /> {check.coach_verdict === "confirmed" ? "Confirmed" : "Adjusted"} by {check.reviewed_by_name}</div>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}><Icons.BadgeCheck size={14} color="var(--teal)" /> {check.coach_verdict === "confirmed" ? "Confirmed" : "Adjusted"} by {check.reviewed_by_name}</div>
               {check.coach_flags.length ? <ul style={{ marginLeft: 18, lineHeight: 1.7 }}>{check.coach_flags.map((f, i) => <li key={i}>{f}</li>)}</ul> : <div>No corrections — good alignment.</div>}
               {check.coach_note && <div style={{ marginTop: 6 }}><strong>Note:</strong> {check.coach_note}</div>}
             </div>
@@ -195,7 +195,7 @@ export default function ClientDetail() {
       <div className="row fade-up" style={{ marginBottom: 18, gap: 14 }}>
         <Avatar name={client.name} picture={client.picture} size={56} />
         <div className="min0">
-          <h1 className="truncate" style={{ fontSize: 28, fontWeight: 800 }}>{client.name}</h1>
+          <h1 className="truncate" style={{ fontSize: 28, fontWeight: 600 }}>{client.name}</h1>
           <div style={{ fontSize: 13.5, color: "var(--text-2)" }}>{GOAL_LABEL[client.focus] || "No goal yet"} · {client.email}</div>
         </div>
       </div>
@@ -211,7 +211,7 @@ export default function ClientDetail() {
         <div className="grid-main-side">
           <div className="stack" style={{ gap: 18 }}>
             <Card title="This week">
-              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>{brief.headline}</div>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 10 }}>{brief.headline}</div>
               <div className="row-wrap" style={{ marginBottom: 12 }}>
                 {brief.flags.length === 0 && <span className="chip chip-teal"><Icons.Check size={13} /> On track</span>}
                 {brief.flags.map((f) => <span key={f.kind} className="chip chip-accent">{f.text}</span>)}
@@ -227,7 +227,7 @@ export default function ClientDetail() {
               {INTAKE_LABELS.filter(([k]) => intake[k] !== undefined && intake[k] !== null && intake[k] !== "").map(([k, label, unit]) => (
                 <div key={k} className="row" style={{ justifyContent: "space-between", padding: "9px 0", borderBottom: "1px solid rgba(139,150,172,0.16)", fontSize: 13.5 }}>
                   <span style={{ color: "var(--text-2)" }}>{label}</span>
-                  <span style={{ fontWeight: 700, textAlign: "right" }}>{String(intake[k]).replace("_", " ")}{unit ? ` ${unit}` : ""}</span>
+                  <span style={{ fontWeight: 600, textAlign: "right" }}>{String(intake[k]).replace("_", " ")}{unit ? ` ${unit}` : ""}</span>
                 </div>
               ))}
               {Object.keys(intake).length === 0 && <div className="empty">The client hasn't filled in the questionnaire yet.</div>}
@@ -279,11 +279,11 @@ export default function ClientDetail() {
               {data.food.map((f) => (
                 <div key={f.id} className="clay-inset" style={{ padding: "12px 14px", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                   <div className="min0" style={{ flex: "1 1 200px" }}>
-                    <div style={{ fontSize: 14, fontWeight: 700 }}>{f.result?.meal_name || "Meal"} <span style={{ fontSize: 11.5, color: "var(--text-3)", fontWeight: 500 }}>· {timeAgo(f.created_at)}</span></div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>{f.result?.meal_name || "Meal"} <span style={{ fontSize: 11.5, color: "var(--text-3)", fontWeight: 500 }}>· {timeAgo(f.created_at)}</span></div>
                     <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>{f.description}</div>
                   </div>
-                  <span className="chip chip-accent">{Math.round(f.result?.calories || 0)} kcal</span>
-                  <span className="chip chip-teal">P {Math.round(f.result?.protein_g || 0)}g</span>
+                  <span className="chip chip-neutral">{Math.round(f.result?.calories || 0)} kcal</span>
+                  <span className="chip chip-neutral">P {Math.round(f.result?.protein_g || 0)}g</span>
                   {isCoach && <button className="btn btn-ghost" onClick={() => discuss({ type: "food", id: f.id, label: f.result?.meal_name || f.description })} style={{ padding: "7px 12px", fontSize: 12.5 }}><Icons.MessageCircle size={14} /> Comment</button>}
                 </div>
               ))}
@@ -299,7 +299,7 @@ export default function ClientDetail() {
               {data.sessions.map((s) => (
                 <div key={s.id} className="clay-inset" style={{ padding: "12px 14px", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                   <div className="min0" style={{ flex: "1 1 200px" }}>
-                    <div style={{ fontSize: 14, fontWeight: 700 }}>{s.name}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>{s.name}</div>
                     <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>{timeAgo(s.created_at)} · {s.notes}</div>
                   </div>
                   {isCoach && <button className="btn btn-ghost" onClick={() => discuss({ type: "workout", id: s.id, label: s.name })} style={{ padding: "7px 12px", fontSize: 12.5 }}><Icons.MessageCircle size={14} /> Comment</button>}

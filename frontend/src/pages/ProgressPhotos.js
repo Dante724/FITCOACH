@@ -17,14 +17,14 @@ function CompareBar({ photos, onClose }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         {[a, b].map((p, i) => (
           <div key={p.id}>
-            <div style={{ position: "relative", borderRadius: 16, overflow: "hidden", aspectRatio: "3/4", background: "var(--clay-inset, rgba(0,0,0,0.05))" }}>
+            <div style={{ position: "relative", borderRadius: 16, overflow: "hidden", aspectRatio: "3/4", background: "var(--surface-2)" }}>
               <img src={p.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              <div style={{ position: "absolute", top: 10, left: 10, padding: "4px 10px", borderRadius: 999, fontSize: 11, fontWeight: 800, color: "#fff", background: i === 0 ? "rgba(27,33,48,0.7)" : "linear-gradient(135deg, var(--accent), var(--accent-2))" }}>
+              <div style={{ position: "absolute", top: 10, left: 10, padding: "4px 10px", borderRadius: 999, fontSize: 11, fontWeight: 600, color: "#fff", background: i === 0 ? "rgba(12,12,14,0.55)" : "var(--ink)" }}>
                 {i === 0 ? "BEFORE" : "AFTER"}
               </div>
             </div>
             <div style={{ marginTop: 8, textAlign: "center" }}>
-              <div style={{ fontSize: 13.5, fontWeight: 700 }}>{fmtDate(p.date)}</div>
+              <div style={{ fontSize: 13.5, fontWeight: 600 }}>{fmtDate(p.date)}</div>
               {p.weight != null && <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>{p.weight} kg</div>}
             </div>
           </div>
@@ -127,7 +127,7 @@ export default function ProgressPhotos() {
       {photos.length === 0 ? (
         <div className="clay" style={{ padding: "50px 24px", textAlign: "center" }}>
           <Icons.ImagePlus size={30} color="var(--text-3)" style={{ marginBottom: 10 }} />
-          <div style={{ fontSize: 14.5, fontWeight: 700 }}>No progress photos yet</div>
+          <div style={{ fontSize: 14.5, fontWeight: 600 }}>No progress photos yet</div>
           <div style={{ fontSize: 13, color: "var(--text-3)", marginTop: 4 }}>Add your first photo to start your timeline.</div>
         </div>
       ) : (
@@ -138,10 +138,10 @@ export default function ProgressPhotos() {
             return (
               <div key={p.id} data-testid={`photo-card-${p.id}`} className="clay fade-up" style={{ padding: 10, position: "relative", cursor: compareMode ? "pointer" : "default", outline: isSel ? "2.5px solid var(--teal)" : "none", outlineOffset: 2 }}
                 onClick={() => compareMode && toggleSelect(p.id)}>
-                <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", aspectRatio: "3/4", background: "var(--clay-inset, rgba(0,0,0,0.05))" }}>
+                <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", aspectRatio: "3/4", background: "var(--surface-2)" }}>
                   <img src={p.url} alt={`Progress ${p.date}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                   {compareMode && isSel && (
-                    <div style={{ position: "absolute", top: 8, right: 8, width: 26, height: 26, borderRadius: "50%", background: "var(--teal)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800 }}>{selIdx + 1}</div>
+                    <div style={{ position: "absolute", top: 8, right: 8, width: 26, height: 26, borderRadius: "50%", background: "var(--teal)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600 }}>{selIdx + 1}</div>
                   )}
                   {!compareMode && (
                     <button data-testid={`delete-photo-${p.id}`} onClick={(e) => { e.stopPropagation(); remove(p.id); }}
@@ -151,7 +151,7 @@ export default function ProgressPhotos() {
                   )}
                 </div>
                 <div style={{ padding: "10px 4px 2px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 700 }}>{fmtDate(p.date)}</span>
+                  <span style={{ fontSize: 12.5, fontWeight: 600 }}>{fmtDate(p.date)}</span>
                   {p.weight != null && <span className="chip chip-neutral" style={{ fontSize: 11 }}>{p.weight} kg</span>}
                 </div>
                 {p.note && <div style={{ fontSize: 11.5, color: "var(--text-3)", padding: "0 4px 4px", lineHeight: 1.5 }}>{p.note}</div>}
@@ -165,11 +165,11 @@ export default function ProgressPhotos() {
         <div onClick={closeModal} style={{ position: "fixed", inset: 0, background: "rgba(27,33,48,0.45)", backdropFilter: "blur(6px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div onClick={(e) => e.stopPropagation()} className="glass fade-up" style={{ width: "100%", maxWidth: 440, padding: 28 }} data-testid="photo-upload-modal">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-              <h3 className="display" style={{ fontSize: 19, fontWeight: 700 }}>Add progress photo</h3>
+              <h3 className="display" style={{ fontSize: 19, fontWeight: 600 }}>Add progress photo</h3>
               <Icons.X size={20} style={{ cursor: "pointer", color: "var(--text-3)" }} onClick={closeModal} />
             </div>
             {previewUrl && (
-              <div style={{ borderRadius: 14, overflow: "hidden", aspectRatio: "3/4", maxHeight: 260, marginBottom: 16, background: "var(--clay-inset, rgba(0,0,0,0.05))" }}>
+              <div style={{ borderRadius: 14, overflow: "hidden", aspectRatio: "3/4", maxHeight: 260, marginBottom: 16, background: "var(--surface-2)" }}>
                 <img src={previewUrl} alt="preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               </div>
             )}

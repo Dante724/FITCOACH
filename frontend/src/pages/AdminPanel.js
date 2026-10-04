@@ -14,10 +14,10 @@ const FILTERS = [["all", "All"], ["needs", "Needs a coach"], ["client", "Clients
 function Stat({ icon: Icon, label, value, accent, delay }) {
   return (
     <div className="clay fade-up stat-card" style={{ padding: 20, animationDelay: `${delay}ms` }}>
-      <div className="stat-icon" style={{ width: 40, height: 40, borderRadius: 12, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+      <div className="stat-icon" style={{ width: 40, height: 40, borderRadius: 12, background: "var(--surface-2)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
         <Icon size={20} color={accent} />
       </div>
-      <div className="display" style={{ fontSize: 26, fontWeight: 800 }}>{value}</div>
+      <div className="display" style={{ fontSize: 26, fontWeight: 600 }}>{value}</div>
       <div style={{ fontSize: 12.5, color: "var(--text-3)", fontWeight: 600 }}>{label}</div>
     </div>
   );
@@ -47,7 +47,7 @@ function AssignModal({ client, coaches, onClose, onSaved }) {
     <div className="modal-backdrop" onClick={onClose}>
       <div className="glass fade-up modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }} data-testid="assign-modal">
         <div className="row" style={{ justifyContent: "space-between", marginBottom: 4 }}>
-          <h3 className="display" style={{ fontSize: 20, fontWeight: 700 }}>Assign coaches</h3>
+          <h3 className="display" style={{ fontSize: 20, fontWeight: 600 }}>Assign coaches</h3>
           <button className="icon-btn" onClick={onClose}><Icons.X size={18} /></button>
         </div>
         <p style={{ fontSize: 13.5, color: "var(--text-2)", marginBottom: 18 }}>{client.name} · goal: {GOAL_LABEL[client.focus] || "not chosen yet"}</p>
@@ -146,7 +146,7 @@ export default function AdminPanel() {
 
       {stats?.unassigned > 0 && (
         <button className="clay-inset fade-up row" onClick={() => setFilter("needs")} style={{ width: "100%", border: "none", cursor: "pointer", padding: "14px 16px", marginBottom: 18, color: "var(--text)", textAlign: "left" }}>
-          <Icons.TriangleAlert size={18} color="var(--accent)" />
+          <Icons.TriangleAlert size={16} color="var(--accent)" />
           <span style={{ fontSize: 14, fontWeight: 600, flex: 1 }}>{stats.unassigned} client{stats.unassigned > 1 ? "s are" : " is"} waiting for a coach</span>
           <Icons.ChevronRight size={18} color="var(--text-3)" />
         </button>
@@ -159,7 +159,7 @@ export default function AdminPanel() {
             <div key={c.user_id} className="clay-inset row" style={{ padding: "12px 14px" }}>
               <Avatar name={c.name} size={36} />
               <div className="min0" style={{ flex: 1 }}>
-                <div className="truncate" style={{ fontSize: 13.5, fontWeight: 700 }}>{c.name}</div>
+                <div className="truncate" style={{ fontSize: 13.5, fontWeight: 600 }}>{c.name}</div>
                 <div style={{ fontSize: 12, color: "var(--text-3)" }}>{c.coach_type === "yoga" ? "Yoga" : "Fitness"} · {c.clients}/{c.max_clients} clients</div>
                 <div className="progress-track" style={{ height: 6, marginTop: 6 }}><div className="progress-fill" style={{ width: `${Math.min(100, (c.clients / c.max_clients) * 100)}%` }} /></div>
               </div>
@@ -190,7 +190,7 @@ export default function AdminPanel() {
                 <div className="row min0" style={{ flex: "1 1 220px" }}>
                   <Avatar name={u.name} picture={u.picture} size={36} />
                   <div className="min0">
-                    <div className="truncate" style={{ fontSize: 14, fontWeight: 700 }}>{u.name}</div>
+                    <div className="truncate" style={{ fontSize: 14, fontWeight: 600 }}>{u.name}</div>
                     <div className="truncate" style={{ fontSize: 12, color: "var(--text-3)" }}>{u.email}</div>
                   </div>
                 </div>
@@ -240,7 +240,7 @@ export default function AdminPanel() {
               <Icons.Mail size={20} color={emailStatus?.enabled ? "var(--teal)" : "var(--text-3)"} />
             </div>
             <div className="min0">
-              <div style={{ fontSize: 14.5, fontWeight: 700 }}>Email delivery (Gmail)</div>
+              <div style={{ fontSize: 14.5, fontWeight: 600 }}>Email delivery (Gmail)</div>
               <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>
                 {emailStatus?.enabled ? `Active · sending from ${emailStatus.from_address} · reminders ${emailStatus.reminder_hours_before}h before` : "Not configured — add GMAIL_ADDRESS and GMAIL_APP_PASSWORD to the backend, then restart."}
               </div>
@@ -263,7 +263,7 @@ export default function AdminPanel() {
         <div className="modal-backdrop" onClick={() => setMembershipFor(null)}>
           <div onClick={(e) => e.stopPropagation()} className="glass fade-up modal" data-testid="membership-modal" style={{ maxWidth: 420 }}>
             <div className="row" style={{ justifyContent: "space-between", marginBottom: 6 }}>
-              <h3 className="display" style={{ fontSize: 20, fontWeight: 700 }}>Manage membership</h3>
+              <h3 className="display" style={{ fontSize: 20, fontWeight: 600 }}>Manage membership</h3>
               <button className="icon-btn" onClick={() => setMembershipFor(null)}><Icons.X size={18} /></button>
             </div>
             <p style={{ fontSize: 13.5, color: "var(--text-2)", marginBottom: 20 }}>{membershipFor.name} · {membershipFor.email}</p>
@@ -273,7 +273,7 @@ export default function AdminPanel() {
                   <span>Grant {label}</span><Icons.ChevronRight size={16} />
                 </button>
               ))}
-              <button data-testid="revoke-membership" className="btn" onClick={() => setMembership(membershipFor, null)} style={{ padding: "13px 16px", background: "var(--accent-soft)", color: "var(--accent)" }}>Revoke membership</button>
+              <button data-testid="revoke-membership" className="btn" onClick={() => setMembership(membershipFor, null)} style={{ padding: "13px 16px", background: "var(--accent-soft)", color: "var(--accent)", borderColor: "transparent" }}>Revoke membership</button>
             </div>
           </div>
         </div>

@@ -46,21 +46,20 @@ export default function NotificationBell() {
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
-      <button data-testid="notif-bell" onClick={toggle} className="clay-sm"
-        style={{ width: 44, height: 44, borderRadius: 13, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", background: "var(--surface)" }}>
-        <Icons.Bell size={20} color="var(--text-2)" />
+      <button data-testid="notif-bell" onClick={toggle} className="icon-btn" aria-label="Notifications" style={{ position: "relative", width: 38, height: 38 }}>
+        <Icons.Bell size={18} strokeWidth={1.75} color="var(--text-2)" />
         {data.badge > 0 && (
-          <span data-testid="notif-badge" style={{ position: "absolute", top: 6, right: 6, minWidth: 18, height: 18, padding: "0 4px", borderRadius: 9, background: "var(--accent)", color: "#fff", fontSize: 10.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <span data-testid="notif-badge" className="badge" style={{ position: "absolute", top: 2, right: 0, minWidth: 16, height: 16, fontSize: 10 }}>
             {data.badge > 9 ? "9+" : data.badge}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="glass fade-up" data-testid="notif-panel"
-          style={{ position: "absolute", top: 54, right: 0, width: 340, maxHeight: 440, overflowY: "auto", borderRadius: 18, padding: 14, zIndex: 60 }}>
+        <div className="glass popover fade-up" data-testid="notif-panel"
+          style={{ position: "absolute", top: 46, right: 0, width: "min(340px, calc(100vw - 24px))", maxHeight: 440, overflowY: "auto", borderRadius: 12, padding: 12, zIndex: 60 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 6px 12px" }}>
-            <span className="display" style={{ fontSize: 16, fontWeight: 700 }}>Notifications</span>
+            <span className="display" style={{ fontSize: 16, fontWeight: 600 }}>Notifications</span>
             <Icons.Bell size={16} color="var(--text-3)" />
           </div>
           {items.length === 0 ? (
@@ -77,7 +76,7 @@ export default function NotificationBell() {
                         {isReminder ? (n.link === "/progress" ? <Icons.Camera size={16} color="var(--teal)" /> : <Icons.CalendarClock size={16} color="var(--teal)" />) : <Icons.Info size={16} color="var(--accent)" />}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13.5, fontWeight: 700 }}>{n.title}</div>
+                        <div style={{ fontSize: 13.5, fontWeight: 600 }}>{n.title}</div>
                         <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5 }}>{n.body}</div>
                       </div>
                     </div>

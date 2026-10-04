@@ -46,7 +46,7 @@ export default function TrainerAvailability() {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18 }}>
             {DAYS.map(([label, d]) => (
               <button key={d} data-testid={`day-${d}`} onClick={() => toggleDay(d)} className={profile.available_days.includes(d) ? "" : "clay-inset"}
-                style={{ padding: "9px 14px", borderRadius: 10, border: profile.available_days.includes(d) ? "2px solid var(--accent)" : "none", background: profile.available_days.includes(d) ? "var(--accent-soft)" : undefined, color: profile.available_days.includes(d) ? "var(--accent)" : "var(--text-2)", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+                style={{ padding: "9px 14px", borderRadius: 10, border: profile.available_days.includes(d) ? "1px solid var(--ink)" : "1px solid transparent", background: profile.available_days.includes(d) ? "var(--ink)" : undefined, color: profile.available_days.includes(d) ? "#fff" : "var(--text-2)", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
                 {label}
               </button>
             ))}
@@ -56,7 +56,7 @@ export default function TrainerAvailability() {
           <div className="grid-slots">
             {ALL_TIMES.map((t) => (
               <button key={t} data-testid={`time-${t}`} onClick={() => toggleTime(t)} className={profile.available_times.includes(t) ? "" : "clay-inset"}
-                style={{ padding: "10px 0", borderRadius: 10, border: profile.available_times.includes(t) ? "2px solid var(--teal)" : "none", background: profile.available_times.includes(t) ? "var(--teal-soft)" : undefined, color: profile.available_times.includes(t) ? "var(--teal)" : "var(--text-2)", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+                style={{ padding: "10px 0", borderRadius: 10, border: profile.available_times.includes(t) ? "1px solid var(--ink)" : "1px solid transparent", background: profile.available_times.includes(t) ? "var(--ink)" : undefined, color: profile.available_times.includes(t) ? "#fff" : "var(--text-2)", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
                 {t}
               </button>
             ))}

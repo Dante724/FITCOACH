@@ -57,7 +57,7 @@ export default function FocusSelect() {
     <div style={{ minHeight: "100vh", padding: "48px 16px", maxWidth: 1000, margin: "0 auto" }}>
       <div className="fade-up" style={{ textAlign: "center", marginBottom: 34 }}>
         <div className="eyebrow" style={{ marginBottom: 12 }}>Step {step} of 2</div>
-        <h1 className="display" style={{ fontSize: 38, fontWeight: 800, marginBottom: 12 }}>
+        <h1 style={{ fontSize: 34, marginBottom: 10 }}>
           {step === 1 ? `What's your goal${user?.name ? `, ${user.name.split(" ")[0]}` : ""}?` : "Tell your coach about you"}
         </h1>
         <p style={{ fontSize: 15, color: "var(--text-2)", maxWidth: 540, margin: "0 auto" }}>
@@ -74,16 +74,16 @@ export default function FocusSelect() {
               const active = selected === f.key;
               return (
                 <button key={f.key} data-testid={`focus-${f.key}`} onClick={() => setSelected(f.key)}
-                  className={active ? "glass fade-up" : "clay fade-up"}
-                  style={{ textAlign: "left", padding: 24, border: active ? `2px solid ${f.accent}` : "2px solid transparent", cursor: "pointer",
-                    animationDelay: `${idx * 60}ms`, transition: "border-color 0.2s ease, transform 0.2s ease", transform: active ? "translateY(-3px)" : "none", color: "var(--text)" }}>
+                  className="clay fade-up"
+                  style={{ textAlign: "left", padding: 24, borderColor: active ? "var(--ink)" : undefined, boxShadow: active ? "0 0 0 1px var(--ink)" : "none", cursor: "pointer",
+                    animationDelay: `${idx * 60}ms`, transition: "border-color 0.15s ease, box-shadow 0.15s ease", color: "var(--text)" }}>
                   <div className="row" style={{ justifyContent: "space-between", marginBottom: 16 }}>
-                    <div style={{ width: 50, height: 50, borderRadius: 16, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <Icon size={25} color={f.accent} />
+                    <div style={{ width: 50, height: 50, borderRadius: 16, background: "var(--surface-2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <Icon size={22} strokeWidth={1.75} color="var(--text)" />
                     </div>
-                    {active && <Icons.CheckCircle2 size={24} color={f.accent} />}
+                    {active && <Icons.CheckCircle2 size={22} color="var(--text)" />}
                   </div>
-                  <h3 className="display" style={{ fontSize: 21, fontWeight: 700, marginBottom: 6 }}>{f.label}</h3>
+                  <h3 className="display" style={{ fontSize: 21, fontWeight: 600, marginBottom: 6 }}>{f.label}</h3>
                   <p style={{ fontSize: 14, color: "var(--text-2)", lineHeight: 1.6, marginBottom: 14 }}>{f.tagline}</p>
                   <div className="row-wrap" style={{ gap: 7 }}>
                     {f.coaches.map((c) => <span key={c} className="chip chip-neutral">{c === "yoga" ? "Yoga coach" : "Fitness & nutrition coach"}</span>)}
