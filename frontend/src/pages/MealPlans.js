@@ -25,8 +25,8 @@ export default function MealPlans() {
       {plan === undefined && <div className="spinner" style={{ margin: "60px auto" }} />}
       {plan === null && (
         <div className="clay fade-up empty" data-testid="meal-pending" style={{ padding: "56px 20px" }}>
-          <Icons.UtensilsCrossed size={38} style={{ opacity: 0.55, marginBottom: 12 }} />
-          <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>Your coach is preparing your nutrition plan</div>
+          <div className="empty-medal"><Icons.UtensilsCrossed size={26} strokeWidth={1.6} /></div>
+          <div className="empty-title">Your coach is preparing your nutrition plan</div>
           <div style={{ maxWidth: 420, margin: "0 auto", lineHeight: 1.6 }}>Meanwhile, keep logging your meals in Food Log — it helps your coach set the right targets.</div>
           <button className="btn btn-primary" onClick={() => navigate("/food")} style={{ marginTop: 18 }}><Icons.Utensils size={17} /> Open Food Log</button>
         </div>

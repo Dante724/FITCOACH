@@ -6,8 +6,9 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { payWithRazorpay } from "@/lib/payments";
+import { localDate } from "@/lib/focus";
 
-function todayISO() { return new Date().toISOString().slice(0, 10); }
+function todayISO() { return localDate(); }
 
 export default function Booking() {
   const { user } = useAuth();

@@ -35,8 +35,8 @@ export default function Messages() {
       {coaches === null && <div className="spinner" style={{ margin: "60px auto" }} />}
       {coaches && list.length === 0 && (
         <div className="clay empty" style={{ padding: "56px 20px" }}>
-          <Icons.UserRoundSearch size={36} style={{ opacity: 0.55, marginBottom: 10 }} />
-          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>Your coach hasn't been assigned yet</div>
+          <div className="empty-medal"><Icons.UserRoundSearch size={26} strokeWidth={1.6} /></div>
+          <div className="empty-title">Your coach hasn't been assigned yet</div>
           <div>You'll be able to message them here as soon as they are.</div>
         </div>
       )}

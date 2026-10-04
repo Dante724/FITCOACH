@@ -83,14 +83,14 @@ export default function Progress() {
       {tab === "photos" && <ProgressPhotos />}
 
       {tab === "measurements" && (<>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
+      <div className="grid-stats" style={{ marginBottom: 16 }}>
         {["weight", "body_fat", "waist", "chest"].map((fid, i) => {
           const f = FIELDS.find((x) => x.id === fid);
           const val = latest[fid], pv = prev[fid];
           const diff = (typeof val === "number" && typeof pv === "number") ? Math.round((val - pv) * 10) / 10 : null;
           const better = diff !== null && (["weight", "body_fat", "waist"].includes(fid) ? diff < 0 : diff > 0);
           return (
-            <div key={fid} className="clay fade-up" style={{ padding: 20, animationDelay: `${i * 60}ms` }}>
+            <div key={fid} className="clay fade-up stat-card" style={{ padding: 20, animationDelay: `${i * 60}ms` }}>
               <div style={{ fontSize: 12.5, color: "var(--text-3)", fontWeight: 600, marginBottom: 8 }}>{f.label}</div>
               <div className="display" style={{ fontSize: 26, fontWeight: 600 }}>{val ?? "—"}<span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-2)" }}> {val != null ? f.unit : ""}</span></div>
               {diff !== null ? (
@@ -103,7 +103,7 @@ export default function Progress() {
         })}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 18 }}>
+      <div className="grid-main-side">
         <div className="clay fade-up" style={{ padding: 26 }}>
           <div className="eyebrow" style={{ marginBottom: 6 }}>Trend</div>
           <h3 className="display" style={{ fontSize: 17, fontWeight: 600, marginBottom: 16 }}>Weight over time</h3>
@@ -132,13 +132,14 @@ export default function Progress() {
         ) : (
           <div data-testid="progress-list">
             {[...entries].reverse().map((e) => (
-              <div key={e.id} className="clay-inset" style={{ padding: "13px 16px", marginBottom: 9, display: "grid", gridTemplateColumns: "120px repeat(4, 1fr) 40px", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>{e.date}</span>
-                <span style={{ fontSize: 13 }}>{e.weight != null ? `${e.weight} kg` : "—"}</span>
-                <span style={{ fontSize: 13 }}>{e.body_fat != null ? `${e.body_fat} %` : "—"}</span>
-                <span style={{ fontSize: 13 }}>{e.waist != null ? `${e.waist} cm` : "—"}</span>
-                <span style={{ fontSize: 13 }}>{e.chest != null ? `${e.chest} cm` : "—"}</span>
-                <Icons.Trash2 size={16} data-testid={`delete-progress-${e.id}`} style={{ cursor: "pointer", color: "var(--text-3)", justifySelf: "end" }} onClick={() => remove(e.id)} />
+              <div key={e.id} className="clay-inset history-row">
+                <span className="history-date">{new Date(e.date + "T12:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
+                <span className="history-vals">
+                  {[["weight", "kg"], ["body_fat", "%"], ["waist", "cm waist"], ["chest", "cm chest"]].filter(([k]) => e[k] != null).map(([k, u]) => (
+                    <span key={k} className="chip chip-neutral">{e[k]} {u}</span>
+                  ))}
+                </span>
+                <button className="icon-btn" data-testid={`delete-progress-${e.id}`} onClick={() => remove(e.id)} aria-label="Delete entry"><Icons.Trash2 size={15} /></button>
               </div>
             ))}
           </div>
@@ -153,7 +154,7 @@ export default function Progress() {
               <h3 className="display" style={{ fontSize: 20, fontWeight: 600 }}>Log measurements</h3>
               <Icons.X size={20} style={{ cursor: "pointer", color: "var(--text-3)" }} onClick={() => setOpen(false)} />
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 13 }}>
+            <div className="grid-pair">
               {FIELDS.map((f) => (
                 <div key={f.id}>
                   <label className="label">{f.label} ({f.unit})</label>

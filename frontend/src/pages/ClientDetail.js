@@ -11,7 +11,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { startCall } from "@/lib/calls";
-import { GOAL_LABEL, PLAN_LABEL, timeAgo } from "@/lib/focus";
+import { GOAL_LABEL, PLAN_LABEL, timeAgo, localDate } from "@/lib/focus";
 
 const TRACK_TYPES = { fitness: ["workout", "meal"], yoga: ["yoga"] };
 const INTAKE_LABELS = [["age", "Age"], ["sex", "Sex"], ["height_cm", "Height", "cm"], ["weight_kg", "Start weight", "kg"], ["target_weight_kg", "Target", "kg"],
@@ -161,7 +161,7 @@ function PoseReviewCard({ check, canReview, onDone }) {
 
 function ScheduleModal({ clientId, clientName, onClose, onDone }) {
   const { push } = useToast();
-  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const tomorrow = localDate(new Date(Date.now() + 86400000));
   const [date, setDate] = useState(tomorrow);
   const [time, setTime] = useState("07:00");
   const [saving, setSaving] = useState(false);
@@ -182,7 +182,7 @@ function ScheduleModal({ clientId, clientName, onClose, onDone }) {
         </div>
         <p style={{ fontSize: 13.5, color: "var(--text-2)", marginBottom: 18 }}>In-app video call with {clientName}. You'll both get reminders an hour and 10 minutes before.</p>
         <div className="grid-2" style={{ gap: 12 }}>
-          <div><label className="label">Date</label><input className="field" type="date" min={new Date().toISOString().slice(0, 10)} value={date} onChange={(e) => setDate(e.target.value)} data-testid="schedule-date" /></div>
+          <div><label className="label">Date</label><input className="field" type="date" min={localDate()} value={date} onChange={(e) => setDate(e.target.value)} data-testid="schedule-date" /></div>
           <div><label className="label">Time</label><input className="field" type="time" value={time} onChange={(e) => setTime(e.target.value)} data-testid="schedule-time" /></div>
         </div>
         <button className="btn btn-primary" onClick={save} disabled={saving || !date || !time} style={{ width: "100%", marginTop: 18 }} data-testid="schedule-save">

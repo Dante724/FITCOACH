@@ -695,7 +695,7 @@ async def set_intake(payload: IntakeUpdate, user: User = Depends(require_role("c
     first_time = not user.focus
     await db.users.update_one({"user_id": user.user_id}, {"$set": {"focus": payload.focus, "intake": intake}})
     if payload.weight_kg and not await db.progress.find_one({"user_id": user.user_id}):
-        entry = ProgressEntry(user_id=user.user_id, date=datetime.now(timezone.utc).date().isoformat(), weight=payload.weight_kg)
+        entry = ProgressEntry(user_id=user.user_id, date=datetime.now(APP_TZ).date().isoformat(), weight=payload.weight_kg)
         await db.progress.insert_one(entry.model_dump())
     if first_time:
         async for a in db.users.find({"role": "admin"}, {"_id": 0, "user_id": 1}):
@@ -1175,7 +1175,7 @@ async def list_progress(user: User = Depends(get_current_user)):
 @api_router.post("/progress", response_model=ProgressEntry)
 async def create_progress(payload: ProgressCreate, user: User = Depends(get_current_user)):
     entry = ProgressEntry(
-        user_id=user.user_id, date=datetime.now(timezone.utc).date().isoformat(),
+        user_id=user.user_id, date=datetime.now(APP_TZ).date().isoformat(),
         **payload.model_dump(),
     )
     await db.progress.insert_one(entry.model_dump())
@@ -1237,7 +1237,7 @@ async def upload_progress_photo(
         weight_val = None
     doc = {
         "id": str(uuid.uuid4()), "user_id": user.user_id, "url": url, "storage_path": stored_path,
-        "date": (date or datetime.now(timezone.utc).date().isoformat())[:10],
+        "date": (date or datetime.now(APP_TZ).date().isoformat())[:10],
         "weight": weight_val, "note": (note or "").strip()[:200] or None,
         "is_deleted": False, "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -1308,26 +1308,25 @@ def _extract_json(text: str) -> dict:
 
 @api_router.post("/food/analyze")
 async def analyze_food(payload: FoodAnalyzeRequest, user: User = Depends(get_current_user)):
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    description = payload.description.strip()
+    if not (2 <= len(description) <= 1000):
+        raise HTTPException(status_code=400, detail="Describe your meal in a few words (up to 1000 characters)")
     system = (
         "You are a nutrition analysis engine. Given a meal description, estimate nutrition. "
         "Respond ONLY with strict JSON, no prose, using this schema: "
         '{"meal_name": string, "items": [string], "calories": number, "protein_g": number, '
         '"carbs_g": number, "fat_g": number, "health_score": number (0-100), "notes": string}'
     )
-    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"food-{user.user_id}-{uuid.uuid4().hex[:6]}",
-                   system_message=system).with_model("gemini", GEMINI_MODEL)
     try:
-        reply = await chat.send_message(UserMessage(text=f"Meal: {payload.description}"))
-        result = _extract_json(reply)
-    except Exception as e:
+        result = await _ai_json(system, f"Meal: {description}", f"food-{user.user_id}")
+    except Exception:
         logger.exception("food analyze failed")
-        raise HTTPException(status_code=502, detail=f"AI analysis failed: {e}")
+        raise HTTPException(status_code=503, detail="We couldn't analyse that meal right now. Please try again in a moment.")
 
     doc = {
         "id": str(uuid.uuid4()),
         "user_id": user.user_id,
-        "description": payload.description,
+        "description": description,
         "result": result,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -1820,7 +1819,7 @@ async def coach_client_detail(client_id: str, user: User = Depends(require_role(
 async def coach_attention(user: User = Depends(require_role("trainer", "admin"))):
     """The coach's to-do list across all their clients, most urgent first."""
     items = []
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = datetime.now(APP_TZ).date().isoformat()
     for c in await _my_clients(user):
         cid, name = c["user_id"], c.get("name")
         tracks = _coach_tracks(user.user_id, c) if user.role == "trainer" else set()

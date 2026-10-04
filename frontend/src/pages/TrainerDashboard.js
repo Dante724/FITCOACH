@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
-import PageHeader from "@/components/PageHeader";
 import Avatar from "@/components/Avatar";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -56,7 +55,7 @@ function ClientCard({ c, onOpen }) {
     <button className="clay fade-up" onClick={onOpen} data-testid={`client-card-${c.user_id}`}
       style={{ padding: 18, cursor: "pointer", textAlign: "left", color: "var(--text)", display: "flex", flexDirection: "column", gap: 10 }}>
       <div className="row">
-        <Avatar name={c.name} picture={c.picture} size={42} />
+        <span className="avatar-ring"><Avatar name={c.name} picture={c.picture} size={42} /></span>
         <div className="min0" style={{ flex: 1 }}>
           <div className="truncate" style={{ fontSize: 15, fontWeight: 600 }}>{c.name}</div>
           <div style={{ fontSize: 12, color: "var(--text-3)" }}>{GOAL_LABEL[c.focus] || "No goal yet"}</div>
@@ -111,9 +110,21 @@ export default function TrainerDashboard() {
 
   return (
     <div>
-      <PageHeader eyebrow={new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}
-        title={`Hi ${user?.name?.split(" ")[0] || "Coach"}`}
-        subtitle={items ? `${items.length} thing${items.length === 1 ? "" : "s"} need you today${approvals ? ` · ${approvals} plan${approvals > 1 ? "s" : ""} to approve` : ""}.` : "Loading your day..."} />
+      <div className="hero-band fade-up" data-testid="coach-hero">
+        <div className="min0">
+          <div className="eyebrow">{new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}</div>
+          <h1>Hi {user?.name?.split(" ")[0] || "Coach"}</h1>
+          <p style={{ fontSize: 14.5, color: "var(--text-2)" }}>
+            {items ? (items.length ? `${items.length} thing${items.length === 1 ? "" : "s"} need you today.` : "You're all caught up.") : "Loading your day…"}
+          </p>
+        </div>
+        <div className="hero-stats">
+          {[["Clients", clients?.length ?? "—"], ["To approve", approvals], ["Sessions today", (items || []).filter((i) => i.kind === "session").length],
+            ["Unread", (clients || []).reduce((t, c) => t + (c.unread || 0), 0)]].map(([lbl, num]) => (
+            <div key={lbl} className="hero-stat"><div className="num">{num}</div><div className="lbl">{lbl}</div></div>
+          ))}
+        </div>
+      </div>
 
       <div className="clay fade-up" style={{ padding: 20, marginBottom: 20 }}>
         <div className="row" style={{ justifyContent: "space-between", marginBottom: 14 }}>

@@ -2,8 +2,9 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import * as Icons from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/context/ToastContext";
+import { localDate } from "@/lib/focus";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localDate();
 const fmtDate = (d) => { try { return new Date(d + "T00:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }); } catch { return d; } };
 
 function CompareBar({ photos, onClose }) {
@@ -14,7 +15,7 @@ function CompareBar({ photos, onClose }) {
         <div className="eyebrow">Before / After</div>
         <Icons.X size={18} data-testid="close-compare-btn" style={{ cursor: "pointer", color: "var(--text-3)" }} onClick={onClose} />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+      <div className="grid-pair">
         {[a, b].map((p, i) => (
           <div key={p.id}>
             <div style={{ position: "relative", borderRadius: 16, overflow: "hidden", aspectRatio: "3/4", background: "var(--surface-2)" }}>
@@ -131,7 +132,7 @@ export default function ProgressPhotos() {
           <div style={{ fontSize: 13, color: "var(--text-3)", marginTop: 4 }}>Add your first photo to start your timeline.</div>
         </div>
       ) : (
-        <div data-testid="photo-timeline" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 16 }}>
+        <div data-testid="photo-timeline" className="grid-photos">
           {[...photos].reverse().map((p) => {
             const isSel = selected.includes(p.id);
             const selIdx = selected.indexOf(p.id);
@@ -173,7 +174,7 @@ export default function ProgressPhotos() {
                 <img src={previewUrl} alt="preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               </div>
             )}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 13 }}>
+            <div className="grid-pair">
               <div>
                 <label className="label">Date</label>
                 <input type="date" className="field" data-testid="photo-date-input" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />

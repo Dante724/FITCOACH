@@ -4,7 +4,7 @@ import * as Icons from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { api } from "@/lib/api";
 import { useToast } from "@/context/ToastContext";
-import { askCoachPath } from "@/lib/focus";
+import { askCoachPath, localDate } from "@/lib/focus";
 import useCoaches from "@/lib/useCoaches";
 
 function Macro({ label, value, unit, color }) {
@@ -42,8 +42,8 @@ export default function FoodTrack() {
 
   const remove = async (id) => { await api.delete(`/food/logs/${id}`).catch(() => {}); load(); };
 
-  const today = new Date().toISOString().slice(0, 10);
-  const todayLogs = logs.filter((l) => (l.created_at || "").slice(0, 10) === today);
+  const today = localDate();
+  const todayLogs = logs.filter((l) => l.created_at && localDate(l.created_at) === today);
   const totalCal = todayLogs.reduce((s, l) => s + (Number(l.result?.calories) || 0), 0);
   const totalProt = todayLogs.reduce((s, l) => s + (Number(l.result?.protein_g) || 0), 0);
 

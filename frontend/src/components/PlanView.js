@@ -60,6 +60,7 @@ export function DaysPlanView({ content, yoga, done, onToggle, day, onDay }) {
             return (
               <button key={`${day}-${i}`} data-testid={`exercise-${i}`} onClick={() => onToggle?.(i)} disabled={!onToggle}
                 className="clay-inset" style={{ border: "none", cursor: onToggle ? "pointer" : "default", padding: "13px 14px", display: "flex", gap: 12, textAlign: "left", alignItems: "flex-start", color: "var(--text)" }}>
+                {!onToggle && <span className="ex-index">{i + 1}</span>}
                 {onToggle && (
                   <div style={{ width: 24, height: 24, marginTop: 1, borderRadius: 8, background: checked ? "var(--ink)" : "transparent", border: checked ? "none" : "2px solid rgba(139,150,172,0.4)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                     {checked && <Icons.Check size={15} color="#fff" />}

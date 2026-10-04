@@ -52,10 +52,10 @@ export default function Membership() {
         </div>
       )}
 
-      <div className="clay fade-up" data-testid="membership-status" style={{ padding: 24, marginBottom: 22, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
+      <div className={isActive ? "clay fade-up card-dark" : "clay fade-up"} data-testid="membership-status" style={{ padding: 24, marginBottom: 22, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 14, background: isActive ? "var(--teal-soft)" : "rgba(139,150,172,0.14)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Icons.BadgeCheck size={24} color={isActive ? "var(--teal)" : "var(--text-3)"} />
+          <div style={{ width: 48, height: 48, borderRadius: "50%", background: isActive ? "rgba(201,164,92,0.18)" : "var(--gold-soft)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Icons.Crown size={22} color={isActive ? "#e3c88f" : "var(--gold)"} />
           </div>
           <div>
             <div style={{ fontSize: 12.5, color: "var(--text-3)", fontWeight: 600 }}>Current status</div>
@@ -72,18 +72,18 @@ export default function Membership() {
           const featured = p.id === "quarterly";
           const features = PLAN_FEATURES[p.id] || [];
           return (
-            <div key={p.id} data-testid={`plan-${p.id}`} className="clay fade-up" style={{ padding: 24, animationDelay: `${i * 70}ms`, borderColor: featured ? "var(--ink)" : undefined, position: "relative", display: "flex", flexDirection: "column" }}>
-              {featured && <span className="chip chip-neutral" style={{ position: "absolute", top: 20, right: 20 }}>Most popular</span>}
+            <div key={p.id} data-testid={`plan-${p.id}`} className={featured ? "clay fade-up card-dark" : "clay fade-up"} style={{ padding: 26, animationDelay: `${i * 70}ms`, position: "relative", display: "flex", flexDirection: "column" }}>
+              {featured && <span className="chip" style={{ position: "absolute", top: 20, right: 20, background: "rgba(201,164,92,0.18)", color: "var(--ink)" }}>Most popular</span>}
               <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-2)" }}>{p.name}</div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 5, margin: "6px 0 2px" }}>
-                <span className="display" style={{ fontSize: 36, fontWeight: 600 }}>₹{p.price_inr.toLocaleString("en-IN")}</span>
+                <span className="display" style={{ fontSize: 40, fontWeight: 400 }}>₹{p.price_inr.toLocaleString("en-IN")}</span>
               </div>
               <div style={{ fontSize: 12.5, color: "var(--text-3)", marginBottom: 18 }}>{PLAN_TERM[p.id] || p.blurb}</div>
               <div style={{ height: 1, background: "var(--border)", marginBottom: 16 }} />
               <div style={{ display: "flex", flexDirection: "column", gap: 11, marginBottom: 22, flex: 1 }}>
                 {features.map((f) => (
                   <div key={f} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text-2)" }}>
-                    <Icons.Check size={14} color="var(--text)" style={{ flexShrink: 0 }} />{f}
+                    <Icons.Check size={14} color="var(--gold)" style={{ flexShrink: 0 }} />{f}
                   </div>
                 ))}
               </div>

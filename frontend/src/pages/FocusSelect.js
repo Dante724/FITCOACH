@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
 import { FOCUS_OPTIONS, getFocus } from "@/lib/focus";
+import Logo from "@/components/Logo";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
@@ -56,8 +57,12 @@ export default function FocusSelect() {
   return (
     <div style={{ minHeight: "100vh", padding: "48px 16px", maxWidth: 1000, margin: "0 auto" }}>
       <div className="fade-up" style={{ textAlign: "center", marginBottom: 34 }}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 28 }}><Logo /></div>
+        <div className="row" style={{ justifyContent: "center", gap: 6, marginBottom: 14 }}>
+          {[1, 2].map((n) => <span key={n} style={{ width: 34, height: 3, borderRadius: 3, background: n <= step ? "var(--gold)" : "var(--border-strong)" }} />)}
+        </div>
         <div className="eyebrow" style={{ marginBottom: 12 }}>Step {step} of 2</div>
-        <h1 style={{ fontSize: 34, marginBottom: 10 }}>
+        <h1 style={{ fontSize: 40, fontWeight: 400, marginBottom: 10 }}>
           {step === 1 ? `What's your goal${user?.name ? `, ${user.name.split(" ")[0]}` : ""}?` : "Tell your coach about you"}
         </h1>
         <p style={{ fontSize: 15, color: "var(--text-2)", maxWidth: 540, margin: "0 auto" }}>
@@ -74,25 +79,26 @@ export default function FocusSelect() {
               const active = selected === f.key;
               return (
                 <button key={f.key} data-testid={`focus-${f.key}`} onClick={() => setSelected(f.key)}
-                  className="clay fade-up"
-                  style={{ textAlign: "left", padding: 24, borderColor: active ? "var(--ink)" : undefined, boxShadow: active ? "0 0 0 1px var(--ink)" : "none", cursor: "pointer",
-                    animationDelay: `${idx * 60}ms`, transition: "border-color 0.15s ease, box-shadow 0.15s ease", color: "var(--text)" }}>
-                  <div className="row" style={{ justifyContent: "space-between", marginBottom: 16 }}>
-                    <div style={{ width: 50, height: 50, borderRadius: 16, background: "var(--surface-2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <Icon size={22} strokeWidth={1.75} color="var(--text)" />
-                    </div>
-                    {active && <Icons.CheckCircle2 size={22} color="var(--text)" />}
+                  className="clay fade-up goal-card"
+                  style={{ textAlign: "left", borderColor: active ? "var(--gold)" : undefined, boxShadow: active ? "0 0 0 2px var(--gold), var(--shadow-pop)" : undefined, cursor: "pointer",
+                    animationDelay: `${idx * 60}ms`, color: "var(--text)", position: "relative" }}>
+                  <img src={f.img} alt="" loading="lazy" />
+                  {active && <span style={{ position: "absolute", top: 12, right: 12, width: 30, height: 30, borderRadius: "50%", background: "var(--ink)", display: "flex", alignItems: "center", justifyContent: "center" }}><Icons.Check size={17} color="var(--on-ink)" /></span>}
+                  <div className="goal-body">
+                  <div className="row" style={{ gap: 8, marginBottom: 6 }}>
+                    <Icon size={18} strokeWidth={1.75} color="var(--gold)" />
+                    <h3 className="display" style={{ fontSize: 23 }}>{f.label}</h3>
                   </div>
-                  <h3 className="display" style={{ fontSize: 21, fontWeight: 600, marginBottom: 6 }}>{f.label}</h3>
                   <p style={{ fontSize: 14, color: "var(--text-2)", lineHeight: 1.6, marginBottom: 14 }}>{f.tagline}</p>
                   <div className="row-wrap" style={{ gap: 7 }}>
                     {f.coaches.map((c) => <span key={c} className="chip chip-neutral">{c === "yoga" ? "Yoga coach" : "Fitness & nutrition coach"}</span>)}
+                  </div>
                   </div>
                 </button>
               );
             })}
           </div>
-          <div style={{ display: "flex", justifyContent: "center" }}>
+          <div className="sticky-cta">
             <button data-testid="focus-next-btn" className="btn btn-primary" disabled={!selected} onClick={() => setStep(2)} style={{ padding: "15px 44px", fontSize: 15.5 }}>
               Continue <Icons.ArrowRight size={18} />
             </button>
@@ -102,13 +108,13 @@ export default function FocusSelect() {
 
       {step === 2 && (
         <div className="clay fade-up" style={{ padding: 24, maxWidth: 760, margin: "0 auto" }}>
-          <div className="grid-2" style={{ gap: 14 }}>
-            <div><label className="label">Age</label><input className="field" type="number" data-testid="intake-age" value={form.age} onChange={set("age")} /></div>
+          <div className="grid-pair" style={{ gap: 14 }}>
+            <div><label className="label">Age</label><input aria-label="Age" className="field" type="number" data-testid="intake-age" value={form.age} onChange={set("age")} /></div>
             <div><label className="label">Sex</label>
               <select className="field" value={form.sex} onChange={set("sex")}><option value="">Prefer not to say</option><option value="female">Female</option><option value="male">Male</option></select></div>
-            <div><label className="label">Height (cm)</label><input className="field" type="number" value={form.height_cm} onChange={set("height_cm")} /></div>
-            <div><label className="label">Current weight (kg)</label><input className="field" type="number" step="0.1" data-testid="intake-weight" value={form.weight_kg} onChange={set("weight_kg")} /></div>
-            {fitness && <div><label className="label">Target weight (kg)</label><input className="field" type="number" step="0.1" value={form.target_weight_kg} onChange={set("target_weight_kg")} /></div>}
+            <div><label className="label">Height (cm)</label><input aria-label="Height (cm)" className="field" type="number" value={form.height_cm} onChange={set("height_cm")} /></div>
+            <div><label className="label">Current weight (kg)</label><input aria-label="Current weight (kg)" className="field" type="number" step="0.1" data-testid="intake-weight" value={form.weight_kg} onChange={set("weight_kg")} /></div>
+            {fitness && <div><label className="label">Target weight (kg)</label><input aria-label="Target weight (kg)" className="field" type="number" step="0.1" value={form.target_weight_kg} onChange={set("target_weight_kg")} /></div>}
             <div><label className="label">Days you can train each week</label>
               <select className="field" value={form.days_per_week} onChange={set("days_per_week")}>{[2, 3, 4, 5, 6].map((d) => <option key={d} value={d}>{d} days</option>)}</select></div>
           </div>
@@ -126,8 +132,8 @@ export default function FocusSelect() {
           <input className="field" value={form.injuries} onChange={set("injuries")} placeholder="e.g. lower back pain, left knee" />
           {fitness && (
             <div className="grid-2" style={{ gap: 14, marginTop: 14 }}>
-              <div><label className="label">Allergies</label><input className="field" value={form.allergies} onChange={set("allergies")} placeholder="e.g. peanuts" /></div>
-              <div><label className="label">Foods you dislike</label><input className="field" value={form.dislikes} onChange={set("dislikes")} placeholder="e.g. mushrooms" /></div>
+              <div><label className="label">Allergies</label><input aria-label="Allergies" className="field" value={form.allergies} onChange={set("allergies")} placeholder="e.g. peanuts" /></div>
+              <div><label className="label">Foods you dislike</label><input aria-label="Foods you dislike" className="field" value={form.dislikes} onChange={set("dislikes")} placeholder="e.g. mushrooms" /></div>
             </div>
           )}
 

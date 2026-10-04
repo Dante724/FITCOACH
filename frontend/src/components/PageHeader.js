@@ -1,6 +1,6 @@
 export default function PageHeader({ eyebrow, title, subtitle, action }) {
   return (
-    <div className="fade-up" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 24, gap: 16, flexWrap: "wrap" }}>
+    <div className="fade-up page-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
       <div>
         {eyebrow && <div className="eyebrow" style={{ marginBottom: 6 }}>{eyebrow}</div>}
         <h1 style={{ fontSize: 28 }}>{title}</h1>

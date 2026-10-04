@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { getFocus, hasFeature, askCoachPath, PLAN_LABEL } from "@/lib/focus";
+import { getFocus, hasFeature, askCoachPath, PLAN_LABEL, localDate } from "@/lib/focus";
 import Avatar from "@/components/Avatar";
 import { startCall } from "@/lib/calls";
 import { useToast } from "@/context/ToastContext";
@@ -40,7 +40,7 @@ function CoachCard({ type, coach, unread, navigate }) {
   }
   return (
     <div className="clay-inset row" style={{ padding: 14 }} data-testid={`coach-${type}`}>
-      <Avatar name={coach.name} picture={coach.picture} size={44} />
+      <span className="avatar-ring"><Avatar name={coach.name} picture={coach.picture} size={44} /></span>
       <div className="min0" style={{ flex: 1 }}>
         <div className="truncate" style={{ fontSize: 14.5, fontWeight: 600 }}>{coach.name}</div>
         <div className="truncate" style={{ fontSize: 12.5, color: "var(--text-3)" }}>{label}</div>
@@ -116,16 +116,45 @@ export default function Dashboard() {
   const hour = new Date().getHours();
   const greet = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const weekAgo = Date.now() - 7 * 86400000;
-  const today = new Date().toISOString().slice(0, 10);
-  const upcoming = bookings.filter((b) => new Date(`${b.date}T${b.time}`) >= new Date());
+  const today = localDate();
+  const startOf = (b) => (b.starts_at ? new Date(b.starts_at) : new Date(`${b.date}T${b.time}`));
+  const upcoming = bookings.filter((b) => startOf(b) >= new Date(Date.now() - 60 * 60000)).sort((a, b) => startOf(a) - startOf(b));
+  const next = upcoming[0];
+  const hasCoach = !!(coaches?.fitness || coaches?.yoga);
+  const nextLabel = next && (() => {
+    const d = startOf(next);
+    const mins = Math.round((d - Date.now()) / 60000);
+    if (mins <= 0) return "Happening now";
+    if (mins < 60) return `In ${mins} min`;
+    return d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" }) + " · " + next.time;
+  })();
   const planTypes = [hasFeature(user?.focus, "workouts") && "workout", hasFeature(user?.focus, "yoga") && "yoga", hasFeature(user?.focus, "mealplan") && "meal"].filter(Boolean);
 
   return (
     <div>
-      <div className="fade-up" style={{ marginBottom: 24 }}>
-        <div className="eyebrow" style={{ marginBottom: 8 }}>{new Date().toLocaleDateString("en-IN", { weekday: "long", month: "long", day: "numeric" })}</div>
-        <h1 style={{ fontSize: 28 }}>{greet}, {user?.name?.split(" ")[0]}</h1>
-        {focus && <p style={{ fontSize: 14.5, color: "var(--text-2)", marginTop: 8 }}>Goal: <span style={{ color: "var(--text)" }}>{focus.label}</span></p>}
+      <div className="hero-band fade-up" data-testid="client-hero">
+        <div className="min0">
+          <div className="eyebrow">{new Date().toLocaleDateString("en-IN", { weekday: "long", month: "long", day: "numeric" })}</div>
+          <h1>{greet}, {user?.name?.split(" ")[0]}</h1>
+          {focus && <p style={{ fontSize: 14.5, color: "var(--text-2)" }}>Working towards <span className="serif-italic" style={{ fontSize: 17 }}>{focus.label.toLowerCase()}</span></p>}
+        </div>
+        <div className="hero-next">
+          <div className="eyebrow" style={{ marginBottom: 6 }}>{next ? "Next session" : hasCoach ? "No session booked" : "Coach coming soon"}</div>
+          {next ? (
+            <>
+              <div style={{ fontFamily: "var(--serif)", fontSize: 21 }}>{nextLabel}</div>
+              <div style={{ fontSize: 13, color: "var(--text-2)", marginBottom: 12 }}>Video call with {next.trainer_name}</div>
+              <button className="btn btn-primary" onClick={() => navigate(`/call/${next.id}`)} style={{ width: "100%" }} data-testid="hero-join"><Icons.Video size={16} /> Join</button>
+            </>
+          ) : hasCoach ? (
+            <>
+              <div style={{ fontSize: 13, color: "var(--text-2)", margin: "2px 0 12px" }}>Book a video session with your coach.</div>
+              <button className="btn btn-primary" onClick={() => navigate("/booking")} style={{ width: "100%" }}><Icons.CalendarPlus size={16} /> Book a session</button>
+            </>
+          ) : (
+            <div style={{ fontSize: 13, color: "var(--text-2)", marginTop: 2, maxWidth: 260 }}>We're matching you with your coach. You can book sessions as soon as they're assigned.</div>
+          )}
+        </div>
       </div>
 
       <div className="clay fade-up" style={{ padding: 20, marginBottom: 18 }}>
@@ -142,7 +171,7 @@ export default function Dashboard() {
         <StatCard icon={Icons.Dumbbell} label="Sessions this week" value={sessions.filter((s) => new Date(s.created_at).getTime() >= weekAgo).length} accent="var(--violet)" delay={60} />
         <StatCard icon={Icons.CalendarDays} label="Upcoming calls" value={upcoming.length} accent="var(--teal)" delay={120} />
         {hasFeature(user?.focus, "food")
-          ? <StatCard icon={Icons.Utensils} label="Meals logged today" value={foods.filter((f) => (f.created_at || "").slice(0, 10) === today).length} accent="var(--amber)" delay={180} />
+          ? <StatCard icon={Icons.Utensils} label="Meals logged today" value={foods.filter((f) => f.created_at && localDate(f.created_at) === today).length} accent="var(--amber)" delay={180} />
           : <StatCard icon={Icons.LineChart} label="Progress entries" value={progress.length} accent="var(--amber)" delay={180} />}
       </div>
 

@@ -95,6 +95,11 @@ export default function CallCenter() {
   };
 
   const showSoon = soon && !dismissed.has(soon.booking_id) && !incoming;
+  const bannerUp = showSoon || (askAlerts && !incoming);
+  useEffect(() => {
+    document.body.classList.toggle("has-banner", !!bannerUp);
+    return () => document.body.classList.remove("has-banner");
+  }, [bannerUp]);
 
   return (
     <>

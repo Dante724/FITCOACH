@@ -1,3 +1,5 @@
+const PHOTO = (id) => `https://images.unsplash.com/${id}?crop=entropy&cs=srgb&fm=jpg&q=75&w=700`;
+
 // Client goals and the feature set each one unlocks.
 export const FOCUS_OPTIONS = [
   {
@@ -6,6 +8,7 @@ export const FOCUS_OPTIONS = [
     tagline: "Lose fat and keep your strength, with a coach-approved training and nutrition plan.",
     accent: "var(--accent)",
     icon: "Flame",
+    img: PHOTO("photo-1644704170910-a0cdf183649b"),
     coaches: ["fitness"],
     features: ["workouts", "mealplan", "food", "progress", "booking", "messages"],
   },
@@ -15,6 +18,7 @@ export const FOCUS_OPTIONS = [
     tagline: "Build lean muscle with progressive training and the right amount of food.",
     accent: "var(--amber)",
     icon: "Dumbbell",
+    img: PHOTO("photo-1672344048213-76b6e77304bd"),
     coaches: ["fitness"],
     features: ["workouts", "mealplan", "food", "progress", "booking", "messages"],
   },
@@ -24,6 +28,7 @@ export const FOCUS_OPTIONS = [
     tagline: "Mobility, balance and calm with a practice built for your body by a yoga coach.",
     accent: "#7c6bd6",
     icon: "Flower2",
+    img: PHOTO("photo-1769416945759-4660fd121172"),
     coaches: ["yoga"],
     features: ["yoga", "posecheck", "progress", "booking", "messages"],
   },
@@ -33,6 +38,7 @@ export const FOCUS_OPTIONS = [
     tagline: "A fitness coach and a yoga coach working on the same goal.",
     accent: "var(--teal)",
     icon: "Sparkles",
+    img: PHOTO("photo-1637430308606-86576d8fef3c"),
     coaches: ["fitness", "yoga"],
     features: ["workouts", "yoga", "posecheck", "mealplan", "food", "progress", "booking", "messages"],
   },
@@ -112,4 +118,10 @@ export function timeAgo(iso) {
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   if (s < 86400 * 7) return `${Math.floor(s / 86400)}d ago`;
   return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+}
+
+// YYYY-MM-DD in the viewer's local timezone (toISOString() would give the UTC date).
+export function localDate(d = new Date()) {
+  const x = d instanceof Date ? d : new Date(d);
+  return new Date(x.getTime() - x.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }

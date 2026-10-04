@@ -39,7 +39,7 @@
 }
 
 /* Dark emerald contexts (sidebar, bands, featured cards): ivory text, gold primary. */
-.app-sidebar, .band-dark, .card-dark, .split-aside {
+.app-sidebar, .band-dark, .card-dark, .split-aside, .hero-band {
   --text: #f5efe2;
   --text-2: rgba(245, 239, 226, 0.74);
   --text-3: rgba(245, 239, 226, 0.5);
@@ -320,6 +320,76 @@ select.field { appearance: none; background-image: url("data:image/svg+xml,%3Csv
 /* Incoming call + session banner */
 .ring-card { position: fixed; z-index: 260; right: 20px; top: 20px; width: min(360px, calc(100vw - 24px)); padding: 18px;
   border-radius: 18px; background: linear-gradient(180deg, #11402f, #0c3328); color: #f5efe2; box-shadow: var(--shadow-pop); }
-.soon-banner { position: fixed; z-index: 240; left: 50%; transform: translateX(-50%); bottom: 20px; width: min(560px, calc(100vw - 24px));
+.soon-banner { position: fixed; z-index: 150; left: 12px; right: 12px; margin: 0 auto; bottom: 20px; max-width: 560px;
   display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-pop); }
 @media (max-width: 900px) { .ring-card { top: 66px; right: 12px; } .soon-banner { bottom: 12px; } }
+
+
+/* ─────────────── Premium refinements ─────────────── */
+.clay, .glass { background: linear-gradient(180deg, #fffefa 0%, var(--surface) 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), var(--shadow-card); }
+button.clay { transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+button.clay:hover { transform: translateY(-2px); border-color: rgba(184,146,74,0.5); box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 12px 30px rgba(29,42,36,0.09); }
+.clay-inset { border: 1px solid rgba(232,224,207,0.7); }
+.btn-ghost:hover:not(:disabled) { border-color: var(--gold); background: #fffaf0; }
+.field { background: #fffefb; }
+.field:hover:not(:focus) { border-color: #cdbf9f; }
+.nav-link { font-weight: 450; }
+.stat-card .display { font-size: 32px; letter-spacing: -0.02em; }
+.stat-card .stat-icon { border-radius: 50% !important; }
+
+/* Page header with a fine gold rule */
+.page-head { position: relative; padding-bottom: 18px; margin-bottom: 24px !important; border-bottom: 1px solid var(--border); }
+.page-head::after { content: ""; position: absolute; left: 0; bottom: -1px; width: 56px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, var(--gold), #d9bd84); }
+.page-head h1 { font-size: 32px !important; }
+
+/* Emerald hero band (dashboards) */
+.hero-band { position: relative; overflow: hidden; border-radius: 22px; padding: 30px 32px; margin-bottom: 18px;
+  background: radial-gradient(600px 300px at 100% 0%, rgba(201,164,92,0.22), transparent 60%), linear-gradient(135deg, #124535 0%, var(--emerald-deep) 70%);
+  box-shadow: var(--shadow-pop); display: flex; gap: 24px; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; }
+.hero-band::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.5;
+  background-image: radial-gradient(rgba(245,239,226,0.07) 1px, transparent 1px); background-size: 18px 18px; }
+.hero-band > * { position: relative; }
+.hero-band h1 { font-size: 38px !important; font-weight: 400; margin: 6px 0 6px; }
+.hero-band .eyebrow { color: #d9bd84; }
+.hero-next { min-width: 240px; padding: 16px 18px; border-radius: 16px; background: rgba(255,255,255,0.07); border: 1px solid rgba(201,164,92,0.28); backdrop-filter: blur(6px); }
+.hero-stats { display: flex; gap: 28px; flex-wrap: wrap; }
+.hero-stat .num { font-family: var(--serif); font-size: 34px; line-height: 1; color: #e3c88f; }
+.hero-stat .lbl { font-size: 12.5px; color: var(--text-2); margin-top: 6px; }
+
+/* Empty states with a gold medallion */
+.empty-medal { width: 64px; height: 64px; border-radius: 50%; margin: 0 auto 14px; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 30% 30%, #fbf3e1, var(--gold-soft)); border: 1px solid rgba(184,146,74,0.35); color: var(--gold); }
+.empty-title { font-family: var(--serif); font-size: 22px; color: var(--text); margin-bottom: 6px; }
+.empty svg { color: var(--gold); }
+
+/* Numbered exercise rows */
+.ex-index { font-family: var(--serif); font-style: italic; color: var(--gold); font-size: 18px; width: 22px; flex-shrink: 0; text-align: center; margin-top: -1px; }
+
+/* Avatar ring for coaches */
+.avatar-ring { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px rgba(184,146,74,0.7); border-radius: 50%; }
+
+/* Progress history rows */
+.history-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; margin-bottom: 8px; flex-wrap: wrap; }
+.history-date { font-weight: 500; font-size: 13.5px; min-width: 104px; }
+.history-vals { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+
+/* Goal cards with photography (onboarding) */
+.goal-card { padding: 0 !important; overflow: hidden; }
+.goal-card img { width: 100%; height: 150px; object-fit: cover; display: block; }
+.goal-card .goal-body { padding: 20px 22px 22px; }
+
+/* Always two columns (paired form fields, before/after) */
+.grid-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+
+@media (max-width: 900px) {
+  .hero-band { padding: 22px 20px; border-radius: 18px; }
+  .hero-band h1 { font-size: 30px !important; }
+  .hero-next { width: 100%; }
+  .hero-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; width: 100%; }
+  .hero-stat .num { font-size: 28px; }
+  .hero-stat .lbl { font-size: 11.5px; }
+  .page-head h1 { font-size: 26px !important; }
+}
+.has-banner .app-main { padding-bottom: 120px !important; }
+.sticky-cta { position: sticky; bottom: 16px; display: flex; justify-content: center; z-index: 5; }
+.sticky-cta .btn { box-shadow: var(--shadow-pop); }

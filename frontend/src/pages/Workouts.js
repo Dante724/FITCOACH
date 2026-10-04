@@ -54,8 +54,8 @@ export default function Workouts({ kind = "workout" }) {
       {plan === undefined && <div className="spinner" style={{ margin: "60px auto" }} />}
       {plan === null && (
         <div className="clay fade-up empty" data-testid="plan-pending" style={{ padding: "56px 20px" }}>
-          <Icons.ClipboardList size={38} style={{ opacity: 0.55, marginBottom: 12 }} />
-          <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>Your coach is preparing your {yoga ? "practice" : "plan"}</div>
+          <div className="empty-medal"><Icons.ClipboardList size={26} strokeWidth={1.6} /></div>
+          <div className="empty-title">Your coach is preparing your {yoga ? "practice" : "plan"}</div>
           <div style={{ maxWidth: 420, margin: "0 auto", lineHeight: 1.6 }}>Plans are drafted from your goals and checked by your coach before they reach you. You'll get a notification when it's ready.</div>
         </div>
       )}
