@@ -175,9 +175,9 @@ class TestCoexistence:
         assert rb.status_code == 200, rb.text
         assert isinstance(rb.json(), list)
         # protected PUT /api/profile/focus
-        rf = anon.put(f"{API}/profile/focus", json={"focus": "strength"})
+        rf = anon.put(f"{API}/profile/focus", json={"focus": "muscle_gain"})
         assert rf.status_code == 200, rf.text
-        assert rf.json()["focus"] == "strength"
+        assert rf.json()["focus"] == "muscle_gain"
 
     def test_google_user_can_still_call_protected(self, anon):
         r = anon.get(f"{API}/bookings", headers={

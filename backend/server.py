@@ -125,7 +125,12 @@ api_router = APIRouter(prefix="/api")
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-VALID_FOCUS = {"strength", "nutrition", "yoga", "muscle_fat"}
+VALID_FOCUS = {"fat_loss", "muscle_gain", "yoga", "hybrid"}
+FITNESS_FOCUS = {"fat_loss", "muscle_gain", "hybrid"}
+YOGA_FOCUS = {"yoga", "hybrid"}
+# v1 programme keys → v2 goals (migrated at startup)
+LEGACY_FOCUS = {"strength": "muscle_gain", "muscle_fat": "fat_loss", "nutrition": "fat_loss"}
+COACH_TYPES = {"fitness", "yoga"}
 
 
 def hash_password(password: str) -> str:
@@ -182,11 +187,32 @@ class User(BaseModel):
     available_times: Optional[List[str]] = None
     membership_plan: Optional[str] = None
     membership_expires_at: Optional[str] = None
+    coach_type: Optional[str] = None
+    max_clients: Optional[int] = None
+    fitness_coach_id: Optional[str] = None
+    yoga_coach_id: Optional[str] = None
+    intake: Optional[dict] = None
     created_at: Optional[str] = None
 
 
 class FocusUpdate(BaseModel):
     focus: str
+
+
+class IntakeUpdate(BaseModel):
+    focus: str
+    age: Optional[int] = None
+    sex: Optional[str] = None
+    height_cm: Optional[float] = None
+    weight_kg: Optional[float] = None
+    target_weight_kg: Optional[float] = None
+    experience: Optional[str] = None      # beginner | intermediate | advanced
+    days_per_week: Optional[int] = None
+    equipment: Optional[str] = None       # gym | home | bodyweight
+    injuries: Optional[str] = None
+    diet: Optional[str] = None            # veg | non_veg | eggetarian | vegan | jain
+    allergies: Optional[str] = None
+    dislikes: Optional[str] = None
 
 
 class ProfileUpdate(BaseModel):
@@ -217,6 +243,16 @@ class RoleUpdate(BaseModel):
 
 class MembershipUpdate(BaseModel):
     plan_id: Optional[str] = None
+
+
+class CoachTypeUpdate(BaseModel):
+    coach_type: str
+    max_clients: Optional[int] = None
+
+
+class CoachAssignment(BaseModel):
+    fitness_coach_id: Optional[str] = None
+    yoga_coach_id: Optional[str] = None
 
 
 class Booking(BaseModel):
@@ -276,20 +312,26 @@ class WorkoutSessionCreate(BaseModel):
     exercises: List[dict] = []
     duration_min: Optional[int] = None
     notes: Optional[str] = None
+    plan_id: Optional[str] = None
+    kind: Optional[str] = None            # workout | yoga
 
 
-class MealPlanGenerateRequest(BaseModel):
-    goal: str = "maintenance"          # fat_loss | maintenance | muscle_gain
-    diet: str = "balanced"             # balanced | vegetarian | vegan | high_protein | keto
-    calories: Optional[int] = None
-    allergies: Optional[str] = None
+class PlanDraftRequest(BaseModel):
+    type: str                             # workout | meal | yoga
+    notes: Optional[str] = None           # coach instructions / reason for an adjustment
 
 
-class MealPlanCreate(BaseModel):
-    name: str
-    goal: Optional[str] = None
-    diet: Optional[str] = None
-    plan: dict
+class PlanUpdate(BaseModel):
+    title: Optional[str] = None
+    content: dict
+    coach_note: Optional[str] = None
+
+
+class MessageCreate(BaseModel):
+    body: str
+    context_type: Optional[str] = None    # food | workout | plan | photo | progress
+    context_id: Optional[str] = None
+    context_label: Optional[str] = None
 
 
 # ───────────────────────────── Auth ─────────────────────────────
@@ -604,9 +646,31 @@ async def logout(response: Response, session_token: Optional[str] = Cookie(None)
 
 @api_router.put("/profile/focus", response_model=User)
 async def set_focus(payload: FocusUpdate, user: User = Depends(get_current_user)):
-    if payload.focus not in VALID_FOCUS:
+    focus = LEGACY_FOCUS.get(payload.focus, payload.focus)
+    if focus not in VALID_FOCUS:
         raise HTTPException(status_code=400, detail="Invalid focus")
-    await db.users.update_one({"user_id": user.user_id}, {"$set": {"focus": payload.focus}})
+    await db.users.update_one({"user_id": user.user_id}, {"$set": {"focus": focus}})
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    return User(**user_doc)
+
+
+@api_router.put("/profile/intake", response_model=User)
+async def set_intake(payload: IntakeUpdate, user: User = Depends(require_role("client"))):
+    if payload.focus not in VALID_FOCUS:
+        raise HTTPException(status_code=400, detail="Invalid goal")
+    intake = payload.model_dump(exclude={"focus"})
+    for k in ("injuries", "allergies", "dislikes"):
+        if intake.get(k):
+            intake[k] = intake[k].strip()[:300]
+    first_time = not user.focus
+    await db.users.update_one({"user_id": user.user_id}, {"$set": {"focus": payload.focus, "intake": intake}})
+    if payload.weight_kg and not await db.progress.find_one({"user_id": user.user_id}):
+        entry = ProgressEntry(user_id=user.user_id, date=datetime.now(timezone.utc).date().isoformat(), weight=payload.weight_kg)
+        await db.progress.insert_one(entry.model_dump())
+    if first_time:
+        async for a in db.users.find({"role": "admin"}, {"_id": 0, "user_id": 1}):
+            await push_notification(a["user_id"], "New client needs a coach",
+                                    f"{user.name} joined ({payload.focus.replace('_', ' ')}).", "/admin")
     user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
     return User(**user_doc)
 
@@ -691,6 +755,8 @@ def _trainer_public(u: dict) -> dict:
         "available_days": u.get("available_days") or DEFAULT_DAYS,
         "available_times": sorted(u.get("available_times") or DEFAULT_TIMES),
         "initials": "".join([p[0] for p in (u.get("name") or "T").split()][:2]).upper(),
+        "coach_type": u.get("coach_type") or "fitness",
+        "picture": u.get("picture"),
     }
 
 
@@ -698,9 +764,16 @@ def _room_for(booking_id: str) -> str:
     return "FitCoach-" + booking_id.replace("-", "")
 
 
+def _my_coach_ids(user: User) -> List[str]:
+    return [c for c in (user.fitness_coach_id, user.yoga_coach_id) if c]
+
+
 @api_router.get("/trainers")
 async def get_trainers(user: User = Depends(get_current_user)):
-    docs = await db.users.find({"role": "trainer"}, {"_id": 0}).to_list(200)
+    query = {"role": "trainer"}
+    if user.role == "client":
+        query["user_id"] = {"$in": _my_coach_ids(user)}
+    docs = await db.users.find(query, {"_id": 0}).to_list(200)
     return {"trainers": [_trainer_public(d) for d in docs]}
 
 
@@ -734,6 +807,8 @@ async def create_booking(payload: BookingCreate, request: Request, background: B
     trainer = await db.users.find_one({"user_id": payload.trainer_id, "role": "trainer"}, {"_id": 0})
     if not trainer:
         raise HTTPException(status_code=400, detail="Invalid trainer")
+    if user.role == "client" and payload.trainer_id not in _my_coach_ids(user):
+        raise HTTPException(status_code=403, detail="You can only book sessions with your own coach")
     try:
         session_dt = datetime.strptime(f"{payload.date} {payload.time}", "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
     except ValueError:
@@ -816,14 +891,83 @@ async def trainer_sessions(user: User = Depends(require_role("trainer"))):
 
 
 # ───────────────────────────── Admin endpoints ─────────────────────────────
+def _needs_coach(c: dict) -> List[str]:
+    """Which coach types a client is still missing for their goal."""
+    focus = c.get("focus")
+    missing = []
+    if focus in FITNESS_FOCUS and not c.get("fitness_coach_id"):
+        missing.append("fitness")
+    if focus in YOGA_FOCUS and not c.get("yoga_coach_id"):
+        missing.append("yoga")
+    return missing
+
+
 @api_router.get("/admin/stats")
 async def admin_stats(user: User = Depends(require_role("admin"))):
+    clients = await db.users.find({"role": "client"}, {"_id": 0, "focus": 1, "fitness_coach_id": 1, "yoga_coach_id": 1}).to_list(5000)
+    stale = (datetime.now(timezone.utc) - timedelta(hours=48)).isoformat()
     return {
-        "clients": await db.users.count_documents({"role": "client"}),
+        "clients": len(clients),
         "trainers": await db.users.count_documents({"role": "trainer"}),
         "bookings": await db.bookings.count_documents({}),
         "active_members": await db.users.count_documents({"membership_expires_at": {"$gt": datetime.now(timezone.utc).isoformat()}}),
+        "unassigned": sum(1 for c in clients if _needs_coach(c)),
+        "stale_drafts": await db.plans.count_documents({"status": "draft", "created_at": {"$lt": stale}}),
     }
+
+
+@api_router.get("/admin/coaches")
+async def admin_coaches(user: User = Depends(require_role("admin"))):
+    trainers = await db.users.find({"role": "trainer"}, {"_id": 0, "password_hash": 0}).to_list(500)
+    out = []
+    for t in trainers:
+        field = "yoga_coach_id" if t.get("coach_type") == "yoga" else "fitness_coach_id"
+        load = await db.users.count_documents({"role": "client", field: t["user_id"]})
+        out.append({"user_id": t["user_id"], "name": t.get("name"), "email": t.get("email"),
+                    "coach_type": t.get("coach_type") or "fitness", "max_clients": t.get("max_clients") or 30,
+                    "clients": load})
+    out.sort(key=lambda x: (x["coach_type"], x["name"] or ""))
+    return out
+
+
+@api_router.put("/admin/users/{target_id}/coach-type")
+async def admin_set_coach_type(target_id: str, payload: CoachTypeUpdate, user: User = Depends(require_role("admin"))):
+    if payload.coach_type not in COACH_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid coach type")
+    target = await db.users.find_one({"user_id": target_id, "role": "trainer"}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="Trainer not found")
+    update = {"coach_type": payload.coach_type}
+    if payload.max_clients is not None:
+        update["max_clients"] = max(1, min(500, payload.max_clients))
+    await db.users.update_one({"user_id": target_id}, {"$set": update})
+    return {"ok": True, **update}
+
+
+@api_router.put("/admin/users/{target_id}/coaches")
+async def admin_assign_coaches(target_id: str, payload: CoachAssignment, user: User = Depends(require_role("admin"))):
+    client_doc = await db.users.find_one({"user_id": target_id, "role": "client"}, {"_id": 0})
+    if not client_doc:
+        raise HTTPException(status_code=404, detail="Client not found")
+    update = {}
+    for field, ctype in (("fitness_coach_id", "fitness"), ("yoga_coach_id", "yoga")):
+        if field not in payload.model_fields_set:
+            continue
+        coach_id = getattr(payload, field) or None
+        if coach_id:
+            coach = await db.users.find_one({"user_id": coach_id, "role": "trainer"}, {"_id": 0})
+            if not coach or (coach.get("coach_type") or "fitness") != ctype:
+                raise HTTPException(status_code=400, detail=f"Pick a {ctype} coach")
+            if client_doc.get(field) != coach_id:
+                await push_notification(coach_id, "New client assigned",
+                                        f"{client_doc.get('name')} is now your client.", f"/trainer/clients/{target_id}")
+                await push_notification(target_id, "Your coach is here",
+                                        f"{coach.get('name')} is now your {ctype} coach.", "/dashboard")
+        update[field] = coach_id
+    if update:
+        await db.users.update_one({"user_id": target_id}, {"$set": update})
+    doc = await db.users.find_one({"user_id": target_id}, {"_id": 0, "password_hash": 0})
+    return doc
 
 
 @api_router.get("/admin/users")
@@ -845,6 +989,8 @@ async def admin_set_role(target_id: str, payload: RoleUpdate, user: User = Depen
         update["available_days"] = list(DEFAULT_DAYS)
         update["available_times"] = list(DEFAULT_TIMES)
         update["specialty"] = target.get("specialty") or "Personal Trainer"
+    if payload.role == "trainer" and not target.get("coach_type"):
+        update["coach_type"] = "yoga" if "yoga" in (target.get("specialty") or "").lower() else "fitness"
     await db.users.update_one({"user_id": target_id}, {"$set": update})
     await push_notification(target_id, "Role updated", f"An administrator set your role to {payload.role}.", "/")
     return {"ok": True, "role": payload.role}
@@ -1054,52 +1200,13 @@ async def delete_progress_photo(photo_id: str, user: User = Depends(get_current_
 
 
 # ───────────────────────────── Workouts ─────────────────────────────
-FOCUS_PLANS = {
-    "strength": {
-        "name": "Strength & Conditioning — Lower Body",
-        "exercises": [
-            {"name": "Back Squat", "meta": "5 x 5"},
-            {"name": "Romanian Deadlift", "meta": "4 x 6"},
-            {"name": "Walking Lunge", "meta": "3 x 10"},
-            {"name": "Weighted Plank", "meta": "3 x 45s"},
-            {"name": "Kettlebell Swing", "meta": "4 x 15"},
-        ],
-    },
-    "yoga": {
-        "name": "Vinyasa Flow — Mobility & Balance",
-        "exercises": [
-            {"name": "Sun Salutation A", "meta": "5 rounds"},
-            {"name": "Warrior II Flow", "meta": "3 x 60s"},
-            {"name": "Tree Pose", "meta": "2 x 45s"},
-            {"name": "Pigeon Pose", "meta": "2 x 90s"},
-            {"name": "Seated Meditation", "meta": "5 min"},
-        ],
-    },
-    "muscle_fat": {
-        "name": "Hypertrophy & Conditioning — Push",
-        "exercises": [
-            {"name": "Incline Dumbbell Press", "meta": "4 x 10"},
-            {"name": "Cable Fly", "meta": "3 x 12"},
-            {"name": "Overhead Press", "meta": "4 x 8"},
-            {"name": "Triceps Rope Pushdown", "meta": "3 x 15"},
-            {"name": "Treadmill Intervals", "meta": "12 min"},
-        ],
-    },
-    "nutrition": {
-        "name": "Light Conditioning Circuit",
-        "exercises": [
-            {"name": "Bodyweight Squat", "meta": "3 x 15"},
-            {"name": "Push-ups", "meta": "3 x 12"},
-            {"name": "Brisk Walk", "meta": "20 min"},
-        ],
-    },
-}
-
-
 @api_router.get("/workouts/plan")
-async def workout_plan(user: User = Depends(get_current_user)):
-    focus = user.focus or "strength"
-    return FOCUS_PLANS.get(focus, FOCUS_PLANS["strength"])
+async def workout_plan(type: str = "workout", user: User = Depends(get_current_user)):
+    """The client's coach-approved plan of this type, or null while the coach prepares it."""
+    if type not in PLAN_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid plan type")
+    doc = await db.plans.find_one({"client_id": user.user_id, "type": type, "status": "active"}, {"_id": 0})
+    return {"plan": doc}
 
 
 @api_router.get("/workouts/sessions")
@@ -1118,6 +1225,8 @@ async def create_session(payload: WorkoutSessionCreate, user: User = Depends(get
         "exercises": payload.exercises,
         "duration_min": payload.duration_min,
         "notes": payload.notes,
+        "plan_id": payload.plan_id,
+        "kind": payload.kind if payload.kind in ("workout", "yoga") else "workout",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.workout_sessions.insert_one(dict(doc))
@@ -1182,72 +1291,553 @@ async def delete_food(log_id: str, user: User = Depends(get_current_user)):
     return {"ok": True}
 
 
-# ───────────────────────────── Meal Plans ─────────────────────────────
-GOAL_LABELS = {"fat_loss": "fat loss", "maintenance": "weight maintenance", "muscle_gain": "muscle gain"}
-DIET_LABELS = {
-    "balanced": "balanced omnivore", "vegetarian": "vegetarian", "vegan": "vegan",
-    "high_protein": "high-protein", "keto": "ketogenic (low-carb, high-fat)",
-}
+# ───────────────────────────── Coaching: access ─────────────────────────────
+PLAN_TYPES = {"workout": "fitness", "meal": "fitness", "yoga": "yoga"}
+PLAN_LABELS = {"workout": "workout plan", "meal": "nutrition plan", "yoga": "yoga practice"}
+CLIENT_PUBLIC = {"_id": 0, "password_hash": 0}
 
 
-@api_router.post("/meal-plans/generate")
-async def generate_meal_plan(payload: MealPlanGenerateRequest, user: User = Depends(get_current_user)):
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
-    goal = GOAL_LABELS.get(payload.goal, "weight maintenance")
-    diet = DIET_LABELS.get(payload.diet, "balanced omnivore")
-    cal = f"approximately {payload.calories} kcal for the day" if payload.calories else "an appropriate daily calorie target"
-    allergies = f" Avoid these foods/allergens: {payload.allergies.strip()}." if (payload.allergies or "").strip() else ""
-    system = (
-        "You are a professional dietitian building a one-day meal plan. "
-        "Respond ONLY with strict JSON, no prose, using this schema: "
-        '{"title": string, "summary": string, "total_calories": number, "total_protein_g": number, '
-        '"total_carbs_g": number, "total_fat_g": number, "meals": [{"meal": "Breakfast"|"Lunch"|"Dinner"|"Snack", '
-        '"name": string, "items": [string], "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number}]}. '
-        "Include Breakfast, Lunch, Dinner and 1-2 Snacks. Make totals the sum of the meals."
-    )
-    prompt = (
-        f"Build a {diet} meal plan for {goal}, targeting {cal}.{allergies} "
-        "Keep meals realistic, easy to prepare, and clearly portioned."
-    )
-    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"meal-{user.user_id}-{uuid.uuid4().hex[:6]}",
-                   system_message=system).with_model("gemini", GEMINI_MODEL)
-    try:
-        reply = await chat.send_message(UserMessage(text=prompt))
-        result = _extract_json(reply)
-    except Exception as e:
-        logger.exception("meal plan generation failed")
-        raise HTTPException(status_code=502, detail=f"AI generation failed: {e}")
-    result["goal"] = payload.goal
-    result["diet"] = payload.diet
-    return result
+def _coach_tracks(coach_id: str, client: dict) -> set:
+    tracks = set()
+    if client.get("fitness_coach_id") == coach_id:
+        tracks.add("fitness")
+    if client.get("yoga_coach_id") == coach_id:
+        tracks.add("yoga")
+    return tracks
 
 
-@api_router.get("/meal-plans")
-async def list_meal_plans(user: User = Depends(get_current_user)):
-    docs = await db.meal_plans.find({"user_id": user.user_id}, {"_id": 0}).to_list(200)
-    docs.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+async def _client_access(user: User, client_id: str, track: Optional[str] = None) -> dict:
+    """Return the client doc if `user` may see it: the client themself, an assigned coach, or an admin.
+    With `track`, a coach must be assigned on that track (fitness coaches can't touch yoga plans and vice versa)."""
+    client_doc = await db.users.find_one({"user_id": client_id, "role": "client"}, CLIENT_PUBLIC)
+    if not client_doc:
+        raise HTTPException(status_code=404, detail="Client not found")
+    if user.role == "admin" or (user.role == "client" and user.user_id == client_id):
+        return client_doc
+    if user.role == "trainer":
+        tracks = _coach_tracks(user.user_id, client_doc)
+        if tracks and (track is None or track in tracks):
+            return client_doc
+    raise HTTPException(status_code=403, detail="This client is not assigned to you")
+
+
+def _sees_plan_type(user: User, client: dict, ptype: str) -> bool:
+    """Coaches only see plans on their own track; admins see everything."""
+    return user.role == "admin" or PLAN_TYPES[ptype] in _coach_tracks(user.user_id, client)
+
+
+async def _my_clients(user: User) -> List[dict]:
+    if user.role == "admin":
+        query = {"role": "client"}
+    else:
+        query = {"role": "client", "$or": [{"fitness_coach_id": user.user_id}, {"yoga_coach_id": user.user_id}]}
+    docs = await db.users.find(query, CLIENT_PUBLIC).to_list(1000)
+    docs.sort(key=lambda d: (d.get("name") or "").lower())
     return docs
 
 
-@api_router.post("/meal-plans")
-async def save_meal_plan(payload: MealPlanCreate, user: User = Depends(get_current_user)):
-    name = payload.name.strip()
-    if not (1 <= len(name) <= 80):
-        raise HTTPException(status_code=400, detail="Plan name must be 1–80 characters")
-    doc = {
-        "id": str(uuid.uuid4()), "user_id": user.user_id, "name": name,
-        "goal": payload.goal, "diet": payload.diet, "plan": payload.plan,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+def _parse_dt(value) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value) if len(value) > 10 else datetime.fromisoformat(value + "T12:00:00")
+    except (TypeError, ValueError):
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+# ───────────────────────────── Coaching: weekly brief ─────────────────────────────
+async def _client_brief(client: dict) -> dict:
+    """Rule-based weekly summary for the coach: trend, adherence, flags and one suggested action."""
+    cid = client["user_id"]
+    now = datetime.now(timezone.utc)
+    week_ago = now - timedelta(days=7)
+    focus = client.get("focus")
+
+    progress = await db.progress.find({"user_id": cid}, {"_id": 0}).to_list(500)
+    progress.sort(key=lambda x: (x.get("date", ""), x.get("created_at", "")))
+    weights = [(p["date"], p["weight"]) for p in progress if isinstance(p.get("weight"), (int, float))]
+    sessions = await db.workout_sessions.find({"user_id": cid}, {"_id": 0, "created_at": 1}).to_list(500)
+    foods = await db.food_logs.find({"user_id": cid}, {"_id": 0, "created_at": 1, "result": 1}).to_list(500)
+    photos = await db.progress_photos.find({"user_id": cid, "is_deleted": {"$ne": True}}, {"_id": 0, "created_at": 1}).to_list(300)
+
+    def recent(docs):
+        return [d for d in docs if (_parse_dt(d.get("created_at")) or now - timedelta(days=999)) >= week_ago]
+
+    sessions_7d, foods_7d = recent(sessions), recent(foods)
+    kcals = [f["result"].get("calories") for f in foods_7d if isinstance((f.get("result") or {}).get("calories"), (int, float))]
+    days_logged = len({(f.get("created_at") or "")[:10] for f in foods_7d}) or 1
+    avg_kcal = round(sum(kcals) / days_logged) if kcals else None
+
+    weight_now = weights[-1][1] if weights else None
+    weight_change_7d = None
+    if len(weights) >= 2:
+        cutoff = (now - timedelta(days=7)).date().isoformat()
+        older = [w for d, w in weights if d <= cutoff]
+        base = older[-1] if older else weights[0][1]
+        weight_change_7d = round(weight_now - base, 1)
+
+    stamps = [_parse_dt(d.get("created_at")) for d in progress + sessions + foods + photos]
+    stamps = [t for t in stamps if t]
+    last_active = max(stamps) if stamps else _parse_dt(client.get("created_at"))
+    inactive_days = (now - last_active).days if last_active else None
+
+    plateau = False
+    if focus in FITNESS_FOCUS:
+        window = (now - timedelta(days=21)).date().isoformat()
+        recent_w = [(d, w) for d, w in weights if d >= window]
+        if len(recent_w) >= 3:
+            span = (_parse_dt(recent_w[-1][0]) - _parse_dt(recent_w[0][0])).days
+            vals = [w for _, w in recent_w]
+            plateau = span >= 14 and (max(vals) - min(vals)) < 0.5
+
+    flags = []
+    if inactive_days is not None and inactive_days >= 5:
+        flags.append({"kind": "inactive", "text": f"No logs for {inactive_days} days"})
+    if plateau:
+        flags.append({"kind": "plateau", "text": "Weight flat for 3 weeks"})
+    if weight_change_7d is not None:
+        if focus == "fat_loss" and weight_change_7d >= 0.5:
+            flags.append({"kind": "off_track", "text": f"Weight up {weight_change_7d} kg this week"})
+        if focus == "muscle_gain" and weight_change_7d <= -0.5:
+            flags.append({"kind": "off_track", "text": f"Weight down {abs(weight_change_7d)} kg this week"})
+    if focus in FITNESS_FOCUS and not foods_7d:
+        flags.append({"kind": "no_food", "text": "No meals logged this week"})
+
+    parts = []
+    if weight_now is not None:
+        parts.append(f"{weight_now} kg" + (f" ({'+' if weight_change_7d > 0 else ''}{weight_change_7d} this week)" if weight_change_7d not in (None, 0) else ""))
+    parts.append(f"{len(sessions_7d)} workout{'s' if len(sessions_7d) != 1 else ''}")
+    if focus in FITNESS_FOCUS:
+        parts.append(f"{len(foods_7d)} meals logged" + (f", ~{avg_kcal} kcal/day" if avg_kcal else ""))
+
+    kinds = {f["kind"] for f in flags}
+    if "inactive" in kinds:
+        suggestion = "Send a check-in message — they've gone quiet."
+    elif "plateau" in kinds:
+        suggestion = "Draft an adjustment: small calorie change or more training volume."
+    elif "off_track" in kinds:
+        suggestion = "Review their food logs and adjust the nutrition plan."
+    elif "no_food" in kinds:
+        suggestion = "Ask them to log meals so you can coach nutrition."
+    else:
+        suggestion = "On track — a quick word of encouragement goes a long way."
+
+    return {
+        "headline": " · ".join(parts), "flags": flags, "suggestion": suggestion,
+        "weight": weight_now, "weight_change_7d": weight_change_7d, "workouts_7d": len(sessions_7d),
+        "meals_7d": len(foods_7d), "avg_kcal": avg_kcal, "inactive_days": inactive_days, "plateau": plateau,
+        "last_active": last_active.isoformat() if last_active else None,
     }
-    await db.meal_plans.insert_one(dict(doc))
+
+
+# ───────────────────────────── Coaching: plan drafting ─────────────────────────────
+DIET_TEXT = {
+    "veg": "vegetarian (lacto-vegetarian, no eggs)", "non_veg": "non-vegetarian", "eggetarian": "vegetarian plus eggs",
+    "vegan": "vegan", "jain": "Jain (vegetarian, no onion, garlic or root vegetables)",
+}
+GOAL_TEXT = {"fat_loss": "fat loss", "muscle_gain": "muscle gain", "yoga": "yoga practice", "hybrid": "fitness plus yoga"}
+
+
+def _profile_text(client: dict, latest: dict) -> str:
+    it = client.get("intake") or {}
+    bits = [f"Goal: {GOAL_TEXT.get(client.get('focus'), 'general fitness')}"]
+    for key, label in (("age", "Age"), ("sex", "Sex"), ("height_cm", "Height (cm)"), ("target_weight_kg", "Target weight (kg)"),
+                       ("experience", "Experience"), ("days_per_week", "Training days per week"), ("equipment", "Equipment"),
+                       ("injuries", "Injuries/limitations"), ("allergies", "Allergies"), ("dislikes", "Dislikes")):
+        if it.get(key):
+            bits.append(f"{label}: {it[key]}")
+    if it.get("diet"):
+        bits.append(f"Diet: {DIET_TEXT.get(it['diet'], it['diet'])}")
+    weight = latest.get("weight") or it.get("weight_kg")
+    if weight:
+        bits.append(f"Current weight (kg): {weight}")
+    return "\n".join(bits)
+
+
+def _ai_system(ptype: str) -> str:
+    common = ("You draft plans that a certified human coach will review and approve before the client sees them. "
+              "Respond ONLY with strict JSON, no prose. ")
+    if ptype == "meal":
+        return common + (
+            "You are a sports dietitian in India. Build a one-day meal plan. Prefer foods common in Indian homes "
+            "(dal, roti, rice, paneer, curd, sabzi, eggs/chicken/fish only if the diet allows) and respect the diet type strictly. "
+            'Schema: {"title": string, "summary": string, "meals": [{"meal": "Breakfast"|"Lunch"|"Dinner"|"Snack", '
+            '"name": string, "items": [string], "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number}]}. '
+            "Include Breakfast, Lunch, Dinner and 1-2 Snacks with clear portions.")
+    if ptype == "yoga":
+        return common + (
+            "You are an experienced yoga teacher. Build a weekly yoga practice. "
+            'Schema: {"title": string, "summary": string, "days": [{"name": string, "focus": string, '
+            '"exercises": [{"name": pose name (English + Sanskrit), "sets": rounds as number, "reps": hold time like "30s" or "5 breaths", '
+            '"rest": string, "notes": one alignment cue}]}]}. Respect injuries; offer gentler variations where needed.')
+    return common + (
+        "You are a strength and conditioning coach. Build a weekly training split. "
+        'Schema: {"title": string, "summary": string, "days": [{"name": string, "focus": string, '
+        '"exercises": [{"name": string, "sets": number, "reps": string like "8-10" or "45s", "rest": string like "90s", '
+        '"notes": short form cue}]}]}. Match the number of days per week, equipment and experience; avoid movements '
+        "that aggravate listed injuries.")
+
+
+async def _ai_json(system: str, prompt: str, tag: str) -> dict:
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"{tag}-{uuid.uuid4().hex[:8]}",
+                   system_message=system).with_model("gemini", GEMINI_MODEL)
+    reply = await chat.send_message(UserMessage(text=prompt))
+    return _extract_json(reply)
+
+
+def _ex(name, sets, reps, rest="60s", notes=""):
+    return {"name": name, "sets": sets, "reps": reps, "rest": rest, "notes": notes}
+
+
+def _template_plan(ptype: str, client: dict) -> dict:
+    """Starting point used when the AI is unavailable; the coach edits it before approving."""
+    it = client.get("intake") or {}
+    if ptype == "meal":
+        diet = it.get("diet") or "veg"
+        protein = {"non_veg": "Grilled chicken (150 g)", "eggetarian": "3-egg bhurji", "vegan": "Tofu bhurji (150 g)"}.get(diet, "Paneer bhurji (100 g)")
+        return {"title": "Balanced day of eating", "summary": "Starter template — adjust portions to the client's target.", "meals": [
+            {"meal": "Breakfast", "name": "Oats & protein", "items": ["Oats (50 g) with milk", "1 banana", "10 almonds"], "calories": 420, "protein_g": 18, "carbs_g": 62, "fat_g": 12},
+            {"meal": "Lunch", "name": "Dal, roti, sabzi", "items": ["2 rotis", "1 bowl dal", "1 bowl seasonal sabzi", "Salad"], "calories": 560, "protein_g": 22, "carbs_g": 80, "fat_g": 14},
+            {"meal": "Snack", "name": "Curd & fruit", "items": ["Curd (200 g)", "1 apple"], "calories": 220, "protein_g": 10, "carbs_g": 32, "fat_g": 6},
+            {"meal": "Dinner", "name": "Protein & greens", "items": [protein, "1 roti", "Stir-fried vegetables"], "calories": 480, "protein_g": 32, "carbs_g": 36, "fat_g": 20},
+        ]}
+    if ptype == "yoga":
+        return {"title": "Foundations flow", "summary": "Starter template — 3 sessions a week.", "days": [
+            {"name": "Day 1", "focus": "Mobility", "exercises": [_ex("Sun Salutation A (Surya Namaskar A)", 5, "1 breath per move", "—", "Move with the breath"),
+                                                                    _ex("Warrior II (Virabhadrasana II)", 2, "30s each side", "15s", "Front knee over ankle"),
+                                                                    _ex("Triangle (Trikonasana)", 2, "30s each side", "15s", "Lengthen both sides of the waist")]},
+            {"name": "Day 2", "focus": "Balance", "exercises": [_ex("Tree (Vrikshasana)", 2, "30s each side", "15s", "Press foot and leg together"),
+                                                                   _ex("Chair (Utkatasana)", 3, "20s", "15s", "Weight in the heels"),
+                                                                   _ex("Bridge (Setu Bandhasana)", 3, "30s", "15s", "Knees hip-width")]},
+            {"name": "Day 3", "focus": "Recovery", "exercises": [_ex("Downward Dog (Adho Mukha Svanasana)", 3, "5 breaths", "—", "Hips high, heels reaching down"),
+                                                                    _ex("Cobra (Bhujangasana)", 3, "20s", "15s", "Shoulders away from ears"),
+                                                                    _ex("Child's Pose (Balasana)", 1, "2 min", "—", "Relax the jaw")]},
+        ]}
+    days = max(2, min(6, int(it.get("days_per_week") or 3)))
+    home = it.get("equipment") in ("home", "bodyweight")
+    lower = [_ex("Goblet Squat" if home else "Back Squat", 4, "8-10", "90s", "Chest up, knees track toes"),
+             _ex("Romanian Deadlift", 3, "10", "90s", "Hinge at the hips, flat back"),
+             _ex("Walking Lunge", 3, "10 each leg", "60s"), _ex("Plank", 3, "40s", "45s")]
+    upper = [_ex("Push-ups" if home else "Bench Press", 4, "8-12", "90s"), _ex("Dumbbell Row", 3, "10 each side", "60s"),
+             _ex("Shoulder Press", 3, "10", "60s"), _ex("Dead Bug", 3, "10 each side", "45s")]
+    cardio = [_ex("Brisk walk or cycle", 1, "25 min", "—", "Conversational pace"), _ex("Mountain Climbers", 3, "30s", "30s")]
+    rotation = [("Lower body", lower), ("Upper body", upper), ("Conditioning", cardio)]
+    if client.get("focus") == "muscle_gain":
+        rotation = [("Lower body", lower), ("Upper body", upper)]
+    return {"title": f"{days}-day starter programme", "summary": "Starter template — adjust load and volume after the first week.",
+            "days": [{"name": f"Day {i + 1}", "focus": rotation[i % len(rotation)][0], "exercises": rotation[i % len(rotation)][1]} for i in range(days)]}
+
+
+def _num(v, cap=100000):
+    try:
+        return max(0, min(cap, round(float(v), 1)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _txt(v, cap=160):
+    return str(v if v is not None else "").strip()[:cap]
+
+
+def _clean_plan(ptype: str, content: dict) -> dict:
+    """Normalise AI or coach-edited plan content so the client UI can always render it."""
+    if not isinstance(content, dict):
+        raise HTTPException(status_code=400, detail="Invalid plan content")
+    out = {"title": _txt(content.get("title"), 100) or PLAN_LABELS[ptype].capitalize(), "summary": _txt(content.get("summary"), 400)}
+    if ptype == "meal":
+        meals = []
+        for m in (content.get("meals") or [])[:10]:
+            if not isinstance(m, dict):
+                continue
+            items = [_txt(i, 120) for i in (m.get("items") or []) if _txt(i, 120)][:12]
+            meals.append({"meal": _txt(m.get("meal"), 30) or "Meal", "name": _txt(m.get("name"), 80), "items": items,
+                          **{k: _num(m.get(k), 5000) for k in ("calories", "protein_g", "carbs_g", "fat_g")}})
+        out["meals"] = meals
+        for k in ("calories", "protein_g", "carbs_g", "fat_g"):
+            out[f"total_{k}"] = round(sum(m[k] for m in meals), 1)
+        return out
+    days = []
+    for d in (content.get("days") or [])[:7]:
+        if not isinstance(d, dict):
+            continue
+        exercises = []
+        for e in (d.get("exercises") or [])[:15]:
+            if isinstance(e, dict) and _txt(e.get("name"), 80):
+                exercises.append({"name": _txt(e.get("name"), 80), "sets": _num(e.get("sets"), 50), "reps": _txt(e.get("reps"), 30),
+                                  "rest": _txt(e.get("rest"), 20), "notes": _txt(e.get("notes"), 160)})
+        days.append({"name": _txt(d.get("name"), 40) or f"Day {len(days) + 1}", "focus": _txt(d.get("focus"), 60), "exercises": exercises})
+    out["days"] = days
+    return out
+
+
+def _plan_out(doc: dict) -> dict:
     doc.pop("_id", None)
     return doc
 
 
-@api_router.delete("/meal-plans/{plan_id}")
-async def delete_meal_plan(plan_id: str, user: User = Depends(get_current_user)):
-    await db.meal_plans.delete_one({"id": plan_id, "user_id": user.user_id})
+@api_router.post("/coach/clients/{client_id}/plans/draft")
+async def draft_plan(client_id: str, payload: PlanDraftRequest, user: User = Depends(require_role("trainer", "admin"))):
+    if payload.type not in PLAN_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid plan type")
+    client_doc = await _client_access(user, client_id, PLAN_TYPES[payload.type])
+    latest = await db.progress.find_one({"user_id": client_id, "weight": {"$ne": None}}, {"_id": 0}, sort=[("date", -1)]) or {}
+    active = await db.plans.find_one({"client_id": client_id, "type": payload.type, "status": "active"}, {"_id": 0})
+    notes = _txt(payload.notes, 500)
+
+    prompt = f"Client profile:\n{_profile_text(client_doc, latest)}\n"
+    if active:
+        prompt += f"\nCurrent approved plan (revise it rather than starting over):\n{json.dumps(active['content'])[:4000]}\n"
+    if notes:
+        prompt += f"\nCoach instructions: {notes}\n"
+    ai_generated, ai_note = True, ""
+    try:
+        content = await _ai_json(_ai_system(payload.type), prompt, f"plan-{payload.type}")
+    except Exception as e:
+        logger.warning("AI draft unavailable, using template: %s", e)
+        content = active["content"] if active else _template_plan(payload.type, client_doc)
+        ai_generated, ai_note = False, "AI was unavailable, so this draft starts from " + ("the current plan." if active else "a template.")
+
+    doc = {
+        "id": str(uuid.uuid4()), "client_id": client_id, "client_name": client_doc.get("name"),
+        "coach_id": user.user_id, "coach_name": user.name, "type": payload.type, "status": "draft",
+        "content": _clean_plan(payload.type, content), "reason": notes or None, "ai_generated": ai_generated,
+        "ai_note": ai_note or None, "coach_note": None, "revises": active["id"] if active else None,
+        "created_at": datetime.now(timezone.utc).isoformat(), "approved_at": None,
+    }
+    await db.plans.insert_one(dict(doc))
+    return _plan_out(doc)
+
+
+async def _editable_plan(plan_id: str, user: User) -> dict:
+    plan = await db.plans.find_one({"id": plan_id}, {"_id": 0})
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    if user.role not in ("trainer", "admin"):
+        raise HTTPException(status_code=403, detail="Only coaches can change plans")
+    await _client_access(user, plan["client_id"], PLAN_TYPES[plan["type"]])
+    return plan
+
+
+@api_router.put("/plans/{plan_id}")
+async def update_plan(plan_id: str, payload: PlanUpdate, user: User = Depends(require_role("trainer", "admin"))):
+    plan = await _editable_plan(plan_id, user)
+    if plan["status"] != "draft":
+        raise HTTPException(status_code=409, detail="Only drafts can be edited — start a revision instead")
+    content = dict(payload.content)
+    if payload.title is not None:
+        content["title"] = payload.title
+    update = {"content": _clean_plan(plan["type"], content)}
+    if payload.coach_note is not None:
+        update["coach_note"] = _txt(payload.coach_note, 500) or None
+    await db.plans.update_one({"id": plan_id}, {"$set": update})
+    return _plan_out(await db.plans.find_one({"id": plan_id}, {"_id": 0}))
+
+
+@api_router.post("/plans/{plan_id}/approve")
+async def approve_plan(plan_id: str, user: User = Depends(require_role("trainer", "admin"))):
+    plan = await _editable_plan(plan_id, user)
+    if plan["status"] != "draft":
+        raise HTTPException(status_code=409, detail="This plan is not a draft")
+    if not (plan["content"].get("days") or plan["content"].get("meals")):
+        raise HTTPException(status_code=400, detail="Add at least one day or meal before approving")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.plans.update_many({"client_id": plan["client_id"], "type": plan["type"], "status": "active"},
+                               {"$set": {"status": "archived", "archived_at": now}})
+    await db.plans.update_one({"id": plan_id}, {"$set": {"status": "active", "approved_at": now,
+                                                          "approved_by": user.user_id, "approved_by_name": user.name}})
+    label = PLAN_LABELS[plan["type"]]
+    body = f"{user.name} approved your new {label}." + (f" Why: {plan['reason']}" if plan.get("reason") else "")
+    link = {"meal": "/meal-plans", "yoga": "/yoga"}.get(plan["type"], "/workouts")
+    await push_notification(plan["client_id"], "Your plan was updated" if plan.get("revises") else "Your plan is ready", body, link)
+    return _plan_out(await db.plans.find_one({"id": plan_id}, {"_id": 0}))
+
+
+@api_router.post("/plans/{plan_id}/revise")
+async def revise_plan(plan_id: str, user: User = Depends(require_role("trainer", "admin"))):
+    """Copy an approved plan into a new draft so the coach can tweak it by hand."""
+    plan = await _editable_plan(plan_id, user)
+    existing = await db.plans.find_one({"client_id": plan["client_id"], "type": plan["type"], "status": "draft"}, {"_id": 0})
+    if existing:
+        return existing
+    doc = {**plan, "id": str(uuid.uuid4()), "status": "draft", "coach_id": user.user_id, "coach_name": user.name,
+           "ai_generated": False, "ai_note": None, "reason": None, "revises": plan["id"],
+           "created_at": datetime.now(timezone.utc).isoformat(), "approved_at": None}
+    for k in ("approved_by", "approved_by_name", "archived_at"):
+        doc.pop(k, None)
+    await db.plans.insert_one(dict(doc))
+    return _plan_out(doc)
+
+
+@api_router.delete("/plans/{plan_id}")
+async def discard_plan(plan_id: str, user: User = Depends(require_role("trainer", "admin"))):
+    plan = await _editable_plan(plan_id, user)
+    if plan["status"] != "draft":
+        raise HTTPException(status_code=409, detail="Only drafts can be discarded")
+    await db.plans.delete_one({"id": plan_id})
     return {"ok": True}
+
+
+@api_router.get("/my/plans")
+async def my_plans(user: User = Depends(require_role("client"))):
+    docs = await db.plans.find({"client_id": user.user_id, "status": "active"}, {"_id": 0}).to_list(10)
+    return {d["type"]: d for d in docs}
+
+
+# ───────────────────────────── Coaching: coach views ─────────────────────────────
+def _coach_public(u: Optional[dict]) -> Optional[dict]:
+    if not u:
+        return None
+    return {"user_id": u["user_id"], "name": u.get("name"), "picture": u.get("picture"),
+            "specialty": u.get("specialty") or "", "bio": u.get("bio") or "", "coach_type": u.get("coach_type") or "fitness"}
+
+
+@api_router.get("/my/coaches")
+async def my_coaches(user: User = Depends(require_role("client"))):
+    out = {}
+    for field, key in (("fitness_coach_id", "fitness"), ("yoga_coach_id", "yoga")):
+        cid = getattr(user, field)
+        out[key] = _coach_public(await db.users.find_one({"user_id": cid}, {"_id": 0})) if cid else None
+    return {**out, "needs": _needs_coach(user.model_dump())}
+
+
+async def _unread_count(client_id: str, coach_id: str, reader_id: str) -> int:
+    return await db.messages.count_documents({"client_id": client_id, "coach_id": coach_id,
+                                              "sender_id": {"$ne": reader_id}, "read_by": {"$ne": reader_id}})
+
+
+@api_router.get("/coach/clients")
+async def coach_clients(user: User = Depends(require_role("trainer", "admin"))):
+    out = []
+    for c in await _my_clients(user):
+        cid = c["user_id"]
+        plans = await db.plans.find({"client_id": cid, "status": {"$in": ["active", "draft"]}}, {"_id": 0, "type": 1, "status": 1}).to_list(20)
+        plans = [p for p in plans if _sees_plan_type(user, c, p["type"])]
+        out.append({
+            "user_id": cid, "name": c.get("name"), "email": c.get("email"), "picture": c.get("picture"),
+            "focus": c.get("focus"), "tracks": sorted(_coach_tracks(user.user_id, c)) if user.role == "trainer" else [],
+            "active_plans": sorted({p["type"] for p in plans if p["status"] == "active"}),
+            "draft_plans": sorted({p["type"] for p in plans if p["status"] == "draft"}),
+            "unread": await _unread_count(cid, user.user_id, user.user_id) if user.role == "trainer" else 0,
+            "brief": await _client_brief(c),
+        })
+    return out
+
+
+@api_router.get("/coach/clients/{client_id}")
+async def coach_client_detail(client_id: str, user: User = Depends(require_role("trainer", "admin"))):
+    c = await _client_access(user, client_id)
+    progress = await db.progress.find({"user_id": client_id}, {"_id": 0}).to_list(500)
+    progress.sort(key=lambda x: (x.get("date", ""), x.get("created_at", "")))
+    photos = await db.progress_photos.find({"user_id": client_id, "is_deleted": {"$ne": True}}, {"_id": 0}).to_list(300)
+    photos.sort(key=lambda x: (x.get("date", ""), x.get("created_at", "")))
+    sessions = await db.workout_sessions.find({"user_id": client_id}, {"_id": 0}).sort("created_at", -1).to_list(30)
+    foods = await db.food_logs.find({"user_id": client_id}, {"_id": 0}).sort("created_at", -1).to_list(40)
+    plans = await db.plans.find({"client_id": client_id}, {"_id": 0}).sort("created_at", -1).to_list(60)
+    plans = [p for p in plans if _sees_plan_type(user, c, p["type"])]
+    tracks = sorted(_coach_tracks(user.user_id, c)) if user.role == "trainer" else ["fitness", "yoga"]
+    coaches = {k: _coach_public(await db.users.find_one({"user_id": c.get(f)}, {"_id": 0})) if c.get(f) else None
+               for f, k in (("fitness_coach_id", "fitness"), ("yoga_coach_id", "yoga"))}
+    return {"client": c, "tracks": tracks, "coaches": coaches, "brief": await _client_brief(c), "progress": progress,
+            "photos": photos, "sessions": sessions, "food": foods, "plans": plans}
+
+
+@api_router.get("/coach/attention")
+async def coach_attention(user: User = Depends(require_role("trainer", "admin"))):
+    """The coach's to-do list across all their clients, most urgent first."""
+    items = []
+    today = datetime.now(timezone.utc).date().isoformat()
+    for c in await _my_clients(user):
+        cid, name = c["user_id"], c.get("name")
+        tracks = _coach_tracks(user.user_id, c) if user.role == "trainer" else set()
+        types = [t for t, tr in PLAN_TYPES.items() if tr in tracks and
+                 ((t != "yoga" and c.get("focus") in FITNESS_FOCUS) or (t == "yoga" and c.get("focus") in YOGA_FOCUS))]
+        plans = await db.plans.find({"client_id": cid, "status": {"$in": ["active", "draft"]}}, {"_id": 0}).to_list(20)
+        for p in plans:
+            if p["status"] == "draft" and p["type"] in types:
+                items.append({"id": f"draft-{p['id']}", "kind": "approve", "priority": 1, "client_id": cid, "client_name": name,
+                              "text": f"{PLAN_LABELS[p['type']].capitalize()} draft waiting for your approval", "plan_id": p["id"], "plan_type": p["type"]})
+        have = {p["type"] for p in plans}
+        for t in types:
+            if t not in have:
+                items.append({"id": f"noplan-{cid}-{t}", "kind": "needs_plan", "priority": 2, "client_id": cid, "client_name": name,
+                              "text": f"Needs a {PLAN_LABELS[t]}", "plan_type": t})
+        if user.role == "trainer":
+            unread = await _unread_count(cid, user.user_id, user.user_id)
+            if unread:
+                items.append({"id": f"msg-{cid}", "kind": "message", "priority": 1, "client_id": cid, "client_name": name,
+                              "text": f"{unread} unread message{'s' if unread > 1 else ''}"})
+        brief = await _client_brief(c)
+        active_types = {p["type"] for p in plans if p["status"] == "active"}
+        for f in brief["flags"]:
+            item = {"id": f"{f['kind']}-{cid}", "kind": f["kind"], "priority": 3, "client_id": cid, "client_name": name,
+                    "text": f["text"], "suggestion": brief["suggestion"]}
+            if f["kind"] in ("plateau", "off_track") and "workout" in types and "meal" in active_types:
+                item["plan_type"] = "meal"
+                item["adjust_reason"] = f["text"]
+            items.append(item)
+    sessions = await db.bookings.find({"trainer_id": user.user_id, "date": today}, {"_id": 0}).to_list(50)
+    for b in sessions:
+        items.append({"id": f"session-{b['id']}", "kind": "session", "priority": 0, "client_id": b.get("user_id"),
+                      "client_name": b.get("client_name"), "text": f"Session today at {b['time']}", "booking_id": b["id"]})
+    items.sort(key=lambda i: (i["priority"], i.get("client_name") or ""))
+    return items
+
+
+# ───────────────────────────── Coaching: messages ─────────────────────────────
+async def _thread_access(user: User, client_id: str, coach_id: str) -> dict:
+    client_doc = await _client_access(user, client_id)
+    if coach_id not in (client_doc.get("fitness_coach_id"), client_doc.get("yoga_coach_id")):
+        raise HTTPException(status_code=404, detail="This coach is not assigned to the client")
+    if user.role == "trainer" and user.user_id != coach_id:
+        raise HTTPException(status_code=403, detail="Not your conversation")
+    return client_doc
+
+
+@api_router.get("/messages/{client_id}/{coach_id}")
+async def list_messages(client_id: str, coach_id: str, user: User = Depends(get_current_user)):
+    await _thread_access(user, client_id, coach_id)
+    docs = await db.messages.find({"client_id": client_id, "coach_id": coach_id}, {"_id": 0}).sort("created_at", 1).to_list(500)
+    if user.role != "admin":
+        await db.messages.update_many({"client_id": client_id, "coach_id": coach_id, "read_by": {"$ne": user.user_id}},
+                                      {"$addToSet": {"read_by": user.user_id}})
+    return docs
+
+
+@api_router.post("/messages/{client_id}/{coach_id}")
+async def send_message(client_id: str, coach_id: str, payload: MessageCreate, user: User = Depends(get_current_user)):
+    if user.role == "admin":
+        raise HTTPException(status_code=403, detail="Admins can read but not post in coaching chats")
+    await _thread_access(user, client_id, coach_id)
+    body = payload.body.strip()
+    if not (1 <= len(body) <= 2000):
+        raise HTTPException(status_code=400, detail="Message must be 1–2000 characters")
+    context = None
+    if payload.context_type in ("food", "workout", "plan", "photo", "progress") and payload.context_id:
+        context = {"type": payload.context_type, "id": _txt(payload.context_id, 60), "label": _txt(payload.context_label, 120)}
+    doc = {"id": str(uuid.uuid4()), "client_id": client_id, "coach_id": coach_id, "sender_id": user.user_id,
+           "sender_name": user.name, "sender_role": user.role, "body": body, "context": context,
+           "read_by": [user.user_id], "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.messages.insert_one(dict(doc))
+    doc.pop("_id", None)
+    recipient = coach_id if user.user_id == client_id else client_id
+    link = f"/trainer/clients/{client_id}?tab=chat" if recipient == coach_id else f"/messages?coach={coach_id}"
+    preview = body if len(body) <= 80 else body[:77] + "..."
+    await db.notifications.delete_many({"user_id": recipient, "link": link, "read": False})  # one live notice per thread
+    await push_notification(recipient, f"Message from {user.name}", preview, link)
+    return doc
+
+
+@api_router.get("/messages/unread")
+async def unread_messages(user: User = Depends(get_current_user)):
+    if user.role == "client":
+        counts = {cid: await _unread_count(user.user_id, cid, user.user_id) for cid in _my_coach_ids(user)}
+    elif user.role == "trainer":
+        counts = {c["user_id"]: await _unread_count(c["user_id"], user.user_id, user.user_id) for c in await _my_clients(user)}
+    else:
+        counts = {}
+    return {"total": sum(counts.values()), "threads": counts}
 
 
 class PaymentOrderRequest(BaseModel):
@@ -1436,9 +2026,12 @@ async def create_indexes():
     try:
         await db.users.create_index("email", unique=True)
         await db.login_attempts.create_index("identifier", unique=True)
+        await db.plans.create_index([("client_id", 1), ("type", 1), ("status", 1)])
+        await db.messages.create_index([("client_id", 1), ("coach_id", 1), ("created_at", 1)])
     except Exception as e:
         logger.warning(f"Index creation skipped: {e}")
     await seed_roles()
+    await migrate_v2()
     _start_scheduler()
     try:
         await asyncio.to_thread(init_storage)
@@ -1481,18 +2074,27 @@ async def seed_roles():
 
     # Demo trainers so booking works out of the box
     demo_trainers = [
-        {"email": "sarah.trainer@fitcoach.com", "name": "Sarah Johnson", "specialty": "Strength & Conditioning"},
-        {"email": "mike.trainer@fitcoach.com", "name": "Mike Chen", "specialty": "Muscle Building & Fat Loss"},
-        {"email": "priya.trainer@fitcoach.com", "name": "Priya Sharma", "specialty": "Yoga & Flexibility"},
+        {"email": "sarah.trainer@fitcoach.com", "name": "Sarah Johnson", "specialty": "Strength & Conditioning", "coach_type": "fitness"},
+        {"email": "mike.trainer@fitcoach.com", "name": "Mike Chen", "specialty": "Muscle Building & Fat Loss", "coach_type": "fitness"},
+        {"email": "priya.trainer@fitcoach.com", "name": "Priya Sharma", "specialty": "Yoga & Flexibility", "coach_type": "yoga"},
     ]
     for t in demo_trainers:
         if not await db.users.find_one({"email": t["email"]}):
             await db.users.insert_one({
                 "user_id": f"user_{uuid.uuid4().hex[:12]}", "email": t["email"], "name": t["name"],
-                "role": "trainer", "specialty": t["specialty"], "bio": f"Certified coach specialising in {t['specialty']}.",
+                "role": "trainer", "specialty": t["specialty"], "coach_type": t["coach_type"], "bio": f"Certified coach specialising in {t['specialty']}.",
                 "available_days": list(DEFAULT_DAYS), "available_times": list(DEFAULT_TIMES), "picture": None, "focus": None,
                 "password_hash": hash_password("Trainer@123"), "created_at": datetime.now(timezone.utc).isoformat(),
             })
+
+
+async def migrate_v2():
+    """Idempotent: map v1 programmes to v2 goals and give every trainer a coach type."""
+    for old, new in LEGACY_FOCUS.items():
+        await db.users.update_many({"focus": old}, {"$set": {"focus": new}})
+    async for t in db.users.find({"role": "trainer", "coach_type": {"$in": [None, ""]}}, {"_id": 0}):
+        ctype = "yoga" if "yoga" in (t.get("specialty") or "").lower() else "fitness"
+        await db.users.update_one({"user_id": t["user_id"]}, {"$set": {"coach_type": ctype}})
 
 
 @app.on_event("shutdown")

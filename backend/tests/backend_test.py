@@ -41,7 +41,7 @@ class TestAuth:
         data = r.json()
         assert data["user_id"] == "user_testfitcoach1"
         assert data["email"] == "test.fit@example.com"
-        assert data["focus"] in {"strength", "nutrition", "yoga", "muscle_fat"}
+        assert data["focus"] in {"fat_loss", "muscle_gain", "yoga", "hybrid"}
 
     def test_me_cookie(self, cookie_client):
         r = cookie_client.get(f"{API}/auth/me")
@@ -56,12 +56,12 @@ class TestAuth:
 # ─────────────────────────── Focus ───────────────────────────
 class TestFocus:
     def test_set_all_focus_values(self, bearer):
-        for f in ["strength", "nutrition", "yoga", "muscle_fat"]:
+        for f in ["fat_loss", "muscle_gain", "yoga", "hybrid"]:
             r = bearer.put(f"{API}/profile/focus", json={"focus": f})
             assert r.status_code == 200, r.text
             assert r.json()["focus"] == f
-        # restore
-        bearer.put(f"{API}/profile/focus", json={"focus": "muscle_fat"})
+        # v1 programme keys are still accepted and mapped to v2 goals
+        assert bearer.put(f"{API}/profile/focus", json={"focus": "muscle_fat"}).json()["focus"] == "fat_loss"
 
     def test_invalid_focus(self, bearer):
         r = bearer.put(f"{API}/profile/focus", json={"focus": "invalid"})
@@ -74,9 +74,10 @@ class TestTrainers:
         r = bearer.get(f"{API}/trainers")
         assert r.status_code == 200
         data = r.json()
-        assert isinstance(data["trainers"], list) and len(data["trainers"]) > 0
-        assert isinstance(data["slots"], list) and len(data["slots"]) > 0
-        assert "trainer_id" in data["trainers"][0]
+        # clients only see their own assigned coaches
+        assert isinstance(data["trainers"], list)
+        for t in data["trainers"]:
+            assert "trainer_id" in t and t["coach_type"] in {"fitness", "yoga"}
 
 
 # ─────────────────────────── Bookings ───────────────────────────
@@ -138,21 +139,12 @@ class TestProgress:
 class TestWorkouts:
     session_id = None
 
-    def test_plan_matches_focus(self, bearer):
-        # ensure user focus is muscle_fat
-        bearer.put(f"{API}/profile/focus", json={"focus": "muscle_fat"})
+    def test_plan_is_coach_approved_or_null(self, bearer):
+        # plans are drafted by the assigned coach; until one is approved the client gets null
         r = bearer.get(f"{API}/workouts/plan")
         assert r.status_code == 200
-        plan = r.json()
-        assert "Hypertrophy" in plan["name"]  # muscle_fat plan
-        assert isinstance(plan["exercises"], list) and len(plan["exercises"]) > 0
-
-    def test_plan_strength_variant(self, bearer):
-        bearer.put(f"{API}/profile/focus", json={"focus": "strength"})
-        r = bearer.get(f"{API}/workouts/plan")
-        assert r.status_code == 200
-        assert "Strength" in r.json()["name"]
-        bearer.put(f"{API}/profile/focus", json={"focus": "muscle_fat"})
+        plan = r.json()["plan"]
+        assert plan is None or (plan["status"] == "active" and plan["approved_by_name"])
 
     def test_log_session(self, bearer):
         payload = {"name": "TEST_Session", "exercises": [{"name": "Squat", "meta": "5x5"}], "duration_min": 30, "notes": "1/5"}

@@ -46,6 +46,14 @@ def _auth(token):
     return {"Authorization": f"Bearer {token}"}
 
 
+def _assign_coach(tok_admin, client_token, coach_id):
+    """Clients can only book their own coach, so assign one before booking."""
+    me = requests.get(f"{API}/auth/me", headers=_auth(client_token)).json()
+    r = requests.put(f"{API}/admin/users/{me['user_id']}/coaches", headers=_auth(tok_admin),
+                     json={"fitness_coach_id": coach_id})
+    assert r.status_code == 200, r.text
+
+
 # ─── Auth + role gating ─────────────────────────────
 class TestAdminAuth:
     def test_admin_login_role(self):
@@ -124,8 +132,10 @@ class TestBookingsDoubleBook:
         # Client 2 = Google test session (different user_id)
         _, tok_admin = _login(ADMIN_EMAIL, ADMIN_PASSWORD)  # for lookups only
         trainers = requests.get(f"{API}/trainers", headers=_auth(tok_admin)).json()["trainers"]
-        tid = trainers[0]["trainer_id"]
+        tid = next(t["trainer_id"] for t in trainers if t["coach_type"] == "fitness")
         monday = _next_monday_iso()
+        _assign_coach(tok_admin, tok_client, tid)
+        _assign_coach(tok_admin, GOOGLE_TEST_SESSION, tid)
 
         slots = requests.get(f"{API}/trainers/{tid}/slots", params={"date": monday},
                              headers=_auth(tok_client)).json()["slots"]

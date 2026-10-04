@@ -15,6 +15,8 @@ import requests
 BASE = os.environ.get("REACT_APP_BACKEND_URL", "https://fitness-dashboard-115.preview.emergentagent.com").rstrip("/")
 API = f"{BASE}/api"
 TOKEN = os.environ.get("TEST_SESSION_TOKEN", "test_session_fitcoach_1")
+ADMIN_EMAIL = os.getenv("TEST_ADMIN_EMAIL", "admin@fitcoach.com")
+ADMIN_PASSWORD = os.getenv("TEST_ADMIN_PASSWORD", "Admin@12345")
 
 
 @pytest.fixture(scope="module")
@@ -117,8 +119,15 @@ class TestBookingRegression:
     def test_create_list_cancel_booking(self, bearer):
         # create — use a real seeded trainer, a valid weekday and an available slot
         import datetime as _dt
+        # clients only see (and can book) their assigned coach — assign one first
+        login = requests.post(f"{API}/auth/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
+        admin = {"Authorization": f"Bearer {login.cookies.get('access_token')}"}
+        all_trainers = requests.get(f"{API}/trainers", headers=admin).json()["trainers"]
+        coach = next(t["trainer_id"] for t in all_trainers if t["coach_type"] == "fitness")
+        me = bearer.get(f"{API}/auth/me").json()
+        requests.put(f"{API}/admin/users/{me['user_id']}/coaches", headers=admin, json={"fitness_coach_id": coach})
         trainers = bearer.get(f"{API}/trainers").json()["trainers"]
-        assert trainers, "expected seeded trainers"
+        assert trainers, "expected the assigned coach"
         tid = trainers[0]["trainer_id"]
         t = _dt.date.today()
         monday = t + _dt.timedelta(days=((0 - t.weekday()) % 7) + 7)  # a future Monday
