@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { AlertCircle, ArrowLeft } from "lucide-react";
 import Logo from "@/components/Logo";
+import GoogleButton from "@/components/GoogleButton";
 import { useAuth } from "@/context/AuthContext";
 import { roleHome } from "@/lib/focus";
 
@@ -15,7 +16,7 @@ function formatApiErrorDetail(detail) {
 }
 
 export default function Login() {
-  const { user, login, emailLogin, emailRegister, loading } = useAuth();
+  const { user, googleLogin, emailLogin, emailRegister, loading } = useAuth();
   const navigate = useNavigate();
   const [tab, setTab] = useState("login");
   const [name, setName] = useState("");
@@ -98,16 +99,12 @@ export default function Login() {
             </button>
           </form>
 
-          <div className="row" style={{ gap: 12, margin: "20px 0" }}>
-            <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-            <span style={{ fontSize: 12, color: "var(--text-3)" }}>or</span>
-            <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-          </div>
-
-          <button type="button" data-testid="google-login-btn" onClick={login} className="btn btn-ghost" style={{ width: "100%", minHeight: 44 }}>
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="" width={18} height={18} />
-            Continue with Google
-          </button>
+          <GoogleButton onError={setError} onCredential={async (credential) => {
+            setError(""); setBusy(true);
+            try { const u = await googleLogin(credential); navigate(roleHome(u), { replace: true }); }
+            catch (err) { setError(formatApiErrorDetail(err.response?.data?.detail) || "Google sign-in failed."); }
+            finally { setBusy(false); }
+          }} />
         </div>
       </div>
     </div>

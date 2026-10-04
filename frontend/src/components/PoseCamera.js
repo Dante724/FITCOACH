@@ -3,9 +3,9 @@ import * as Icons from "lucide-react";
 import { PoseLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import { POSES, SKELETON, scoreFrame, summarize } from "@/lib/poses";
 
-const TASKS_VERSION = "1.0.1"; // keep in sync with @mediapipe/tasks-vision in package.json
-const WASM_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${TASKS_VERSION}/wasm`;
-const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
+// Served from this app (copied/downloaded at build time by scripts/mediapipe-assets.js).
+const WASM_URL = `${process.env.PUBLIC_URL || ""}/mediapipe/wasm`;
+const MODEL_URL = `${process.env.PUBLIC_URL || ""}/mediapipe/pose_landmarker_lite.task`;
 const CAPTURE_SECONDS = 10;
 const MAX_UPLOAD_SECONDS = 30;
 const FRAME_MS = 66; // ~15 detections per second

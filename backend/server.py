@@ -20,7 +20,6 @@ from zoneinfo import ZoneInfo
 import bcrypt
 import jwt
 import httpx
-import requests
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 
 ROOT_DIR = Path(__file__).parent
@@ -30,8 +29,13 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY')
-GEMINI_MODEL = "gemini-3-flash-preview"
+# AI (Google Gemini API, called directly). Without a key, AI features fall back gracefully.
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '').strip()
+GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash').strip()
+# Google Sign-In (OAuth client ID from Google Cloud Console). Leave empty to hide the Google button.
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '').strip()
+# Comma-separated frontend origins allowed to call the API (e.g. https://fitcoach.onrender.com).
+CORS_ORIGINS = [o.strip().rstrip('/') for o in os.environ.get('CORS_ORIGINS', '').split(',') if o.strip()]
 
 JWT_SECRET = os.environ['JWT_SECRET']
 JWT_ALGORITHM = "HS256"
@@ -43,9 +47,11 @@ RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID', '').strip()
 RAZORPAY_KEY_SECRET = os.environ.get('RAZORPAY_KEY_SECRET', '').strip()
 PAYMENTS_ENABLED = bool(RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET)
 
-ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', 'admin@fitcoach.com').strip().lower()
-ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'Admin@12345')
-ADMIN_PASSWORD_RESET = os.environ.get('ADMIN_PASSWORD_RESET', 'false').lower() == 'true'
+# The admin account comes only from these settings (nothing is created when they're unset).
+ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', '').strip().lower()
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', '')
+# Demo trainers with a known password — for local development and tests only.
+SEED_DEMO_DATA = os.environ.get('SEED_DEMO_DATA', 'false').lower() == 'true'
 
 
 DEFAULT_DAYS = [0, 1, 2, 3, 4]
@@ -76,59 +82,39 @@ MEMBERSHIP_PLANS = [
 ]
 SESSION_PRICE_INR = 1000
 
-# ───────────────────────────── Object Storage (profile photos) ─────────────────────────────
-STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
-STORAGE_APP_NAME = "fitcoach"
-_storage_key = None
+# ───────────────────────────── File storage (inside MongoDB) ─────────────────────────────
+# Photos are small (≤5 MB), so each is kept as one binary document — no external bucket needed.
 ALLOWED_IMAGE_EXT = {"jpg", "jpeg", "png", "webp", "gif"}
 IMAGE_MIME = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp", "gif": "image/gif"}
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
 
 
-def init_storage():
-    global _storage_key
-    if _storage_key:
-        return _storage_key
-    if not EMERGENT_LLM_KEY:
-        raise RuntimeError("EMERGENT_LLM_KEY is not set — object storage is disabled")
-    resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_LLM_KEY}, timeout=30)
-    resp.raise_for_status()
-    _storage_key = resp.json()["storage_key"]
-    return _storage_key
+async def store_image(file: "UploadFile", owner_id: str, kind: str) -> dict:
+    """Validate an uploaded image and save it. Returns the files-registry record."""
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
+    if ext not in ALLOWED_IMAGE_EXT:
+        raise HTTPException(status_code=400, detail="Only JPG, PNG, WEBP or GIF images are allowed")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(data) > MAX_PHOTO_BYTES:
+        raise HTTPException(status_code=400, detail="Image must be 5MB or smaller")
+    path = f"{kind}/{owner_id}/{uuid.uuid4().hex}.{ext}"
+    content_type = IMAGE_MIME.get(ext, "application/octet-stream")
+    record = {
+        "id": str(uuid.uuid4()), "storage_path": path, "owner_id": owner_id, "original_filename": file.filename,
+        "content_type": content_type, "size": len(data), "kind": kind, "is_deleted": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.file_blobs.insert_one({"storage_path": path, "data": data})
+    await db.files.insert_one(dict(record))
+    record.pop("_id", None)
+    return record
 
 
-def put_object(path: str, data: bytes, content_type: str) -> dict:
-    key = init_storage()
-    resp = requests.put(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key, "Content-Type": content_type},
-        data=data, timeout=120,
-    )
-    if resp.status_code == 403:
-        # storage key expired — re-init once and retry
-        global _storage_key
-        _storage_key = None
-        key = init_storage()
-        resp = requests.put(
-            f"{STORAGE_URL}/objects/{path}",
-            headers={"X-Storage-Key": key, "Content-Type": content_type},
-            data=data, timeout=120,
-        )
-    resp.raise_for_status()
-    return resp.json()
-
-
-def get_object(path: str):
-    key = init_storage()
-    resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
-    if resp.status_code == 403:
-        global _storage_key
-        _storage_key = None
-        key = init_storage()
-        resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
-    resp.raise_for_status()
-    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
-
+def file_url(path: str) -> str:
+    # Relative URL; the frontend prefixes the API host and adds the viewer's token.
+    return f"/api/files/{path}"
 
 
 app = FastAPI()
@@ -205,6 +191,14 @@ class User(BaseModel):
     yoga_coach_id: Optional[str] = None
     intake: Optional[dict] = None
     created_at: Optional[str] = None
+
+
+class AuthResponse(User):
+    access_token: Optional[str] = None
+
+
+class GoogleLoginRequest(BaseModel):
+    credential: str
 
 
 class FocusUpdate(BaseModel):
@@ -365,21 +359,6 @@ class MessageCreate(BaseModel):
 
 
 # ───────────────────────────── Auth ─────────────────────────────
-async def _user_from_google_session(token: str) -> Optional[User]:
-    session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
-    if not session:
-        return None
-    expires_at = session["expires_at"]
-    if isinstance(expires_at, str):
-        expires_at = datetime.fromisoformat(expires_at)
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if expires_at < datetime.now(timezone.utc):
-        return None
-    user_doc = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
-    return User(**user_doc) if user_doc else None
-
-
 async def _user_from_jwt(token: str) -> Optional[User]:
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
@@ -393,23 +372,15 @@ async def _user_from_jwt(token: str) -> Optional[User]:
 
 async def get_current_user(
     request: Request,
-    session_token: Optional[str] = Cookie(None),
     access_token: Optional[str] = Cookie(None),
     authorization: Optional[str] = Header(None),
 ) -> User:
     bearer = None
     if authorization and authorization.startswith("Bearer "):
         bearer = authorization.split(" ", 1)[1]
-
-    # 1) Google OAuth session (session_token cookie, or a Bearer that matches a session)
-    for candidate in (session_token, bearer):
-        if candidate:
-            user = await _user_from_google_session(candidate)
-            if user:
-                return user
-
-    # 2) Email/password JWT (access_token cookie, or Bearer as a JWT)
-    for candidate in (access_token, bearer):
+    # The app sends a Bearer token (works across separate frontend/backend domains);
+    # the httpOnly cookie is a fallback for same-site deployments.
+    for candidate in (bearer, access_token):
         if candidate:
             user = await _user_from_jwt(candidate)
             if user:
@@ -547,56 +518,45 @@ def _humanize_until(dt: datetime) -> str:
     return f"in {hours // 24}d"
 
 
-@api_router.post("/auth/session")
-async def process_session(request: Request, response: Response):
-    body = await request.json()
-    session_id = body.get("session_id")
-    if not session_id:
-        raise HTTPException(status_code=400, detail="session_id required")
+@api_router.get("/auth/config")
+async def auth_config():
+    """Public settings the login page needs at runtime."""
+    return {"google_client_id": GOOGLE_CLIENT_ID or None}
 
-    async with httpx.AsyncClient() as http:
-        r = await http.get(
-            "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
-            headers={"X-Session-ID": session_id},
-        )
-    if r.status_code != 200:
-        raise HTTPException(status_code=401, detail="Invalid session_id")
-    data = r.json()
 
-    email = data["email"]
+@api_router.post("/auth/google", response_model=AuthResponse)
+async def google_login(payload: GoogleLoginRequest, response: Response):
+    """Sign in with a Google ID token from Google Identity Services (no third-party auth broker)."""
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=503, detail="Google sign-in is not configured")
+    try:
+        async with httpx.AsyncClient(timeout=10) as http:
+            r = await http.get("https://oauth2.googleapis.com/tokeninfo", params={"id_token": payload.credential})
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="Couldn't reach Google. Please try again.")
+    info = r.json() if r.status_code == 200 else {}
+    if (info.get("aud") != GOOGLE_CLIENT_ID or info.get("iss") not in ("accounts.google.com", "https://accounts.google.com")
+            or str(info.get("email_verified")).lower() != "true" or not info.get("email")):
+        raise HTTPException(status_code=401, detail="Google sign-in failed")
+    email = info["email"].lower()
     existing = await db.users.find_one({"email": email}, {"_id": 0})
     if existing:
         user_id = existing["user_id"]
-        await db.users.update_one(
-            {"user_id": user_id},
-            {"$set": {"name": data.get("name", existing.get("name")), "picture": data.get("picture")}},
-        )
+        update = {"google_sub": info.get("sub")}
+        if not existing.get("picture") and info.get("picture"):
+            update["picture"] = info["picture"]
+        await db.users.update_one({"user_id": user_id}, {"$set": update})
     else:
         user_id = f"user_{uuid.uuid4().hex[:12]}"
         await db.users.insert_one({
-            "user_id": user_id,
-            "email": email,
-            "name": data.get("name", email),
-            "picture": data.get("picture"),
-            "focus": None,
+            "user_id": user_id, "email": email, "name": info.get("name") or email, "role": "client",
+            "picture": info.get("picture"), "focus": None, "google_sub": info.get("sub"),
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
-
-    session_token = data["session_token"]
-    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
-    await db.user_sessions.insert_one({
-        "user_id": user_id,
-        "session_token": session_token,
-        "expires_at": expires_at.isoformat(),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    })
-
-    response.set_cookie(
-        key="session_token", value=session_token, httponly=True,
-        secure=True, samesite="none", path="/", max_age=7 * 24 * 60 * 60,
-    )
+    token = create_access_token(user_id, email)
+    set_access_cookie(response, token)
     user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    return User(**user_doc)
+    return AuthResponse(**user_doc, access_token=token)
 
 
 @api_router.get("/auth/me", response_model=User)
@@ -604,7 +564,7 @@ async def auth_me(user: User = Depends(get_current_user)):
     return user
 
 
-@api_router.post("/auth/register", response_model=User)
+@api_router.post("/auth/register", response_model=AuthResponse)
 async def register(payload: RegisterRequest, response: Response):
     email = payload.email.lower().strip()
     if len(payload.password) < 8:
@@ -626,10 +586,10 @@ async def register(payload: RegisterRequest, response: Response):
     token = create_access_token(user_id, email)
     set_access_cookie(response, token)
     user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    return User(**user_doc)
+    return AuthResponse(**user_doc, access_token=token)
 
 
-@api_router.post("/auth/login", response_model=User)
+@api_router.post("/auth/login", response_model=AuthResponse)
 async def login(payload: LoginRequest, request: Request, response: Response):
     email = payload.email.lower().strip()
     ip = get_client_ip(request)
@@ -658,19 +618,13 @@ async def login(payload: LoginRequest, request: Request, response: Response):
     await db.login_attempts.delete_one({"identifier": identifier})
     token = create_access_token(user_doc["user_id"], email)
     set_access_cookie(response, token)
-    return User(**user_doc)
+    return AuthResponse(**user_doc, access_token=token)
 
 
 @api_router.post("/auth/logout")
-async def logout(response: Response, session_token: Optional[str] = Cookie(None),
-                 authorization: Optional[str] = Header(None)):
-    token = session_token
-    if not token and authorization and authorization.startswith("Bearer "):
-        token = authorization.split(" ", 1)[1]
-    if token:
-        await db.user_sessions.delete_one({"session_token": token})
-    response.delete_cookie("session_token", path="/")
-    response.delete_cookie("access_token", path="/")
+async def logout(response: Response):
+    # Tokens are stateless JWTs; the app also forgets its stored token.
+    response.delete_cookie("access_token", path="/", secure=True, samesite="none")
     return {"ok": True}
 
 
@@ -717,61 +671,38 @@ async def update_profile(payload: ProfileUpdate, user: User = Depends(get_curren
 
 @api_router.post("/profile/photo", response_model=User)
 async def upload_profile_photo(request: Request, file: UploadFile = File(...), user: User = Depends(get_current_user)):
-    ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
-    if ext not in ALLOWED_IMAGE_EXT:
-        raise HTTPException(status_code=400, detail="Only JPG, PNG, WEBP or GIF images are allowed")
-    data = await file.read()
-    if not data:
-        raise HTTPException(status_code=400, detail="Empty file")
-    if len(data) > MAX_PHOTO_BYTES:
-        raise HTTPException(status_code=400, detail="Image must be 5MB or smaller")
-    path = f"{STORAGE_APP_NAME}/avatars/{user.user_id}/{uuid.uuid4().hex}.{ext}"
-    content_type = IMAGE_MIME.get(ext, file.content_type or "application/octet-stream")
-    try:
-        result = await asyncio.to_thread(put_object, path, data, content_type)
-    except Exception:
-        logger.exception("Photo upload failed")
-        raise HTTPException(status_code=502, detail="Could not store the image, please try again")
-    stored_path = result["path"]
-    await db.files.insert_one({
-        "id": str(uuid.uuid4()), "storage_path": stored_path, "owner_id": user.user_id,
-        "original_filename": file.filename, "content_type": content_type, "size": result.get("size"),
-        "kind": "avatar", "is_deleted": False, "created_at": datetime.now(timezone.utc).isoformat(),
-    })
-    proto = request.headers.get("x-forwarded-proto", "https")
-    host = request.headers.get("x-forwarded-host") or request.headers.get("host")
-    picture_url = f"{proto}://{host}/api/files/{stored_path}"
+    record = await store_image(file, user.user_id, "avatar")
+    picture_url = file_url(record["storage_path"])
     await db.users.update_one({"user_id": user.user_id}, {"$set": {"picture": picture_url}})
     user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
     return User(**user_doc)
 
 
 @api_router.get("/files/{path:path}")
-async def serve_file(path: str, request: Request,
-                     session_token: Optional[str] = Cookie(None),
+async def serve_file(path: str,
                      access_token: Optional[str] = Cookie(None),
                      authorization: Optional[str] = Header(None),
                      auth: Optional[str] = Query(None)):
-    # Same-origin <img> requests carry the session cookie; also accept a Bearer/query token.
-    authed = False
-    for cand in (session_token, access_token):
-        if cand and (await _user_from_google_session(cand) or await _user_from_jwt(cand)):
-            authed = True
+    # <img> tags can't send headers, so the app appends ?auth=<token>; Bearer and cookie also work.
+    viewer = None
+    bearer = authorization.split(" ", 1)[1] if authorization and authorization.startswith("Bearer ") else None
+    for cand in (auth, bearer, access_token):
+        if cand and (viewer := await _user_from_jwt(cand)):
             break
-    if not authed:
-        token = auth or (authorization.split(" ", 1)[1] if authorization and authorization.startswith("Bearer ") else None)
-        if token and (await _user_from_google_session(token) or await _user_from_jwt(token)):
-            authed = True
-    if not authed:
+    if not viewer:
         raise HTTPException(status_code=401, detail="Not authenticated")
     record = await db.files.find_one({"storage_path": path, "is_deleted": False})
     if not record:
         raise HTTPException(status_code=404, detail="File not found")
-    try:
-        data, content_type = await asyncio.to_thread(get_object, path)
-    except Exception:
+    owner = record.get("owner_id")
+    if record.get("kind") != "avatar" and viewer.role != "admin" and viewer.user_id != owner:
+        owner_doc = await db.users.find_one({"user_id": owner}, {"_id": 0, "fitness_coach_id": 1, "yoga_coach_id": 1}) or {}
+        if viewer.user_id not in (owner_doc.get("fitness_coach_id"), owner_doc.get("yoga_coach_id")):
+            raise HTTPException(status_code=404, detail="File not found")
+    blob = await db.file_blobs.find_one({"storage_path": path})
+    if not blob:
         raise HTTPException(status_code=404, detail="File not found")
-    return Response(content=data, media_type=record.get("content_type", content_type),
+    return Response(content=bytes(blob["data"]), media_type=record.get("content_type", "application/octet-stream"),
                     headers={"Cache-Control": "private, max-age=3600"})
 
 
@@ -1205,30 +1136,9 @@ async def upload_progress_photo(
     note: Optional[str] = Form(None),
     user: User = Depends(get_current_user),
 ):
-    ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
-    if ext not in ALLOWED_IMAGE_EXT:
-        raise HTTPException(status_code=400, detail="Only JPG, PNG, WEBP or GIF images are allowed")
-    data = await file.read()
-    if not data:
-        raise HTTPException(status_code=400, detail="Empty file")
-    if len(data) > MAX_PHOTO_BYTES:
-        raise HTTPException(status_code=400, detail="Image must be 5MB or smaller")
-    path = f"{STORAGE_APP_NAME}/progress/{user.user_id}/{uuid.uuid4().hex}.{ext}"
-    content_type = IMAGE_MIME.get(ext, file.content_type or "application/octet-stream")
-    try:
-        result = await asyncio.to_thread(put_object, path, data, content_type)
-    except Exception:
-        logger.exception("Progress photo upload failed")
-        raise HTTPException(status_code=502, detail="Could not store the image, please try again")
-    stored_path = result["path"]
-    await db.files.insert_one({
-        "id": str(uuid.uuid4()), "storage_path": stored_path, "owner_id": user.user_id,
-        "original_filename": file.filename, "content_type": content_type, "size": result.get("size"),
-        "kind": "progress", "is_deleted": False, "created_at": datetime.now(timezone.utc).isoformat(),
-    })
-    proto = request.headers.get("x-forwarded-proto", "https")
-    host = request.headers.get("x-forwarded-host") or request.headers.get("host")
-    url = f"{proto}://{host}/api/files/{stored_path}"
+    record = await store_image(file, user.user_id, "progress")
+    stored_path = record["storage_path"]
+    url = file_url(stored_path)
     weight_val = None
     try:
         if weight not in (None, ""):
@@ -1254,6 +1164,7 @@ async def delete_progress_photo(photo_id: str, user: User = Depends(get_current_
     await db.progress_photos.update_one({"id": photo_id, "user_id": user.user_id}, {"$set": {"is_deleted": True}})
     if photo.get("storage_path"):
         await db.files.update_one({"storage_path": photo["storage_path"]}, {"$set": {"is_deleted": True}})
+        await db.file_blobs.delete_one({"storage_path": photo["storage_path"]})
     return {"ok": True}
 
 
@@ -1542,11 +1453,21 @@ def _ai_system(ptype: str) -> str:
 
 
 async def _ai_json(system: str, prompt: str, tag: str) -> dict:
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
-    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"{tag}-{uuid.uuid4().hex[:8]}",
-                   system_message=system).with_model("gemini", GEMINI_MODEL)
-    reply = await chat.send_message(UserMessage(text=prompt))
-    return _extract_json(reply)
+    """Ask Gemini for a JSON answer. Raises if AI isn't configured or the reply isn't valid JSON."""
+    if not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY is not set")
+    body = {
+        "systemInstruction": {"parts": [{"text": system}]},
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {"responseMimeType": "application/json", "temperature": 0.4},
+    }
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+    async with httpx.AsyncClient(timeout=60) as http:
+        r = await http.post(url, json=body, headers={"x-goog-api-key": GEMINI_API_KEY})
+    if r.status_code != 200:
+        raise RuntimeError(f"Gemini error {r.status_code} ({tag}): {r.text[:200]}")
+    parts = (r.json().get("candidates") or [{}])[0].get("content", {}).get("parts") or []
+    return _extract_json("".join(p.get("text", "") for p in parts))
 
 
 def _ex(name, sets, reps, rest="60s", notes=""):
@@ -2388,7 +2309,7 @@ app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origin_regex=".*",
+    **({"allow_origins": CORS_ORIGINS} if CORS_ORIGINS else {"allow_origin_regex": ".*"}),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -2404,16 +2325,14 @@ async def create_indexes():
         await db.pose_checks.create_index([("client_id", 1), ("created_at", -1)])
         await db.calls.create_index("id", unique=True)
         await db.call_signals.create_index([("call_id", 1), ("to", 1)])
+        await db.file_blobs.create_index("storage_path", unique=True)
     except Exception as e:
         logger.warning(f"Index creation skipped: {e}")
     await seed_roles()
     await migrate_v2()
     _start_scheduler()
-    try:
-        await asyncio.to_thread(init_storage)
-        logger.info("Object storage initialized")
-    except Exception as e:
-        logger.error(f"Storage init failed: {e}")
+    logger.info("AI %s, Google sign-in %s", "on" if GEMINI_API_KEY else "off (set GEMINI_API_KEY)",
+                "on" if GOOGLE_CLIENT_ID else "off (set GOOGLE_CLIENT_ID)")
 
 
 
@@ -2437,9 +2356,12 @@ def _start_scheduler():
 
 
 async def seed_roles():
-      # Idempotent admin seeding
-    admin = await db.users.find_one({"email": ADMIN_EMAIL})
-    if not admin:
+    """Idempotent: ensure the configured admin exists (and demo trainers when SEED_DEMO_DATA=true)."""
+    if not (ADMIN_EMAIL and ADMIN_PASSWORD):
+        logger.warning("ADMIN_EMAIL/ADMIN_PASSWORD not set — no admin account was created or updated")
+    elif len(ADMIN_PASSWORD) < 10 and not SEED_DEMO_DATA:
+        logger.error("ADMIN_PASSWORD must be at least 10 characters — admin account not created")
+    elif not (admin := await db.users.find_one({"email": ADMIN_EMAIL})):
         await db.users.insert_one({
             "user_id": f"user_{uuid.uuid4().hex[:12]}", "email": ADMIN_EMAIL, "name": "Administrator",
             "role": "admin", "picture": None, "focus": None,
@@ -2448,7 +2370,8 @@ async def seed_roles():
     elif not verify_password(ADMIN_PASSWORD, admin.get("password_hash", "")):
         await db.users.update_one({"email": ADMIN_EMAIL}, {"$set": {"password_hash": hash_password(ADMIN_PASSWORD), "role": "admin"}})
 
-
+    if not SEED_DEMO_DATA:
+        return
     # Demo trainers so booking works out of the box
     demo_trainers = [
         {"email": "sarah.trainer@fitcoach.com", "name": "Sarah Johnson", "specialty": "Strength & Conditioning", "coach_type": "fitness"},

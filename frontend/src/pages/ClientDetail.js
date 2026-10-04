@@ -7,7 +7,7 @@ import PlanEditor from "@/components/PlanEditor";
 import { DaysPlanView, MealPlanView } from "@/components/PlanView";
 import { Sparkline } from "@/pages/Progress";
 import { ScoreRing, CheckList } from "@/components/PoseResult";
-import { api } from "@/lib/api";
+import { api, fileSrc } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { startCall } from "@/lib/calls";
@@ -310,7 +310,7 @@ export default function ClientDetail() {
               <div className="grid-photos">
                 {data.photos.map((p) => (
                   <div key={p.id} className="clay-inset" style={{ padding: 8 }}>
-                    <img src={p.url} alt={`Progress ${p.date}`} style={{ width: "100%", aspectRatio: "3 / 4", objectFit: "cover", borderRadius: 10 }} />
+                    <img src={fileSrc(p.url)} alt={`Progress ${p.date}`} style={{ width: "100%", aspectRatio: "3 / 4", objectFit: "cover", borderRadius: 10 }} />
                     <div style={{ fontSize: 12, marginTop: 6 }}><strong>{p.date}</strong>{p.weight ? ` · ${p.weight} kg` : ""}</div>
                     {isCoach && <button className="btn btn-ghost" onClick={() => discuss({ type: "photo", id: p.id, label: `Progress photo ${p.date}` })} style={{ padding: "6px 10px", fontSize: 12, marginTop: 6, width: "100%" }}>Comment</button>}
                   </div>

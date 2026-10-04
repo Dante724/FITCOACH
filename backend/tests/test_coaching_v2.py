@@ -8,7 +8,7 @@ import uuid
 import pytest
 import requests
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://fitness-dashboard-115.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "http://localhost:8001").rstrip("/")
 API = f"{BASE_URL}/api"
 
 ADMIN = (os.getenv("TEST_ADMIN_EMAIL", "admin@fitcoach.com"), os.getenv("TEST_ADMIN_PASSWORD", "Admin@12345"))
@@ -256,12 +256,16 @@ class TestCalls:
         assert ctx["other"].post(f"{API}/coach/clients/{cid}/sessions", json={"date": d, "time": t}).status_code == 403
         past_d, past_t = _ist(-120)
         assert fit.post(f"{API}/coach/clients/{cid}/sessions", json={"date": past_d, "time": past_t}).status_code == 400
-        r = fit.post(f"{API}/coach/clients/{cid}/sessions", json={"date": d, "time": t})
+        for offset in range(6, 12):  # the slot may already be taken by an earlier run against the same database
+            d, t = _ist(offset)
+            r = fit.post(f"{API}/coach/clients/{cid}/sessions", json={"date": d, "time": t})
+            if r.status_code != 409:
+                break
         assert r.status_code == 200, r.text
         booking = r.json()
         assert any(b["id"] == booking["id"] for b in c.get(f"{API}/bookings").json())
         soon = c.get(f"{API}/calls-live").json()["starting_soon"]
-        assert any(s["booking_id"] == booking["id"] and 0 <= s["minutes"] <= 7 for s in soon)
+        assert any(s["booking_id"] == booking["id"] and 0 <= s["minutes"] <= 12 for s in soon)
         a = c.post(f"{API}/calls/booking/{booking['id']}").json()
         b = fit.post(f"{API}/calls/booking/{booking['id']}").json()
         assert a["id"] == b["id"] and a["kind"] == "scheduled"
@@ -270,3 +274,38 @@ class TestCalls:
     def test_ice_servers(self, ctx):
         ice = ctx["client"].get(f"{API}/calls/ice").json()
         assert ice["iceServers"][0]["urls"][0].startswith("stun:")
+
+
+# 1×1 PNG
+TINY_PNG = bytes.fromhex("89504e470d0a1a0a0000000d4948445200000001000000010806000000"
+                         "1f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082")
+
+
+class TestPhotosInMongo:
+    def test_progress_photo_roundtrip_and_privacy(self, ctx):
+        c = ctx["client"]
+        r = c.post(f"{API}/progress/photos", files={"file": ("me.png", TINY_PNG, "image/png")}, data={"weight": "80.5", "note": "week 1"})
+        assert r.status_code == 200, r.text
+        photo = r.json()
+        assert photo["url"].startswith("/api/files/progress/")
+        path = photo["url"]
+        tok = lambda s: s.headers["Authorization"].split(" ", 1)[1]  # noqa: E731
+        own = requests.get(f"{BASE_URL}{path}", params={"auth": tok(c)})
+        assert own.status_code == 200 and own.content == TINY_PNG and own.headers["content-type"] == "image/png"
+        assert requests.get(f"{BASE_URL}{path}", params={"auth": tok(ctx["fit"])}).status_code == 200    # their coach
+        assert requests.get(f"{BASE_URL}{path}", params={"auth": tok(ctx["other"])}).status_code == 404  # not their coach
+        assert requests.get(f"{BASE_URL}{path}").status_code == 401
+        assert c.delete(f"{API}/progress/photos/{photo['id']}").status_code == 200
+        assert requests.get(f"{BASE_URL}{path}", params={"auth": tok(c)}).status_code == 404
+
+    def test_avatar_upload(self, ctx):
+        c = ctx["client"]
+        assert c.post(f"{API}/profile/photo", files={"file": ("x.exe", b"MZ", "application/octet-stream")}).status_code == 400
+        r = c.post(f"{API}/profile/photo", files={"file": ("me.png", TINY_PNG, "image/png")})
+        assert r.status_code == 200 and r.json()["picture"].startswith("/api/files/avatar/")
+        # avatars are visible to any signed-in user (they appear in coach and admin lists)
+        tok = ctx["other"].headers["Authorization"].split(" ", 1)[1]
+        assert requests.get(f"{BASE_URL}{r.json()['picture']}", params={"auth": tok}).status_code == 200
+
+    def test_google_login_not_configured(self):
+        assert requests.post(f"{API}/auth/google", json={"credential": "x"}).status_code == 503

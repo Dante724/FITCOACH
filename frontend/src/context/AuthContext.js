@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
-import { api } from "@/lib/api";
+import { api, setToken } from "@/lib/api";
 
 const AuthContext = createContext(null);
 
@@ -11,49 +11,38 @@ export function AuthProvider({ children }) {
     try {
       const res = await api.get("/auth/me");
       setUser(res.data);
-    } catch {
+    } catch (e) {
+      if (e?.response?.status === 401) setToken(null);
       setUser(null);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    // If returning from OAuth callback, let AuthCallback exchange the session first.
-    if (window.location.hash?.includes("session_id=")) {
-      setLoading(false);
-      return;
-    }
-    checkAuth();
-  }, [checkAuth]);
+  useEffect(() => { checkAuth(); }, [checkAuth]);
 
-  const login = useCallback(() => {
-    // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
-    const redirectUrl = window.location.origin + "/dashboard";
-    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
+  const signedIn = useCallback((data) => {
+    const { access_token: token, ...profile } = data;
+    setToken(token);
+    setUser(profile);
+    return profile;
   }, []);
 
-  const emailLogin = useCallback(async (email, password) => {
-    const res = await api.post("/auth/login", { email, password });
-    setUser(res.data);
-    return res.data;
-  }, []);
-
-  const emailRegister = useCallback(async (name, email, password) => {
-    const res = await api.post("/auth/register", { name, email, password });
-    setUser(res.data);
-    return res.data;
-  }, []);
+  // Google Identity Services hands us an ID token; the API verifies it with Google directly.
+  const googleLogin = useCallback(async (credential) => signedIn((await api.post("/auth/google", { credential })).data), [signedIn]);
+  const emailLogin = useCallback(async (email, password) => signedIn((await api.post("/auth/login", { email, password })).data), [signedIn]);
+  const emailRegister = useCallback(async (name, email, password) => signedIn((await api.post("/auth/register", { name, email, password })).data), [signedIn]);
 
   const logout = useCallback(async () => {
-    try { await api.post("/auth/logout"); } catch (err) { console.error("Logout request failed:", err); }
+    try { await api.post("/auth/logout"); } catch { /* offline: still sign out locally */ }
+    setToken(null);
     setUser(null);
     window.location.href = "/login";
   }, []);
 
   const value = useMemo(
-    () => ({ user, setUser, loading, checkAuth, login, emailLogin, emailRegister, logout }),
-    [user, loading, checkAuth, login, emailLogin, emailRegister, logout]
+    () => ({ user, setUser, loading, checkAuth, googleLogin, emailLogin, emailRegister, logout }),
+    [user, loading, checkAuth, googleLogin, emailLogin, emailRegister, logout]
   );
 
   return (

@@ -1,0 +1,61 @@
+# Render Blueprint: deploys the FitCoach API (FastAPI) and web app (static React build).
+# MongoDB is external (e.g. MongoDB Atlas) — paste its connection string into MONGO_URL.
+# Render → New → Blueprint → select this repo. Fill in the values marked "sync: false" when prompted.
+services:
+  - type: web
+    name: fitcoach-api
+    runtime: python
+    rootDir: backend
+    plan: starter            # needs to stay awake for reminders and calls; free instances sleep
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: MONGO_URL
+        sync: false
+      - key: DB_NAME
+        value: fitcoach
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        sync: false          # e.g. https://fitcoach-web.onrender.com
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: APP_TIMEZONE
+        value: Asia/Kolkata
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GMAIL_ADDRESS
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+
+  - type: web
+    name: fitcoach-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: build
+    envVars:
+      - key: REACT_APP_BACKEND_URL
+        sync: false          # e.g. https://fitcoach-api.onrender.com
+    headers:
+      - path: /mediapipe/*
+        name: Cache-Control
+        value: public, max-age=604800
+    routes:
+      - type: rewrite        # single-page app: let React Router handle every path
+        source: /*
+        destination: /index.html

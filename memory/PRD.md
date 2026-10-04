@@ -1,5 +1,7 @@
 # FitCoach — Product Requirements & Progress
 
+> **2026-10-04:** Emergent removed. Auth = email/password + own Google Identity Services sign-in; AI = Gemini API direct (`GEMINI_API_KEY`); photos stored in MongoDB; hosting = Render (`render.yaml`) + MongoDB Atlas. Sections below that mention Emergent are historical.
+
 > **2026-10-04:** AI Body Scan removed (endpoints, page, nav, tests, marketing copy). v2 direction lives in `SPEC-v2.md`.
 
 ## Original problem statement

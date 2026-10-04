@@ -1,13 +1,12 @@
 import "@/App.css";
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ToastProvider } from "@/context/ToastContext";
 import { roleHome } from "@/lib/focus";
 import Layout from "@/components/Layout";
 import Landing from "@/pages/Landing";
 import Login from "@/pages/Login";
-import AuthCallback from "@/pages/AuthCallback";
 import FocusSelect from "@/pages/FocusSelect";
 import Dashboard from "@/pages/Dashboard";
 import Booking from "@/pages/Booking";
@@ -49,8 +48,6 @@ function RequireAuth({ children, roles, requireFocus }) {
 }
 
 function AppRouter() {
-  const location = useLocation();
-  if (location.hash?.includes("session_id=")) return <AuthCallback />;
 
   return (
     <Routes>

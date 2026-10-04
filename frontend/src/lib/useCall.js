@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, API } from "@/lib/api";
+import { api, API, authHeaders } from "@/lib/api";
 
 // In-app 1:1 video calls over WebRTC. Media goes browser-to-browser; our API only relays
 // offer/answer/ICE messages and presence. The coach always makes the offer, so the two sides
@@ -217,7 +217,7 @@ export default function useCall(callId) {
     })();
 
     const leaveBeacon = () => {
-      fetch(`${API}/calls/${callId}/leave`, { method: "POST", credentials: "include", keepalive: true }).catch(() => {});
+      fetch(`${API}/calls/${callId}/leave`, { method: "POST", credentials: "include", keepalive: true, headers: authHeaders() }).catch(() => {});
     };
     window.addEventListener("pagehide", leaveBeacon);
     return () => {

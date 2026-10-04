@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import * as Icons from "lucide-react";
 import PageHeader from "@/components/PageHeader";
-import { api } from "@/lib/api";
+import { api, fileSrc } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { getFocus } from "@/lib/focus";
@@ -62,7 +62,7 @@ export default function Profile() {
           <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
             <div style={{ position: "relative" }}>
               {user?.picture ? (
-                <img src={user.picture} alt="" data-testid="profile-avatar" style={{ width: 80, height: 80, borderRadius: "50%", objectFit: "cover" }} />
+                <img src={fileSrc(user.picture)} alt="" data-testid="profile-avatar" style={{ width: 80, height: 80, borderRadius: "50%", objectFit: "cover" }} />
               ) : (
                 <div data-testid="profile-avatar" style={{ width: 80, height: 80, borderRadius: "50%", background: "var(--surface-2)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, fontWeight: 500, color: "var(--text-2)" }}>{initials}</div>
               )}

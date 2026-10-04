@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import * as Icons from "lucide-react";
-import { api } from "@/lib/api";
+import { api, fileSrc } from "@/lib/api";
 import { useToast } from "@/context/ToastContext";
 import { localDate } from "@/lib/focus";
 
@@ -19,7 +19,7 @@ function CompareBar({ photos, onClose }) {
         {[a, b].map((p, i) => (
           <div key={p.id}>
             <div style={{ position: "relative", borderRadius: 16, overflow: "hidden", aspectRatio: "3/4", background: "var(--surface-2)" }}>
-              <img src={p.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              <img src={fileSrc(p.url)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               <div style={{ position: "absolute", top: 10, left: 10, padding: "4px 10px", borderRadius: 999, fontSize: 11, fontWeight: 600, color: "#fff", background: i === 0 ? "rgba(12,12,14,0.55)" : "var(--ink)" }}>
                 {i === 0 ? "BEFORE" : "AFTER"}
               </div>
@@ -140,7 +140,7 @@ export default function ProgressPhotos() {
               <div key={p.id} data-testid={`photo-card-${p.id}`} className="clay fade-up" style={{ padding: 10, position: "relative", cursor: compareMode ? "pointer" : "default", outline: isSel ? "2.5px solid var(--teal)" : "none", outlineOffset: 2 }}
                 onClick={() => compareMode && toggleSelect(p.id)}>
                 <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", aspectRatio: "3/4", background: "var(--surface-2)" }}>
-                  <img src={p.url} alt={`Progress ${p.date}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <img src={fileSrc(p.url)} alt={`Progress ${p.date}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                   {compareMode && isSel && (
                     <div style={{ position: "absolute", top: 8, right: 8, width: 26, height: 26, borderRadius: "50%", background: "var(--teal)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600 }}>{selIdx + 1}</div>
                   )}
