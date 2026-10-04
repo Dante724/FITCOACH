@@ -98,6 +98,13 @@ let webpackConfig = {
         ],
       };
 
+      // MediaPipe loads its WASM loader with a dynamic import() webpack can't resolve statically, and points at a missing source map.
+      webpackConfig.ignoreWarnings = [
+        ...(webpackConfig.ignoreWarnings || []),
+        { module: /@mediapipe[\\/]tasks-vision/, message: /Critical dependency/ },
+        { module: /@mediapipe[\\/]tasks-vision/, message: /Failed to parse source map/ }, // the package ships a broken map reference
+      ];
+
       // Add health check plugin to webpack if enabled
       if (config.enableHealthCheck && healthPluginInstance) {
         webpackConfig.plugins.push(healthPluginInstance);

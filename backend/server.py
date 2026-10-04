@@ -327,6 +327,24 @@ class PlanUpdate(BaseModel):
     coach_note: Optional[str] = None
 
 
+class PoseCheckCreate(BaseModel):
+    pose: str
+    pose_label: str
+    score: int
+    checks: List[dict] = []
+    flags: List[str] = []
+    snapshot: str                          # annotated JPEG data URL of the best frame — the video never leaves the device
+    frames: Optional[int] = None
+    plan_id: Optional[str] = None
+
+
+class PoseReview(BaseModel):
+    verdict: str                           # confirmed | adjusted
+    flags: List[str] = []                  # the corrections the client should see (coach may edit the AI's)
+    score: Optional[int] = None
+    coach_note: Optional[str] = None
+
+
 class MessageCreate(BaseModel):
     body: str
     context_type: Optional[str] = None    # food | workout | plan | photo | progress
@@ -1321,6 +1339,10 @@ async def _client_access(user: User, client_id: str, track: Optional[str] = None
     raise HTTPException(status_code=403, detail="This client is not assigned to you")
 
 
+def _fitness_view(user: User, client: dict) -> bool:
+    return user.role != "trainer" or "fitness" in _coach_tracks(user.user_id, client)
+
+
 def _sees_plan_type(user: User, client: dict, ptype: str) -> bool:
     """Coaches only see plans on their own track; admins see everything."""
     return user.role == "admin" or PLAN_TYPES[ptype] in _coach_tracks(user.user_id, client)
@@ -1347,8 +1369,9 @@ def _parse_dt(value) -> Optional[datetime]:
 
 
 # ───────────────────────────── Coaching: weekly brief ─────────────────────────────
-async def _client_brief(client: dict) -> dict:
-    """Rule-based weekly summary for the coach: trend, adherence, flags and one suggested action."""
+async def _client_brief(client: dict, fitness_view: bool = True) -> dict:
+    """Rule-based weekly summary for the coach: trend, adherence, flags and one suggested action.
+    With fitness_view=False (a yoga-only coach) weight and nutrition alerts are left to the fitness coach."""
     cid = client["user_id"]
     now = datetime.now(timezone.utc)
     week_ago = now - timedelta(days=7)
@@ -1394,21 +1417,21 @@ async def _client_brief(client: dict) -> dict:
     flags = []
     if inactive_days is not None and inactive_days >= 5:
         flags.append({"kind": "inactive", "text": f"No logs for {inactive_days} days"})
-    if plateau:
+    if plateau and fitness_view:
         flags.append({"kind": "plateau", "text": "Weight flat for 3 weeks"})
-    if weight_change_7d is not None:
+    if weight_change_7d is not None and fitness_view:
         if focus == "fat_loss" and weight_change_7d >= 0.5:
             flags.append({"kind": "off_track", "text": f"Weight up {weight_change_7d} kg this week"})
         if focus == "muscle_gain" and weight_change_7d <= -0.5:
             flags.append({"kind": "off_track", "text": f"Weight down {abs(weight_change_7d)} kg this week"})
-    if focus in FITNESS_FOCUS and not foods_7d:
+    if focus in FITNESS_FOCUS and fitness_view and not foods_7d:
         flags.append({"kind": "no_food", "text": "No meals logged this week"})
 
     parts = []
     if weight_now is not None:
         parts.append(f"{weight_now} kg" + (f" ({'+' if weight_change_7d > 0 else ''}{weight_change_7d} this week)" if weight_change_7d not in (None, 0) else ""))
     parts.append(f"{len(sessions_7d)} workout{'s' if len(sessions_7d) != 1 else ''}")
-    if focus in FITNESS_FOCUS:
+    if focus in FITNESS_FOCUS and fitness_view:
         parts.append(f"{len(foods_7d)} meals logged" + (f", ~{avg_kcal} kcal/day" if avg_kcal else ""))
 
     kinds = {f["kind"] for f in flags}
@@ -1720,7 +1743,9 @@ async def coach_clients(user: User = Depends(require_role("trainer", "admin"))):
             "active_plans": sorted({p["type"] for p in plans if p["status"] == "active"}),
             "draft_plans": sorted({p["type"] for p in plans if p["status"] == "draft"}),
             "unread": await _unread_count(cid, user.user_id, user.user_id) if user.role == "trainer" else 0,
-            "brief": await _client_brief(c),
+            "pending_pose": await db.pose_checks.count_documents({"client_id": cid, "status": "pending"})
+            if (user.role == "admin" or "yoga" in _coach_tracks(user.user_id, c)) else 0,
+            "brief": await _client_brief(c, _fitness_view(user, c)),
         })
     return out
 
@@ -1739,7 +1764,10 @@ async def coach_client_detail(client_id: str, user: User = Depends(require_role(
     tracks = sorted(_coach_tracks(user.user_id, c)) if user.role == "trainer" else ["fitness", "yoga"]
     coaches = {k: _coach_public(await db.users.find_one({"user_id": c.get(f)}, {"_id": 0})) if c.get(f) else None
                for f, k in (("fitness_coach_id", "fitness"), ("yoga_coach_id", "yoga"))}
-    return {"client": c, "tracks": tracks, "coaches": coaches, "brief": await _client_brief(c), "progress": progress,
+    pose_checks = []
+    if "yoga" in tracks:
+        pose_checks = await db.pose_checks.find({"client_id": client_id}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    return {"client": c, "tracks": tracks, "coaches": coaches, "brief": await _client_brief(c, _fitness_view(user, c)), "progress": progress, "pose_checks": pose_checks,
             "photos": photos, "sessions": sessions, "food": foods, "plans": plans}
 
 
@@ -1763,12 +1791,17 @@ async def coach_attention(user: User = Depends(require_role("trainer", "admin"))
             if t not in have:
                 items.append({"id": f"noplan-{cid}-{t}", "kind": "needs_plan", "priority": 2, "client_id": cid, "client_name": name,
                               "text": f"Needs a {PLAN_LABELS[t]}", "plan_type": t})
+        if "yoga" in tracks or user.role == "admin":
+            pending = await db.pose_checks.count_documents({"client_id": cid, "status": "pending"})
+            if pending:
+                items.append({"id": f"pose-{cid}", "kind": "pose_review", "priority": 1, "client_id": cid, "client_name": name,
+                              "text": f"{pending} pose check{'s' if pending > 1 else ''} to review"})
         if user.role == "trainer":
             unread = await _unread_count(cid, user.user_id, user.user_id)
             if unread:
                 items.append({"id": f"msg-{cid}", "kind": "message", "priority": 1, "client_id": cid, "client_name": name,
                               "text": f"{unread} unread message{'s' if unread > 1 else ''}"})
-        brief = await _client_brief(c)
+        brief = await _client_brief(c, _fitness_view(user, c))
         active_types = {p["type"] for p in plans if p["status"] == "active"}
         for f in brief["flags"]:
             item = {"id": f"{f['kind']}-{cid}", "kind": f["kind"], "priority": 3, "client_id": cid, "client_name": name,
@@ -1783,6 +1816,76 @@ async def coach_attention(user: User = Depends(require_role("trainer", "admin"))
                       "client_name": b.get("client_name"), "text": f"Session today at {b['time']}", "booking_id": b["id"]})
     items.sort(key=lambda i: (i["priority"], i.get("client_name") or ""))
     return items
+
+
+# ───────────────────────────── Yoga pose checks ─────────────────────────────
+MAX_SNAPSHOT_CHARS = 450_000  # ~330 KB image
+
+
+def _pose_out(doc: dict, viewer: User) -> dict:
+    doc.pop("_id", None)
+    if viewer.role == "client" and doc.get("status") != "reviewed":
+        # the client sees the automatic result as provisional until their coach confirms it
+        doc["provisional"] = True
+    return doc
+
+
+@api_router.post("/pose-checks")
+async def create_pose_check(payload: PoseCheckCreate, user: User = Depends(require_role("client"))):
+    if user.focus not in YOGA_FOCUS or not user.yoga_coach_id:
+        raise HTTPException(status_code=400, detail="Pose checks are reviewed by your yoga coach — one hasn't been assigned yet")
+    snap = payload.snapshot
+    if not re.match(r"^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$", snap or ""):
+        raise HTTPException(status_code=400, detail="Invalid snapshot")
+    if len(snap) > MAX_SNAPSHOT_CHARS:
+        raise HTTPException(status_code=400, detail="Snapshot is too large")
+    checks = [{"id": _txt(c.get("id"), 40), "label": _txt(c.get("label"), 60), "ok": bool(c.get("ok")),
+               "value": _num(c.get("value"), 1000), "unit": _txt(c.get("unit"), 4), "cue": _txt(c.get("cue"), 160) or None}
+              for c in payload.checks[:12] if isinstance(c, dict)]
+    doc = {
+        "id": str(uuid.uuid4()), "client_id": user.user_id, "client_name": user.name, "coach_id": user.yoga_coach_id,
+        "pose": _txt(payload.pose, 30), "pose_label": _txt(payload.pose_label, 60),
+        "score": max(0, min(100, payload.score)), "checks": checks, "flags": [_txt(f, 160) for f in payload.flags[:8] if _txt(f, 160)],
+        "snapshot": snap, "frames": payload.frames, "plan_id": payload.plan_id, "status": "pending",
+        "coach_verdict": None, "coach_flags": None, "coach_score": None, "coach_note": None,
+        "created_at": datetime.now(timezone.utc).isoformat(), "reviewed_at": None,
+    }
+    await db.pose_checks.insert_one(dict(doc))
+    await push_notification(user.yoga_coach_id, "Pose check to review",
+                            f"{user.name} sent a {doc['pose_label']} check (auto score {doc['score']}).",
+                            f"/trainer/clients/{user.user_id}?tab=pose")
+    return _pose_out(doc, user)
+
+
+@api_router.get("/pose-checks")
+async def list_pose_checks(client_id: Optional[str] = None, user: User = Depends(get_current_user)):
+    cid = user.user_id if user.role == "client" else client_id
+    if not cid:
+        raise HTTPException(status_code=400, detail="client_id is required")
+    await _client_access(user, cid, "yoga" if user.role == "trainer" else None)
+    docs = await db.pose_checks.find({"client_id": cid}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return [_pose_out(d, user) for d in docs]
+
+
+@api_router.post("/pose-checks/{check_id}/review")
+async def review_pose_check(check_id: str, payload: PoseReview, user: User = Depends(require_role("trainer", "admin"))):
+    doc = await db.pose_checks.find_one({"id": check_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Pose check not found")
+    await _client_access(user, doc["client_id"], "yoga")
+    if payload.verdict not in ("confirmed", "adjusted"):
+        raise HTTPException(status_code=400, detail="Invalid verdict")
+    update = {
+        "status": "reviewed", "coach_verdict": payload.verdict, "reviewed_by": user.user_id, "reviewed_by_name": user.name,
+        "coach_flags": [_txt(f, 160) for f in payload.flags[:8] if _txt(f, 160)],
+        "coach_score": max(0, min(100, payload.score)) if payload.score is not None else doc["score"],
+        "coach_note": _txt(payload.coach_note, 500) or None, "reviewed_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.pose_checks.update_one({"id": check_id}, {"$set": update})
+    fixes = len(update["coach_flags"])
+    await push_notification(doc["client_id"], f"{user.name} reviewed your {doc['pose_label']}",
+                            "Looking good — keep it up!" if not fixes else f"{fixes} thing{'s' if fixes > 1 else ''} to work on.", "/pose-check")
+    return {**doc, **update}
 
 
 # ───────────────────────────── Coaching: messages ─────────────────────────────
@@ -2028,6 +2131,7 @@ async def create_indexes():
         await db.login_attempts.create_index("identifier", unique=True)
         await db.plans.create_index([("client_id", 1), ("type", 1), ("status", 1)])
         await db.messages.create_index([("client_id", 1), ("coach_id", 1), ("created_at", 1)])
+        await db.pose_checks.create_index([("client_id", 1), ("created_at", -1)])
     except Exception as e:
         logger.warning(f"Index creation skipped: {e}")
     await seed_roles()

@@ -5,6 +5,7 @@ import PageHeader from "@/components/PageHeader";
 import { DaysPlanView, ApprovedBy } from "@/components/PlanView";
 import { api } from "@/lib/api";
 import { askCoachPath } from "@/lib/focus";
+import { POSES, matchPose } from "@/lib/poses";
 import { useToast } from "@/context/ToastContext";
 
 // Client view of the coach-approved training plan (kind="workout") or yoga practice (kind="yoga").
@@ -72,6 +73,19 @@ export default function Workouts({ kind = "workout" }) {
             <div className="progress-track" style={{ marginBottom: 14 }}><div className="progress-fill" style={{ width: `${pct}%` }} /></div>
             <DaysPlanView content={plan.content} yoga={yoga} day={day} onDay={(i) => { setDay(i); setDone({}); }}
               done={done} onToggle={(i) => setDone((d) => ({ ...d, [i]: !d[i] }))} />
+            {yoga && current && (() => {
+              const checkable = [...new Set(current.exercises.map((e) => matchPose(e.name)).filter(Boolean))];
+              return checkable.length > 0 && (
+                <div className="clay-inset" style={{ padding: "12px 14px", marginTop: 14 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-2)", marginBottom: 8 }}><Icons.ScanEye size={14} /> Check your form with the camera</div>
+                  <div className="row-wrap" style={{ gap: 8 }}>
+                    {checkable.map((k) => (
+                      <button key={k} className="btn btn-ghost" data-testid={`check-form-${k}`} onClick={() => navigate(`/pose-check?pose=${k}`)} style={{ padding: "8px 13px", fontSize: 12.5 }}>{POSES[k].label}</button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
             <button data-testid="log-session-btn" className="btn btn-primary" disabled={saving} onClick={logSession} style={{ width: "100%", marginTop: 18, padding: 14 }}>
               <Icons.Save size={18} /> {saving ? "Saving..." : yoga ? "Log this practice" : "Log this session"}
             </button>

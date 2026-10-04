@@ -153,3 +153,53 @@ class TestCoachingFlow:
         assert c.get(f"{API}/messages/unread").json()["threads"][sarah] == 1
         assert ctx["yoga"].get(f"{API}/messages/{cid}/{sarah}").status_code == 403
         assert ctx["other"].get(f"{API}/messages/{cid}/{sarah}").status_code == 403
+
+
+# 1×1 JPEG — stands in for the annotated snapshot the browser sends
+TINY_JPEG = ("data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/"
+              "wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==")
+POSE = {"pose": "warrior2", "pose_label": "Warrior II", "score": 72, "frames": 80, "snapshot": TINY_JPEG,
+        "checks": [{"id": "back_leg", "label": "Back leg straight", "ok": False, "value": 141, "unit": "°", "cue": "Straighten your back leg"}],
+        "flags": ["Straighten your back leg"]}
+
+
+class TestPoseChecks:
+    def test_client_submits_and_sees_provisional(self, ctx):
+        c = ctx["client"]
+        assert c.post(f"{API}/pose-checks", json={**POSE, "snapshot": "javascript:alert(1)"}).status_code == 400
+        r = c.post(f"{API}/pose-checks", json=POSE)
+        assert r.status_code == 200, r.text
+        ctx["pose_id"] = r.json()["id"]
+        mine = c.get(f"{API}/pose-checks").json()
+        assert mine[0]["status"] == "pending" and mine[0]["provisional"] is True
+
+    def test_only_the_yoga_coach_reviews(self, ctx):
+        cid = ctx["cid"]
+        items = ctx["yoga"].get(f"{API}/coach/attention").json()
+        assert any(i["kind"] == "pose_review" and i["client_id"] == cid for i in items)
+        assert not any(i["kind"] == "pose_review" for i in ctx["fit"].get(f"{API}/coach/attention").json())
+        assert ctx["fit"].get(f"{API}/pose-checks", params={"client_id": cid}).status_code == 403
+        assert ctx["fit"].post(f"{API}/pose-checks/{ctx['pose_id']}/review", json={"verdict": "confirmed"}).status_code == 403
+        assert ctx["yoga"].get(f"{API}/coach/clients/{cid}").json()["pose_checks"][0]["id"] == ctx["pose_id"]
+        assert ctx["fit"].get(f"{API}/coach/clients/{cid}").json()["pose_checks"] == []
+        # nutrition alerts belong to the fitness coach, not the yoga coach
+        yoga_brief = ctx["yoga"].get(f"{API}/coach/clients/{cid}").json()["brief"]
+        assert not any(f["kind"] in ("no_food", "plateau", "off_track") for f in yoga_brief["flags"])
+        assert any(f["kind"] == "no_food" for f in ctx["fit"].get(f"{API}/coach/clients/{cid}").json()["brief"]["flags"])
+
+    def test_review_reaches_client(self, ctx):
+        r = ctx["yoga"].post(f"{API}/pose-checks/{ctx['pose_id']}/review", json={
+            "verdict": "adjusted", "flags": ["Straighten your back leg", "Sink a little lower"], "score": 68, "coach_note": "Good effort!"})
+        assert r.status_code == 200, r.text
+        mine = ctx["client"].get(f"{API}/pose-checks").json()[0]
+        assert mine["status"] == "reviewed" and "provisional" not in mine
+        assert mine["coach_flags"] == ["Straighten your back leg", "Sink a little lower"] and mine["coach_score"] == 68
+        assert mine["reviewed_by_name"] == ctx["yoga"].me["name"]
+
+    def test_client_without_yoga_coach_is_refused(self):
+        email = f"v2fit_{uuid.uuid4().hex[:8]}@example.com"
+        r = requests.post(f"{API}/auth/register", json={"name": "Fit Only", "email": email, "password": "Passw0rd!"})
+        s = requests.Session()
+        s.headers["Authorization"] = f"Bearer {r.cookies.get('access_token')}"
+        s.put(f"{API}/profile/intake", json={"focus": "fat_loss"})
+        assert s.post(f"{API}/pose-checks", json=POSE).status_code == 400

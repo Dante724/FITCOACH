@@ -6,6 +6,7 @@ import Chat from "@/components/Chat";
 import PlanEditor from "@/components/PlanEditor";
 import { DaysPlanView, MealPlanView } from "@/components/PlanView";
 import { Sparkline } from "@/pages/Progress";
+import { ScoreRing, CheckList } from "@/components/PoseResult";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
@@ -90,6 +91,73 @@ function PlanSection({ type, plans, clientId, onChanged }) {
   );
 }
 
+function PoseReviewCard({ check, canReview, onDone }) {
+  const { push } = useToast();
+  const [flags, setFlags] = useState(check.flags.map((f) => ({ text: f, on: true })));
+  const [extra, setExtra] = useState("");
+  const [score, setScore] = useState(check.score);
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const reviewed = check.status === "reviewed";
+
+  const send = async () => {
+    const chosen = [...flags.filter((f) => f.on).map((f) => f.text), ...extra.split("\n").map((x) => x.trim()).filter(Boolean)];
+    const changed = Number(score) !== check.score || chosen.length !== check.flags.length || chosen.some((f, i) => f !== check.flags[i]);
+    setSaving(true);
+    try {
+      await api.post(`/pose-checks/${check.id}/review`, { verdict: changed ? "adjusted" : "confirmed", flags: chosen, score: Number(score), coach_note: note });
+      push("Review sent to your client.", "success");
+      onDone();
+    } catch (e) { push(e?.response?.data?.detail || "Could not send review.", "error"); } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="clay fade-up" style={{ padding: 18 }} data-testid={`pose-review-${check.id}`}>
+      <div className="grid-2" style={{ gap: 16 }}>
+        <img src={check.snapshot} alt={`${check.pose_label} snapshot`} style={{ width: "100%", maxHeight: 420, objectFit: "contain", borderRadius: 14, background: "#11141b" }} />
+        <div className="min0">
+          <div className="row" style={{ gap: 12, marginBottom: 12 }}>
+            <ScoreRing score={reviewed ? check.coach_score : check.score} size={64} />
+            <div className="min0">
+              <div style={{ fontWeight: 800, fontSize: 16 }}>{check.pose_label}</div>
+              <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>{timeAgo(check.created_at)} · auto score {check.score}{check.frames ? ` · ${check.frames} frames` : ""}</div>
+            </div>
+          </div>
+          <CheckList checks={check.checks} />
+          {reviewed ? (
+            <div className="clay-inset" style={{ padding: 12, marginTop: 14, fontSize: 13.5 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}><Icons.BadgeCheck size={14} color="var(--teal)" /> {check.coach_verdict === "confirmed" ? "Confirmed" : "Adjusted"} by {check.reviewed_by_name}</div>
+              {check.coach_flags.length ? <ul style={{ marginLeft: 18, lineHeight: 1.7 }}>{check.coach_flags.map((f, i) => <li key={i}>{f}</li>)}</ul> : <div>No corrections — good alignment.</div>}
+              {check.coach_note && <div style={{ marginTop: 6 }}><strong>Note:</strong> {check.coach_note}</div>}
+            </div>
+          ) : canReview && (
+            <div style={{ marginTop: 14 }}>
+              <label className="label">Corrections the client will see</label>
+              <div className="stack" style={{ gap: 6, marginBottom: 8 }}>
+                {flags.map((f, i) => (
+                  <label key={i} className="row" style={{ fontSize: 13.5, cursor: "pointer" }}>
+                    <input type="checkbox" checked={f.on} onChange={() => setFlags(flags.map((x, j) => (j === i ? { ...x, on: !x.on } : x)))} /> {f.text}
+                  </label>
+                ))}
+                {flags.length === 0 && <div style={{ fontSize: 13, color: "var(--text-3)" }}>The automatic check found nothing to fix.</div>}
+              </div>
+              <textarea className="field" rows={2} value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="Add your own corrections, one per line" style={{ resize: "vertical", fontSize: 13.5 }} />
+              <div className="row" style={{ marginTop: 10 }}>
+                <label className="label" style={{ margin: 0, flexShrink: 0 }}>Score</label>
+                <input className="field" type="number" min="0" max="100" value={score} onChange={(e) => setScore(e.target.value)} style={{ width: 90 }} />
+              </div>
+              <textarea className="field" rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note to client (optional)" style={{ resize: "vertical", marginTop: 10, fontSize: 13.5 }} />
+              <button className="btn btn-primary" data-testid="pose-review-send" onClick={send} disabled={saving} style={{ width: "100%", marginTop: 12 }}>
+                <Icons.BadgeCheck size={16} /> {saving ? "Sending…" : "Send review"}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ClientDetail() {
   const { clientId } = useParams();
   const { user } = useAuth();
@@ -111,7 +179,8 @@ export default function ClientDetail() {
   const isCoach = user.role === "trainer";
   const fitness = tracks.includes("fitness");
   const tabs = [["overview", "Overview", "LayoutDashboard"], ["plans", "Plans", "ClipboardList"], ["progress", "Progress", "TrendingUp"],
-    fitness && ["food", "Food", "Utensils"], ["workouts", "Sessions", "Dumbbell"], isCoach && ["chat", "Chat", "MessageCircle"]].filter(Boolean);
+    fitness && ["food", "Food", "Utensils"], tracks.includes("yoga") && ["pose", "Pose checks", "ScanEye"],
+    ["workouts", "Sessions", "Dumbbell"], isCoach && ["chat", "Chat", "MessageCircle"]].filter(Boolean);
   const tab = tabs.some((t) => t[0] === params.get("tab")) ? params.get("tab") : "overview";
   const setTab = (t) => setParams({ tab: t }, { replace: true });
   const discuss = (ctx) => { setChatContext(ctx); setTab("chat"); };
@@ -239,6 +308,15 @@ export default function ClientDetail() {
             </div>
           )}
         </Card>
+      )}
+
+      {tab === "pose" && (
+        <div className="stack" style={{ gap: 16 }}>
+          {data.pose_checks.length === 0 && <div className="clay empty">No pose checks yet. Clients send them from Pose Check in their app.</div>}
+          {[...data.pose_checks].sort((a, b) => (a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1)).map((c) => (
+            <PoseReviewCard key={c.id} check={c} canReview={isCoach} onDone={load} />
+          ))}
+        </div>
       )}
 
       {tab === "chat" && isCoach && (

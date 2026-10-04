@@ -12,6 +12,7 @@ const KIND = {
   session: { icon: "Video", color: "var(--teal)" },
   approve: { icon: "BadgeCheck", color: "var(--accent)" },
   message: { icon: "MessageCircle", color: "#7c6bd6" },
+  pose_review: { icon: "ScanEye", color: "#7c6bd6" },
   needs_plan: { icon: "ClipboardPlus", color: "var(--amber)" },
   plateau: { icon: "TrendingDown", color: "var(--accent)" },
   off_track: { icon: "TriangleAlert", color: "var(--accent)" },
@@ -26,6 +27,7 @@ function AttentionItem({ item, onAction, busy }) {
   if (item.kind === "session") action = ["Join", "Video", () => onAction("join", item)];
   else if (item.kind === "approve") action = ["Review", "ArrowRight", () => onAction("plans", item)];
   else if (item.kind === "message") action = ["Reply", "Reply", () => onAction("chat", item)];
+  else if (item.kind === "pose_review") action = ["Review", "ScanEye", () => onAction("pose", item)];
   else if (item.kind === "needs_plan") action = ["Draft with AI", "Sparkles", () => onAction("draft", item)];
   else if (item.plan_type) action = ["Draft adjustment", "Sparkles", () => onAction("adjust", item)];
   else action = ["Message", "MessageCircle", () => onAction("chat", item)];
@@ -59,6 +61,7 @@ function ClientCard({ c, onOpen }) {
           <div className="truncate" style={{ fontSize: 15, fontWeight: 700 }}>{c.name}</div>
           <div style={{ fontSize: 12, color: "var(--text-3)" }}>{GOAL_LABEL[c.focus] || "No goal yet"}</div>
         </div>
+        {c.pending_pose > 0 && <span className="chip chip-violet" title="Pose checks to review"><Icons.ScanEye size={12} /> {c.pending_pose}</span>}
         {c.unread > 0 && <span className="badge">{c.unread}</span>}
       </div>
       <div style={{ fontSize: 13, color: "var(--text-2)", lineHeight: 1.5 }}>{brief.headline}</div>
@@ -92,6 +95,7 @@ export default function TrainerDashboard() {
     if (kind === "open") return navigate(base);
     if (kind === "plans") return navigate(`${base}?tab=plans`);
     if (kind === "chat") return navigate(`${base}?tab=chat`);
+    if (kind === "pose") return navigate(`${base}?tab=pose`);
     setBusy(item.id);
     try {
       await api.post(`/coach/clients/${item.client_id}/plans/draft`, { type: item.plan_type, notes: kind === "adjust" ? item.adjust_reason : undefined });

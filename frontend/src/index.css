@@ -252,3 +252,19 @@ select.field { appearance: none; }
 }
 .grid-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 9px; }
 .grid-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+
+/* ── Pose check camera ── */
+.pose-stage { position: relative; width: 100%; max-width: 760px; margin: 0 auto; border-radius: 18px; overflow: hidden; background: #11141b; aspect-ratio: 4 / 3; }
+.pose-stage video, .pose-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.pose-stage .mirror { transform: scaleX(-1); }
+.pose-overlay { position: absolute; left: 0; right: 0; display: flex; gap: 8px; padding: 12px; color: #fff; pointer-events: none; }
+.pose-overlay.top { top: 0; justify-content: space-between; }
+.pose-overlay.bottom { bottom: 0; justify-content: center; }
+.pose-overlay.center { inset: 0; flex-direction: column; align-items: center; justify-content: center; background: rgba(17,20,27,0.45); font-weight: 600; }
+.pose-count { font-family: 'Bricolage Grotesque', sans-serif; font-size: 72px; font-weight: 800; line-height: 1; }
+.pose-cue { background: rgba(17,20,27,0.78); backdrop-filter: blur(8px); padding: 10px 16px; border-radius: 14px; font-size: 15px; font-weight: 700; text-align: center; max-width: 92%; }
+.rec-dot { width: 8px; height: 8px; border-radius: 50%; background: #fff; display: inline-block; animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: 0.3; } }
+.score-ring { width: 84px; height: 84px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  font-family: 'Bricolage Grotesque', sans-serif; font-size: 28px; font-weight: 800; }
+@media (max-width: 620px) { .pose-stage { aspect-ratio: 3 / 4; } .pose-cue { font-size: 14px; } }

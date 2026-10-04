@@ -25,7 +25,7 @@ export const FOCUS_OPTIONS = [
     accent: "#7c6bd6",
     icon: "Flower2",
     coaches: ["yoga"],
-    features: ["yoga", "progress", "booking", "messages"],
+    features: ["yoga", "posecheck", "progress", "booking", "messages"],
   },
   {
     key: "hybrid",
@@ -34,7 +34,7 @@ export const FOCUS_OPTIONS = [
     accent: "var(--teal)",
     icon: "Sparkles",
     coaches: ["fitness", "yoga"],
-    features: ["workouts", "yoga", "mealplan", "food", "progress", "booking", "messages"],
+    features: ["workouts", "yoga", "posecheck", "mealplan", "food", "progress", "booking", "messages"],
   },
 ];
 
@@ -45,6 +45,7 @@ export const FEATURE_META = {
   dashboard: { path: "/dashboard", label: "Today", icon: "LayoutDashboard" },
   workouts: { path: "/workouts", label: "My Training", icon: "Dumbbell" },
   yoga: { path: "/yoga", label: "My Yoga", icon: "Flower2" },
+  posecheck: { path: "/pose-check", label: "Pose Check", icon: "ScanEye" },
   mealplan: { path: "/meal-plans", label: "My Nutrition", icon: "UtensilsCrossed" },
   food: { path: "/food", label: "Food Log", icon: "Utensils" },
   progress: { path: "/progress", label: "Progress", icon: "TrendingUp" },

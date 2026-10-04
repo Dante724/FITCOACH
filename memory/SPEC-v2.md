@@ -71,7 +71,7 @@ Coach clicks "Draft plan" ──► AI generates from the questionnaire + latest
   - Pose clips waiting for review (yoga)
   - Upcoming sessions today
 
-### 3.4 Yoga pose check (v1: asynchronous, not live)
+### 3.4 Yoga pose check (built: live cues + async coach review)
 1. Client picks a pose from their yoga plan and records a 10–15s clip in the browser.
 2. On-device pose tracking (MediaPipe / MoveNet) scores key joint angles against a reference for that pose and flags issues (e.g. "front knee past ankle", "hips uneven").
 3. The clip, AI score and flags go to the assigned yoga coach.
@@ -139,7 +139,7 @@ Start with **8–10 common poses** (Warrior I/II, Tree, Triangle, Downward Dog, 
 | In-app coach ↔ client chat with context (meal, workout, plan, photo) | ✅ Built (text only; polling every 8s) |
 | Responsive: phone (375), tablet (768), laptop (1366) | ✅ Checked in browser |
 | Admin tier editor (DB-backed memberships) | ⏳ Next |
-| Yoga pose check (clip + on-device scoring + coach review) | ⏳ Next |
+| Yoga pose check: live on-device tracking with cues, 10s hold or uploaded clip → score + corrections + one annotated still → yoga coach confirms/adjusts → client | ✅ Built (8 poses; camera tested only via a still photo — needs a real-phone test) |
 | Voice notes in chat, AI-written weekly brief | ⏳ Later |
 
 ## 10. Open questions

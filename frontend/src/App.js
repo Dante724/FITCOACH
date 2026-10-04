@@ -1,4 +1,5 @@
 import "@/App.css";
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ToastProvider } from "@/context/ToastContext";
@@ -22,6 +23,9 @@ import ClientDetail from "@/pages/ClientDetail";
 import Messages from "@/pages/Messages";
 import VideoCall from "@/pages/VideoCall";
 import Profile from "@/pages/Profile";
+
+// Pose tracking pulls in MediaPipe, so only load it when a client opens Pose Check.
+const PoseCheck = lazy(() => import("@/pages/PoseCheck"));
 
 function Loader() {
   return (
@@ -60,6 +64,7 @@ function AppRouter() {
         <Route path="/workouts" element={<Workouts kind="workout" />} />
         <Route path="/yoga" element={<Workouts kind="yoga" />} />
         <Route path="/messages" element={<Messages />} />
+        <Route path="/pose-check" element={<Suspense fallback={<div className="spinner" style={{ margin: "80px auto" }} />}><PoseCheck /></Suspense>} />
         <Route path="/booking" element={<Booking />} />
         <Route path="/progress" element={<Progress />} />
         <Route path="/food" element={<FoodTrack />} />
