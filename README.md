@@ -59,8 +59,8 @@ and plan updates arrive even when it's closed — no app store needed.
 
 ## AI (optional)
 
-Set `GEMINI_API_KEY` (Google AI Studio). Without it, coaches start plans from a built-in template and food
-analysis shows "try again later". `GEMINI_MODEL` defaults to `gemini-2.5-flash`.
+Set `GEMINI_API_KEY` (Google AI Studio). Without it, coaches start plans from a built-in template, the weekly
+client summary is built from the numbers instead of written by AI, and food analysis shows "try again later". `GEMINI_MODEL` defaults to `gemini-2.5-flash`.
 
 ## Local development
 

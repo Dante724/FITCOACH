@@ -12,6 +12,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { startCall } from "@/lib/calls";
 import { GOAL_LABEL, PLAN_LABEL, timeAgo, localDate } from "@/lib/focus";
+import { WeeklySummary, WellbeingCard, TargetsEditor, PlanSourcePicker, SaveTemplateButton } from "@/components/CoachTools";
 
 const TRACK_TYPES = { fitness: ["workout", "meal"], yoga: ["yoga"] };
 const INTAKE_LABELS = [["age", "Age"], ["sex", "Sex"], ["height_cm", "Height", "cm"], ["weight_kg", "Start weight", "kg"], ["target_weight_kg", "Target", "kg"],
@@ -32,6 +33,7 @@ function PlanSection({ type, plans, clientId, onChanged }) {
   const [busy, setBusy] = useState("");
   const [day, setDay] = useState(0);
   const [showHistory, setShowHistory] = useState(false);
+  const [picking, setPicking] = useState(false);
   const draft = plans.find((p) => p.type === type && p.status === "draft");
   const active = plans.find((p) => p.type === type && p.status === "active");
   const archived = plans.filter((p) => p.type === type && p.status === "archived");
@@ -65,6 +67,8 @@ function PlanSection({ type, plans, clientId, onChanged }) {
           <input className="field" data-testid={`draft-notes-${type}`} value={notes} onChange={(e) => setNotes(e.target.value)}
             placeholder={active ? "e.g. Weight flat for 3 weeks — drop 150 kcal" : "e.g. Keep it knee-friendly"} />
           <div className="row-wrap" style={{ marginTop: 12, justifyContent: "flex-end" }}>
+            {active && <SaveTemplateButton plan={active} />}
+            <button className="btn btn-ghost" onClick={() => setPicking(true)} disabled={!!busy} data-testid={`from-template-${type}`}><Icons.Copy size={16} /> Template / copy</button>
             {active && <button className="btn btn-ghost" onClick={revise} disabled={!!busy}><Icons.PencilLine size={16} /> {busy === "revise" ? "Opening..." : "Edit by hand"}</button>}
             <button className="btn btn-primary" data-testid={`draft-ai-${type}`} onClick={draftAI} disabled={!!busy}>
               <Icons.Sparkles size={16} /> {busy === "ai" ? "Drafting..." : active ? "Draft adjustment with AI" : "Draft with AI"}
@@ -72,6 +76,7 @@ function PlanSection({ type, plans, clientId, onChanged }) {
           </div>
         </>
       )}
+      {picking && <PlanSourcePicker type={type} clientId={clientId} onClose={() => setPicking(false)} onDone={() => { setPicking(false); onChanged(); }} />}
       {archived.length > 0 && (
         <div style={{ marginTop: 16 }}>
           <button className="btn btn-ghost" onClick={() => setShowHistory((v) => !v)} style={{ padding: "7px 12px", fontSize: 12.5 }}>
@@ -202,6 +207,7 @@ export default function ClientDetail() {
   const [error, setError] = useState("");
   const [chatContext, setChatContext] = useState(null);
   const [scheduling, setScheduling] = useState(false);
+  const [chatDraft, setChatDraft] = useState("");
   const { push } = useToast();
 
   const load = useCallback(() => {
@@ -259,18 +265,12 @@ export default function ClientDetail() {
       {tab === "overview" && (
         <div className="grid-main-side">
           <div className="stack" style={{ gap: 18 }}>
-            <Card title="This week">
-              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 10 }}>{brief.headline}</div>
-              <div className="row-wrap" style={{ marginBottom: 12 }}>
-                {brief.flags.length === 0 && <span className="chip chip-teal"><Icons.Check size={13} /> On track</span>}
-                {brief.flags.map((f) => <span key={f.kind} className="chip chip-accent">{f.text}</span>)}
-              </div>
-              <div className="clay-inset" style={{ padding: "11px 14px", fontSize: 13.5 }}>
-                <Icons.Lightbulb size={14} color="var(--amber)" /> <strong>Suggested:</strong> {brief.suggestion}
-              </div>
-            </Card>
+            <WeeklySummary clientId={clientId} brief={brief} canMessage={isCoach} onUseMessage={(text) => { setChatDraft(text); setChatContext(null); setTab("chat"); }} />
+            <WellbeingCard daily={data.daily} targets={data.targets} today={data.today} />
             <Card title="Weight trend"><Sparkline data={data.progress} /></Card>
           </div>
+          <div className="stack" style={{ gap: 18 }}>
+          <TargetsEditor key={clientId} clientId={clientId} targets={data.targets} onSaved={(targets) => setData((d) => ({ ...d, targets }))} />
           <Card title="Intake">
             <div className="stack" style={{ gap: 0 }}>
               {INTAKE_LABELS.filter(([k]) => intake[k] !== undefined && intake[k] !== null && intake[k] !== "").map(([k, label, unit]) => (
@@ -286,6 +286,7 @@ export default function ClientDetail() {
               {data.coaches.yoga && <div>Yoga coach: <strong style={{ color: "var(--text-2)" }}>{data.coaches.yoga.name}</strong></div>}
             </div>
           </Card>
+          </div>
         </div>
       )}
 
@@ -369,7 +370,7 @@ export default function ClientDetail() {
       )}
 
       {tab === "chat" && isCoach && (
-        <Card><Chat clientId={clientId} coachId={user.user_id} meId={user.user_id} otherName={client.name} initialContext={chatContext} /></Card>
+        <Card><Chat clientId={clientId} coachId={user.user_id} meId={user.user_id} otherName={client.name} initialContext={chatContext} initialText={chatDraft} isCoach /></Card>
       )}
     </div>
   );

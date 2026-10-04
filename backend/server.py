@@ -110,6 +110,36 @@ async def store_image(file: "UploadFile", owner_id: str, kind: str) -> dict:
     return record
 
 
+AUDIO_MIME = {"webm": "audio/webm", "ogg": "audio/ogg", "m4a": "audio/mp4", "mp4": "audio/mp4", "mp3": "audio/mpeg", "aac": "audio/aac", "wav": "audio/wav"}
+MAX_VOICE_BYTES = 3 * 1024 * 1024
+MAX_VOICE_SECONDS = 180
+
+
+async def store_voice(file: "UploadFile", owner_id: str, allowed: List[str]) -> dict:
+    """Save a chat voice note. Only the users in `allowed` (the two people in the thread) and admins can play it."""
+    ctype = (file.content_type or "").split(";")[0].strip().lower()
+    ext = next((e for e, m in AUDIO_MIME.items() if m == ctype), None)
+    if not ext and "." in (file.filename or ""):
+        ext = file.filename.rsplit(".", 1)[-1].lower()
+    if ext not in AUDIO_MIME:
+        raise HTTPException(status_code=400, detail="Unsupported audio format")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty recording")
+    if len(data) > MAX_VOICE_BYTES:
+        raise HTTPException(status_code=400, detail="Voice notes can be up to 3 minutes")
+    path = f"voice/{owner_id}/{uuid.uuid4().hex}.{ext}"
+    record = {
+        "id": str(uuid.uuid4()), "storage_path": path, "owner_id": owner_id, "original_filename": file.filename,
+        "content_type": AUDIO_MIME[ext], "size": len(data), "kind": "voice", "allowed": allowed, "is_deleted": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.file_blobs.insert_one({"storage_path": path, "data": data})
+    await db.files.insert_one(dict(record))
+    record.pop("_id", None)
+    return record
+
+
 def file_url(path: str) -> str:
     # Relative URL; the frontend prefixes the API host and adds the viewer's token.
     return f"/api/files/{path}"
@@ -888,7 +918,10 @@ async def serve_file(path: str,
     if not record:
         raise HTTPException(status_code=404, detail="File not found")
     owner = record.get("owner_id")
-    if record.get("kind") != "avatar" and viewer.role != "admin" and viewer.user_id != owner:
+    if record.get("allowed") is not None:
+        if viewer.role != "admin" and viewer.user_id not in record["allowed"]:
+            raise HTTPException(status_code=404, detail="File not found")
+    elif record.get("kind") != "avatar" and viewer.role != "admin" and viewer.user_id != owner:
         owner_doc = await db.users.find_one({"user_id": owner}, {"_id": 0, "fitness_coach_id": 1, "yoga_coach_id": 1}) or {}
         if viewer.user_id not in (owner_doc.get("fitness_coach_id"), owner_doc.get("yoga_coach_id")):
             raise HTTPException(status_code=404, detail="File not found")
@@ -1541,6 +1574,9 @@ async def _client_brief(client: dict, fitness_view: bool = True) -> dict:
     sessions = await db.workout_sessions.find({"user_id": cid}, {"_id": 0, "created_at": 1}).to_list(500)
     foods = await db.food_logs.find({"user_id": cid}, {"_id": 0, "created_at": 1, "result": 1}).to_list(500)
     photos = await db.progress_photos.find({"user_id": cid, "is_deleted": {"$ne": True}}, {"_id": 0, "created_at": 1}).to_list(300)
+    week_start = (datetime.now(APP_TZ).date() - timedelta(days=6)).isoformat()
+    daily = await db.daily_logs.find({"user_id": cid, "date": {"$gte": week_start}}, {"_id": 0}).to_list(14)
+    checkins = [d["checkin"] for d in daily if d.get("checkin")]
 
     def recent(docs):
         return [d for d in docs if (_parse_dt(d.get("created_at")) or now - timedelta(days=999)) >= week_ago]
@@ -1559,6 +1595,7 @@ async def _client_brief(client: dict, fitness_view: bool = True) -> dict:
         weight_change_7d = round(weight_now - base, 1)
 
     stamps = [_parse_dt(d.get("created_at")) for d in progress + sessions + foods + photos]
+    stamps += [_parse_dt(d.get("updated_at")) for d in daily]
     stamps = [t for t in stamps if t]
     last_active = max(stamps) if stamps else _parse_dt(client.get("created_at"))
     inactive_days = (now - last_active).days if last_active else None
@@ -1585,6 +1622,24 @@ async def _client_brief(client: dict, fitness_view: bool = True) -> dict:
     if focus in FITNESS_FOCUS and fitness_view and not foods_7d:
         flags.append({"kind": "no_food", "text": "No meals logged this week"})
 
+    def avg(key):
+        vals = [c[key] for c in checkins if isinstance(c.get(key), (int, float))]
+        return round(sum(vals) / len(vals), 1) if vals else None
+    wellbeing = {k: avg(k) for k in CHECKIN_FIELDS}
+    if len(checkins) >= 3:
+        if wellbeing["sleep"] is not None and wellbeing["sleep"] <= 2.2:
+            flags.append({"kind": "poor_sleep", "text": "Sleeping poorly this week"})
+        if wellbeing["energy"] is not None and wellbeing["energy"] <= 2.2:
+            flags.append({"kind": "low_energy", "text": "Low energy this week"})
+        if wellbeing["soreness"] is not None and wellbeing["soreness"] >= 4:
+            flags.append({"kind": "sore", "text": "Very sore most days"})
+        if wellbeing["mood"] is not None and wellbeing["mood"] <= 2.2:
+            flags.append({"kind": "low_mood", "text": "Mood has been low"})
+    targets = client.get("daily_targets") or []
+    target_days = [d for d in daily if d.get("targets")]
+    hits = sum(1 for d in daily for t in targets if (d.get("targets") or {}).get(t["id"]))
+    targets_pct = round(100 * hits / (len(targets) * 7)) if targets else None
+
     parts = []
     if weight_now is not None:
         parts.append(f"{weight_now} kg" + (f" ({'+' if weight_change_7d > 0 else ''}{weight_change_7d} this week)" if weight_change_7d not in (None, 0) else ""))
@@ -1592,9 +1647,18 @@ async def _client_brief(client: dict, fitness_view: bool = True) -> dict:
     if focus in FITNESS_FOCUS and fitness_view:
         parts.append(f"{len(foods_7d)} meals logged" + (f", ~{avg_kcal} kcal/day" if avg_kcal else ""))
 
+    if checkins:
+        parts.append(f"{len(checkins)}/7 check-ins")
+    if targets_pct is not None:
+        parts.append(f"{targets_pct}% of targets hit")
+
     kinds = {f["kind"] for f in flags}
     if "inactive" in kinds:
         suggestion = "Send a check-in message — they've gone quiet."
+    elif kinds & {"poor_sleep", "low_energy", "sore"}:
+        suggestion = "Recovery looks low — consider a lighter week and ask how they're sleeping."
+    elif "low_mood" in kinds:
+        suggestion = "Their mood has dipped — a personal voice note can help."
     elif "plateau" in kinds:
         suggestion = "Draft an adjustment: small calorie change or more training volume."
     elif "off_track" in kinds:
@@ -1608,6 +1672,7 @@ async def _client_brief(client: dict, fitness_view: bool = True) -> dict:
         "headline": " · ".join(parts), "flags": flags, "suggestion": suggestion,
         "weight": weight_now, "weight_change_7d": weight_change_7d, "workouts_7d": len(sessions_7d),
         "meals_7d": len(foods_7d), "avg_kcal": avg_kcal, "inactive_days": inactive_days, "plateau": plateau,
+        "checkins_7d": len(checkins), "wellbeing": wellbeing, "targets_pct": targets_pct, "targets_hit": hits, "target_days": len(target_days),
         "last_active": last_active.isoformat() if last_active else None,
     }
 
@@ -1939,7 +2004,9 @@ async def coach_client_detail(client_id: str, user: User = Depends(require_role(
     if user.role == "trainer":
         bq["trainer_id"] = user.user_id
     upcoming = await db.bookings.find(bq, {"_id": 0}).sort("starts_at", 1).to_list(20)
-    return {"client": c, "tracks": tracks, "coaches": coaches, "brief": await _client_brief(c, _fitness_view(user, c)), "progress": progress, "pose_checks": pose_checks,
+    since = (datetime.now(APP_TZ).date() - timedelta(days=13)).isoformat()
+    daily = await db.daily_logs.find({"user_id": client_id, "date": {"$gte": since}}, {"_id": 0}).sort("date", 1).to_list(20)
+    return {"client": c, "tracks": tracks, "coaches": coaches, "daily": daily, "today": _today(), "targets": c.get("daily_targets") or [], "brief": await _client_brief(c, _fitness_view(user, c)), "progress": progress, "pose_checks": pose_checks,
             "upcoming_sessions": upcoming,
             "photos": photos, "sessions": sessions, "food": foods, "plans": plans}
 
@@ -1989,6 +2056,350 @@ async def coach_attention(user: User = Depends(require_role("trainer", "admin"))
                       "client_name": b.get("client_name"), "text": f"Session today at {b['time']}", "booking_id": b["id"]})
     items.sort(key=lambda i: (i["priority"], i.get("client_name") or ""))
     return items
+
+
+# ───────────────────────────── Daily check-ins & targets ─────────────────────────────
+CHECKIN_FIELDS = ("sleep", "energy", "soreness", "mood")
+MAX_TARGETS = 8
+
+
+class CheckinIn(BaseModel):
+    sleep: int = Field(ge=1, le=5)
+    energy: int = Field(ge=1, le=5)
+    soreness: int = Field(ge=1, le=5)
+    mood: int = Field(ge=1, le=5)
+    note: Optional[str] = None
+
+
+class TargetTick(BaseModel):
+    done: bool = True
+    value: Optional[float] = None
+
+
+class TargetItem(BaseModel):
+    id: Optional[str] = None
+    label: str
+    goal: Optional[float] = None
+    unit: Optional[str] = None
+
+
+class TargetsIn(BaseModel):
+    targets: List[TargetItem]
+
+
+def _today() -> str:
+    return datetime.now(APP_TZ).date().isoformat()
+
+
+async def _streak(user_id: str) -> int:
+    """Consecutive days with a check-in, ending today (or yesterday if today isn't done yet)."""
+    docs = await db.daily_logs.find({"user_id": user_id, "checkin": {"$ne": None}}, {"_id": 0, "date": 1}).to_list(400)
+    dates = {d["date"] for d in docs}
+    day = datetime.now(APP_TZ).date()
+    if day.isoformat() not in dates:
+        day -= timedelta(days=1)
+    n = 0
+    while day.isoformat() in dates:
+        n += 1
+        day -= timedelta(days=1)
+    return n
+
+
+async def _today_out(user_id: str) -> dict:
+    u = await db.users.find_one({"user_id": user_id}, {"_id": 0, "daily_targets": 1}) or {}
+    log = await db.daily_logs.find_one({"user_id": user_id, "date": _today()}, {"_id": 0}) or {}
+    return {"date": _today(), "checkin": log.get("checkin"), "targets": u.get("daily_targets") or [],
+            "done": log.get("targets") or {}, "streak": await _streak(user_id)}
+
+
+@api_router.get("/today")
+async def get_today(user: User = Depends(require_role("client"))):
+    return await _today_out(user.user_id)
+
+
+@api_router.put("/today/checkin")
+async def save_checkin(payload: CheckinIn, user: User = Depends(require_role("client"))):
+    now = _now_iso()
+    checkin = {**{k: getattr(payload, k) for k in CHECKIN_FIELDS}, "note": _txt(payload.note, 280) or None, "at": now}
+    first = not await db.daily_logs.find_one({"user_id": user.user_id, "date": _today(), "checkin": {"$ne": None}})
+    await db.daily_logs.update_one({"user_id": user.user_id, "date": _today()},
+                                   {"$set": {"checkin": checkin, "updated_at": now}}, upsert=True)
+    if first and (payload.energy == 1 or payload.mood == 1 or payload.soreness == 5 or payload.sleep == 1):
+        low = [label for key, label, bad in (("sleep", "slept badly", 1), ("energy", "very low energy", 1),
+                                             ("soreness", "very sore", 5), ("mood", "low mood", 1)) if getattr(payload, key) == bad]
+        for coach_id in _my_coach_ids(user):
+            await push_notification(coach_id, f"{user.name} checked in", f"Today: {', '.join(low)}." +
+                                    (f" “{checkin['note']}”" if checkin["note"] else ""), f"/trainer/clients/{user.user_id}")
+    return await _today_out(user.user_id)
+
+
+@api_router.put("/today/targets/{target_id}")
+async def tick_target(target_id: str, payload: TargetTick, user: User = Depends(require_role("client"))):
+    doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0, "daily_targets": 1}) or {}
+    if not any(t["id"] == target_id for t in doc.get("daily_targets") or []):
+        raise HTTPException(status_code=404, detail="Target not found")
+    op = {"$set": {f"targets.{target_id}": payload.value if payload.value is not None else True, "updated_at": _now_iso()}} if payload.done \
+        else {"$unset": {f"targets.{target_id}": ""}, "$set": {"updated_at": _now_iso()}}
+    await db.daily_logs.update_one({"user_id": user.user_id, "date": _today()}, op, upsert=True)
+    return await _today_out(user.user_id)
+
+
+@api_router.put("/coach/clients/{client_id}/targets")
+async def set_targets(client_id: str, payload: TargetsIn, user: User = Depends(require_role("trainer", "admin"))):
+    await _client_access(user, client_id)
+    if len(payload.targets) > MAX_TARGETS:
+        raise HTTPException(status_code=400, detail=f"Up to {MAX_TARGETS} daily targets")
+    targets = []
+    for t in payload.targets:
+        label = _txt(t.label, 40)
+        if not label:
+            continue
+        targets.append({"id": _txt(t.id, 40) or uuid.uuid4().hex[:10], "label": label,
+                        "goal": _num(t.goal) if t.goal not in (None, "") else None, "unit": _txt(t.unit, 12) or None,
+                        "set_by": user.name})
+    await db.users.update_one({"user_id": client_id}, {"$set": {"daily_targets": targets}})
+    if targets:
+        await push_notification(client_id, "New daily targets", f"{user.name} set your daily targets: " +
+                                ", ".join(t["label"] for t in targets[:3]) + ("…" if len(targets) > 3 else ""), "/dashboard")
+    return {"targets": targets}
+
+
+@api_router.get("/me/week")
+async def my_week(user: User = Depends(require_role("client"))):
+    """Numbers for the shareable weekly progress card."""
+    doc = await db.users.find_one({"user_id": user.user_id}, CLIENT_PUBLIC)
+    brief = await _client_brief(doc)
+    coach = None
+    for f in ("fitness_coach_id", "yoga_coach_id"):
+        if doc.get(f):
+            coach = (await db.users.find_one({"user_id": doc[f]}, {"_id": 0, "name": 1}) or {}).get("name")
+            break
+    today = datetime.now(APP_TZ).date()
+    return {"name": doc.get("name"), "focus": doc.get("focus"), "coach": coach, "streak": await _streak(user.user_id),
+            "from": (today - timedelta(days=6)).isoformat(), "to": today.isoformat(),
+            "workouts": brief["workouts_7d"], "checkins": brief["checkins_7d"], "targets_pct": brief["targets_pct"], "targets_hit": brief["targets_hit"],
+            "weight": brief["weight"], "weight_change": brief["weight_change_7d"], "meals": brief["meals_7d"],
+            "pose_checks": await db.pose_checks.count_documents({"client_id": user.user_id, "created_at": {"$gte": (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()}})}
+
+
+# ───────────────────────────── Coach tools: templates, quick replies, AI summary ─────────────────────────────
+class TemplateIn(BaseModel):
+    name: str
+    type: str
+    plan_id: Optional[str] = None
+    content: Optional[dict] = None
+
+
+class PlanCopyIn(BaseModel):
+    type: str
+    template_id: Optional[str] = None
+    plan_id: Optional[str] = None
+
+
+class QuickRepliesIn(BaseModel):
+    replies: List[str]
+
+
+DEFAULT_QUICK_REPLIES = [
+    "Great work today, {name}! Keep it up 💪",
+    "How are you feeling after the last session?",
+    "Please log today's meals so I can review your nutrition.",
+    "Don't forget to drink enough water today.",
+    "I've updated your plan — have a look and tell me how it feels.",
+    "Rest well tonight — recovery is part of the plan.",
+]
+
+
+@api_router.get("/coach/plan-sources")
+async def plan_sources(type: str, user: User = Depends(require_role("trainer", "admin"))):
+    """Saved templates and other clients' live plans the coach can start a new draft from."""
+    if type not in PLAN_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid plan type")
+    templates = await db.plan_templates.find({"coach_id": user.user_id, "type": type}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    client_plans = []
+    for c in await _my_clients(user):
+        if not _sees_plan_type(user, c, type):
+            continue
+        p = await db.plans.find_one({"client_id": c["user_id"], "type": type, "status": "active"}, {"_id": 0})
+        if p:
+            client_plans.append({"plan_id": p["id"], "client_id": c["user_id"], "client_name": c.get("name"),
+                                 "title": p["content"].get("title"), "approved_at": p.get("approved_at")})
+    return {"templates": templates, "client_plans": client_plans}
+
+
+@api_router.post("/coach/templates")
+async def save_template(payload: TemplateIn, user: User = Depends(require_role("trainer", "admin"))):
+    if payload.type not in PLAN_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid plan type")
+    name = _txt(payload.name, 60)
+    if not name:
+        raise HTTPException(status_code=400, detail="Give the template a name")
+    if payload.plan_id:
+        plan = await _editable_plan(payload.plan_id, user)
+        if plan["type"] != payload.type:
+            raise HTTPException(status_code=400, detail="Plan type mismatch")
+        content = plan["content"]
+    elif payload.content:
+        content = payload.content
+    else:
+        raise HTTPException(status_code=400, detail="Nothing to save")
+    if await db.plan_templates.count_documents({"coach_id": user.user_id}) >= 100:
+        raise HTTPException(status_code=400, detail="You can keep up to 100 templates — delete some first")
+    doc = {"id": str(uuid.uuid4()), "coach_id": user.user_id, "name": name, "type": payload.type,
+           "content": _clean_plan(payload.type, content), "created_at": _now_iso()}
+    await db.plan_templates.insert_one(dict(doc))
+    return doc
+
+
+@api_router.delete("/coach/templates/{template_id}")
+async def delete_template(template_id: str, user: User = Depends(require_role("trainer", "admin"))):
+    res = await db.plan_templates.delete_one({"id": template_id, "coach_id": user.user_id})
+    if not res.deleted_count:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return {"ok": True}
+
+
+@api_router.post("/coach/clients/{client_id}/plans/copy")
+async def copy_plan(client_id: str, payload: PlanCopyIn, user: User = Depends(require_role("trainer", "admin"))):
+    """Start a draft for this client from a saved template or another client's plan. The coach still reviews and approves it."""
+    if payload.type not in PLAN_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid plan type")
+    client_doc = await _client_access(user, client_id, PLAN_TYPES[payload.type])
+    if payload.template_id:
+        src = await db.plan_templates.find_one({"id": payload.template_id, "coach_id": user.user_id}, {"_id": 0})
+        if not src:
+            raise HTTPException(status_code=404, detail="Template not found")
+        note = f"Started from your template “{src['name']}” — personalise it before approving."
+    elif payload.plan_id:
+        src = await _editable_plan(payload.plan_id, user)
+        if src["client_id"] == client_id and src["status"] == "draft":
+            raise HTTPException(status_code=400, detail="That is already this client's draft")
+        note = f"Copied from {src.get('client_name') or 'another client'}'s plan — check portions, injuries and diet before approving."
+    else:
+        raise HTTPException(status_code=400, detail="Choose a template or a plan to copy")
+    if src["type"] != payload.type:
+        raise HTTPException(status_code=400, detail="Plan type mismatch")
+    active = await db.plans.find_one({"client_id": client_id, "type": payload.type, "status": "active"}, {"_id": 0})
+    await db.plans.delete_many({"client_id": client_id, "type": payload.type, "status": "draft"})
+    doc = {
+        "id": str(uuid.uuid4()), "client_id": client_id, "client_name": client_doc.get("name"),
+        "coach_id": user.user_id, "coach_name": user.name, "type": payload.type, "status": "draft",
+        "content": _clean_plan(payload.type, src["content"]), "reason": None, "ai_generated": False,
+        "ai_note": note, "coach_note": None, "revises": active["id"] if active else None,
+        "created_at": _now_iso(), "approved_at": None,
+    }
+    await db.plans.insert_one(dict(doc))
+    return _plan_out(doc)
+
+
+@api_router.get("/coach/quick-replies")
+async def get_quick_replies(user: User = Depends(require_role("trainer"))):
+    doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0, "quick_replies": 1}) or {}
+    replies = doc.get("quick_replies")
+    return {"replies": DEFAULT_QUICK_REPLIES if replies is None else replies}
+
+
+@api_router.put("/coach/quick-replies")
+async def put_quick_replies(payload: QuickRepliesIn, user: User = Depends(require_role("trainer"))):
+    replies = [r for r in (_txt(x, 500) for x in payload.replies) if r][:30]
+    await db.users.update_one({"user_id": user.user_id}, {"$set": {"quick_replies": replies}})
+    return {"replies": replies}
+
+
+def _week_key() -> str:
+    today = datetime.now(APP_TZ).date()
+    return (today - timedelta(days=today.weekday())).isoformat()
+
+
+def _fallback_summary(client: dict, brief: dict) -> dict:
+    first = (client.get("name") or "there").split(" ")[0]
+    kinds = {f["kind"] for f in brief["flags"]}
+    wins = []
+    if brief["workouts_7d"] >= 3:
+        wins.append(f"{brief['workouts_7d']} workouts logged")
+    if brief.get("checkins_7d", 0) >= 5:
+        wins.append("Checked in almost every day")
+    if (brief.get("targets_pct") or 0) >= 70:
+        wins.append(f"Hit {brief['targets_pct']}% of daily targets")
+    if brief["weight_change_7d"] and ((client.get("focus") == "fat_loss" and brief["weight_change_7d"] < 0) or
+                                      (client.get("focus") == "muscle_gain" and brief["weight_change_7d"] > 0)):
+        wins.append(f"Weight moving the right way ({brief['weight_change_7d']:+} kg)")
+    if "inactive" in kinds:
+        msg = f"Hi {first}, haven't heard from you in a few days — how are things going? Even a quick check-in helps."
+    elif kinds & {"poor_sleep", "low_energy", "sore", "low_mood"}:
+        msg = f"Hi {first}, I noticed recovery has been tough this week. Let's go a bit lighter for a few days — how are you sleeping?"
+    elif kinds:
+        msg = f"Hi {first}, I've looked at your week. A couple of things to tweak — let's chat about them today."
+    else:
+        msg = f"Great week, {first}! You're on track — keep the momentum going."
+    w = brief["workouts_7d"]
+    text = f"{first} logged {w} workout{'s' if w != 1 else ''}"
+    if brief.get("meals_7d") is not None and client.get("focus") in FITNESS_FOCUS:
+        text += f" and {brief['meals_7d']} meal{'s' if brief['meals_7d'] != 1 else ''}"
+    text += f", and checked in on {brief.get('checkins_7d', 0)} of the last 7 days."
+    if brief["weight_change_7d"]:
+        text += f" Weight is {brief['weight']} kg ({brief['weight_change_7d']:+} kg this week)."
+    if brief.get("targets_pct") is not None:
+        text += f" Daily targets: {brief['targets_pct']}% done."
+    if brief["inactive_days"] and brief["inactive_days"] >= 3:
+        text += f" Last activity was {brief['inactive_days']} days ago."
+    return {"summary": text, "wins": wins[:3], "concerns": [f["text"] for f in brief["flags"]][:3],
+            "next_step": brief["suggestion"], "message": msg}
+
+
+@api_router.get("/coach/clients/{client_id}/summary")
+async def client_summary(client_id: str, refresh: bool = False, user: User = Depends(require_role("trainer", "admin"))):
+    """AI-written weekly summary for the coach, cached for the week. Falls back to a rule-based summary without AI."""
+    client_doc = await _client_access(user, client_id)
+    week = _week_key()
+    key = {"client_id": client_id, "viewer_id": user.user_id, "week": week}
+    if not refresh:
+        cached = await db.ai_summaries.find_one(key, {"_id": 0})
+        if cached:
+            return cached
+    fitness_view = _fitness_view(user, client_doc)
+    brief = await _client_brief(client_doc, fitness_view)
+    since = (datetime.now(APP_TZ).date() - timedelta(days=13)).isoformat()
+    daily = await db.daily_logs.find({"user_id": client_id, "date": {"$gte": since}}, {"_id": 0, "user_id": 0}).sort("date", 1).to_list(20)
+    progress = await db.progress.find({"user_id": client_id, "date": {"$gte": (datetime.now(APP_TZ).date() - timedelta(days=28)).isoformat()}},
+                                      {"_id": 0, "date": 1, "weight": 1, "waist": 1}).to_list(60)
+    sessions = await db.workout_sessions.find({"user_id": client_id, "created_at": {"$gte": (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()}},
+                                              {"_id": 0, "name": 1, "created_at": 1, "notes": 1}).to_list(30)
+    plans = await db.plans.find({"client_id": client_id, "status": "active"}, {"_id": 0, "type": 1, "content.title": 1, "content.total_calories": 1}).to_list(5)
+    plans = [p for p in plans if _sees_plan_type(user, client_doc, p["type"])]
+    latest = await db.progress.find_one({"user_id": client_id, "weight": {"$ne": None}}, {"_id": 0}, sort=[("date", -1)]) or {}
+    data = {
+        "this_week": {k: brief[k] for k in ("headline", "weight", "weight_change_7d", "workouts_7d", "meals_7d", "avg_kcal",
+                                            "inactive_days", "plateau", "checkins_7d", "wellbeing", "targets_pct")},
+        "flags": [f["text"] for f in brief["flags"]],
+        "daily_checkins_1to5": [{"date": d["date"], **(d.get("checkin") or {})} for d in daily if d.get("checkin")],
+        "daily_targets": client_doc.get("daily_targets") or [], "targets_done_by_day": {d["date"]: d.get("targets") or {} for d in daily},
+        "measurements_4_weeks": progress, "workouts_logged": sessions, "live_plans": plans,
+    }
+    if not fitness_view:
+        for k in ("weight", "weight_change_7d", "meals_7d", "avg_kcal"):
+            data["this_week"].pop(k, None)
+        data.pop("measurements_4_weeks")
+    system = ("You help an online fitness/yoga coach in India review one client's week. Be specific, warm and brief; use the numbers given, "
+              "never invent data, and don't give medical advice. Check-in scales are 1-5 (sleep quality, energy, mood: 5 is best; soreness: 5 is most sore). "
+              'Respond ONLY with JSON: {"summary": 2-3 sentences for the coach, "wins": [up to 3 short strings], "concerns": [up to 3 short strings], '
+              '"next_step": one concrete action for the coach, "message": a short friendly message (max 50 words) the coach could send the client, '
+              "written in the coach's voice, addressing the client by first name}.")
+    prompt = f"Client profile:\n{_profile_text(client_doc, latest)}\n\nData (JSON):\n{json.dumps(data, default=str)[:9000]}"
+    try:
+        out = await _ai_json(system, prompt, "weekly-summary")
+        result = {"summary": _txt(out.get("summary"), 700), "wins": [_txt(x, 140) for x in (out.get("wins") or [])][:3],
+                  "concerns": [_txt(x, 140) for x in (out.get("concerns") or [])][:3], "next_step": _txt(out.get("next_step"), 240),
+                  "message": _txt(out.get("message"), 400)}
+        if not result["summary"]:
+            raise ValueError("empty summary")
+        ai = True
+    except Exception as e:
+        logger.info("AI weekly summary unavailable, using rule-based: %s", e)
+        result, ai = _fallback_summary(client_doc, brief), False
+    doc = {**key, **result, "ai": ai, "flags": brief["flags"], "generated_at": _now_iso()}
+    await db.ai_summaries.replace_one(key, dict(doc), upsert=True)
+    return doc
 
 
 # ───────────────────────────── Yoga pose checks ─────────────────────────────
@@ -2222,6 +2633,28 @@ async def send_message(client_id: str, coach_id: str, payload: MessageCreate, us
     preview = body if len(body) <= 80 else body[:77] + "..."
     await db.notifications.delete_many({"user_id": recipient, "link": link, "read": False})  # one live notice per thread
     await push_notification(recipient, f"Message from {user.name}", preview, link)
+    return doc
+
+
+@api_router.post("/messages/{client_id}/{coach_id}/voice")
+async def send_voice_note(client_id: str, coach_id: str, file: UploadFile = File(...), duration: float = Form(0),
+                          user: User = Depends(require_member)):
+    if user.role == "admin":
+        raise HTTPException(status_code=403, detail="Admins can read but not post in coaching chats")
+    await _thread_access(user, client_id, coach_id)
+    if duration > MAX_VOICE_SECONDS + 2:
+        raise HTTPException(status_code=400, detail="Voice notes can be up to 3 minutes")
+    record = await store_voice(file, client_id, [client_id, coach_id])
+    doc = {"id": str(uuid.uuid4()), "client_id": client_id, "coach_id": coach_id, "sender_id": user.user_id,
+           "sender_name": user.name, "sender_role": user.role, "body": "",
+           "audio": {"url": file_url(record["storage_path"]), "duration": round(max(0.0, min(float(duration or 0), MAX_VOICE_SECONDS)), 1)},
+           "context": None, "read_by": [user.user_id], "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.messages.insert_one(dict(doc))
+    doc.pop("_id", None)
+    recipient = coach_id if user.user_id == client_id else client_id
+    link = f"/trainer/clients/{client_id}?tab=chat" if recipient == coach_id else f"/messages?coach={coach_id}"
+    await db.notifications.delete_many({"user_id": recipient, "link": link, "read": False})
+    await push_notification(recipient, f"Voice note from {user.name}", "Tap to listen", link)
     return doc
 
 
@@ -2956,6 +3389,9 @@ async def create_indexes():
         await db.transactions.create_index("payment_id", unique=True, partialFilterExpression={"payment_id": {"$type": "string"}})
         await db.users.create_index("referral_code", unique=True, partialFilterExpression={"referral_code": {"$type": "string"}})
         await db.membership_plans.create_index("id", unique=True)
+        await db.daily_logs.create_index([("user_id", 1), ("date", 1)], unique=True)
+        await db.plan_templates.create_index([("coach_id", 1), ("type", 1)])
+        await db.ai_summaries.create_index([("client_id", 1), ("viewer_id", 1), ("week", 1)], unique=True)
     except Exception as e:
         logger.warning(f"Index creation skipped: {e}")
     await seed_roles()

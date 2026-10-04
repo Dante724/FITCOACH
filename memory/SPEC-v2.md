@@ -146,7 +146,13 @@ Start with **8–10 common poses** (Warrior I/II, Tree, Triangle, Downward Dog, 
 | Razorpay: pay once, auto-renew subscriptions (webhook), session packs, credits used on booking | ✅ Built (tested with mocked Razorpay — needs a test-key run end to end) |
 | Referral codes: friend gets +7 trial days, referrer +7 days on friend's first payment | ✅ Built + tested |
 | Yoga pose check: live on-device tracking with cues, 10s hold or uploaded clip → score + corrections + one annotated still → yoga coach confirms/adjusts → client | ✅ Built (8 poses; camera tested only via a still photo — needs a real-phone test) |
-| Voice notes in chat, AI-written weekly brief | ⏳ Later |
+| Daily check-in (sleep, energy, soreness, mood + note), streaks; coach alerted on a very bad day | ✅ Built + tested |
+| Coach-set daily targets (steps, water, protein…) with tick-off; 14-day check-in/target grid for the coach | ✅ Built + tested |
+| Voice notes in chat (record in app, only the two people in the thread can play them) | ✅ Built + tested (mic needs a real-device check) |
+| Shareable weekly progress card (image, only positive stats) | ✅ Built |
+| Plan templates + copy another client's plan into a draft | ✅ Built + tested |
+| Coach quick replies in chat ({name} placeholder) | ✅ Built + tested |
+| AI-written weekly summary per client (cached per week, rule-based fallback, suggested message → chat) | ✅ Built + tested (AI mocked in tests) |
 
 ## 10. Open questions
 - Coach payouts: salary or per-client? (affects admin reporting)

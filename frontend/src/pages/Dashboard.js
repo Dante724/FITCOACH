@@ -8,6 +8,7 @@ import Avatar from "@/components/Avatar";
 import { startCall } from "@/lib/calls";
 import { useMembership, membershipNotice } from "@/lib/membership";
 import { useToast } from "@/context/ToastContext";
+import TodayCard from "@/components/TodayCard";
 
 function StatCard({ icon: Icon, label, value, unit, accent, delay }) {
   return (
@@ -174,6 +175,8 @@ export default function Dashboard() {
           ))}
         </div>
       </div>
+
+      <TodayCard />
 
       <div className="grid-stats" style={{ marginBottom: 18 }}>
         <StatCard icon={Icons.Weight} label="Latest weight" value={latest.weight ?? "—"} unit={latest.weight ? "kg" : ""} accent="var(--accent)" delay={0} />

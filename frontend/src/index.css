@@ -393,3 +393,39 @@ button.clay:hover { transform: translateY(-2px); border-color: rgba(184,146,74,0
 .has-banner .app-main { padding-bottom: 120px !important; }
 .sticky-cta { position: sticky; bottom: 16px; display: flex; justify-content: center; z-index: 5; }
 .sticky-cta .btn { box-shadow: var(--shadow-pop); }
+
+/* Voice notes */
+.voice-note { display: flex; align-items: center; gap: 10px; min-width: 200px; }
+.voice-play { width: 34px; height: 34px; border-radius: 50%; border: none; cursor: pointer; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--ink); color: var(--on-ink); }
+.voice-play.mine { background: rgba(255, 255, 255, 0.2); color: var(--on-ink); }
+.voice-track { flex: 1; height: 4px; border-radius: 4px; background: currentColor; opacity: 0.35; position: relative; overflow: hidden; min-width: 80px; }
+.voice-fill { position: absolute; inset: 0 auto 0 0; background: currentColor; opacity: 1; }
+.bubble .voice-track { opacity: 1; background: rgba(127, 127, 127, 0.3); }
+.bubble.me .voice-fill { background: var(--on-ink); }
+.bubble.them .voice-fill { background: var(--ink); }
+.rec-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); flex-shrink: 0; animation: recPulse 1.2s ease-in-out infinite; }
+@keyframes recPulse { 50% { opacity: 0.3; } }
+
+/* Coach quick replies */
+.quick-replies { position: absolute; left: 8px; right: 8px; bottom: calc(100% + 8px); background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; padding: 14px; box-shadow: var(--shadow-pop); z-index: 6; }
+.quick-reply { padding: 9px 12px; border-radius: 10px; background: var(--surface-2); font-size: 13.5px; gap: 10px; }
+.quick-reply:hover { outline: 1px solid var(--border); }
+
+/* Daily check-in */
+.scale { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.scale button { border: 1px solid var(--border); background: var(--surface); border-radius: 12px; padding: 8px 0 6px; cursor: pointer; font: inherit;
+  display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--text-2); transition: all .15s ease; }
+.scale button .face { font-size: 20px; line-height: 1.1; }
+.scale button .cap { font-size: 10.5px; }
+.scale button.on { background: var(--ink); color: var(--on-ink); border-color: var(--ink); transform: translateY(-1px); }
+.target-row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 14px; cursor: pointer; border: 1px solid transparent;
+  background: var(--surface-2); width: 100%; text-align: left; font: inherit; color: inherit; transition: all .15s ease; }
+.target-row.done { background: var(--teal-soft); border-color: rgba(15, 74, 58, 0.18); }
+.target-row.done .target-label { text-decoration: line-through; text-decoration-color: rgba(15, 74, 58, 0.4); }
+.tick { width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--border-strong, rgba(0,0,0,0.25)); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.target-row.done .tick { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
+.well-grid { display: grid; grid-template-columns: 74px repeat(14, minmax(0, 1fr)); gap: 3px; font-size: 11px; align-items: center; }
+.well-cell { height: 20px; border-radius: 5px; background: var(--surface-2); }
+.spin { animation: spin 1s linear infinite; }
