@@ -21,7 +21,7 @@ import TrainerDashboard from "@/pages/TrainerDashboard";
 import TrainerAvailability from "@/pages/TrainerAvailability";
 import ClientDetail from "@/pages/ClientDetail";
 import Messages from "@/pages/Messages";
-import VideoCall from "@/pages/VideoCall";
+import LiveCall, { BookedCall } from "@/pages/VideoCall";
 import Profile from "@/pages/Profile";
 
 // Pose tracking pulls in MediaPipe, so only load it when a client opens Pose Check.
@@ -57,7 +57,8 @@ function AppRouter() {
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
       <Route path="/focus" element={<RequireAuth roles={CLIENT_ROLES}><FocusSelect /></RequireAuth>} />
-      <Route path="/call/:bookingId" element={<RequireAuth><VideoCall /></RequireAuth>} />
+      <Route path="/call/live/:callId" element={<RequireAuth><LiveCall /></RequireAuth>} />
+      <Route path="/call/:bookingId" element={<RequireAuth><BookedCall /></RequireAuth>} />
 
       <Route element={<RequireAuth roles={CLIENT_ROLES} requireFocus><Layout /></RequireAuth>}>
         <Route path="/dashboard" element={<Dashboard />} />

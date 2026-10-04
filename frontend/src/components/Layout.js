@@ -7,6 +7,7 @@ import { navForFocus, getFocus, focusAllowsPath } from "@/lib/focus";
 import NotificationBell from "@/components/NotificationBell";
 import Logo from "@/components/Logo";
 import Avatar from "@/components/Avatar";
+import CallCenter from "@/components/CallCenter";
 
 export default function Layout() {
   const { user, logout } = useAuth();
@@ -89,6 +90,7 @@ export default function Layout() {
         </div>
         <Outlet />
       </main>
+      {role !== "admin" && <CallCenter />}
     </div>
   );
 }

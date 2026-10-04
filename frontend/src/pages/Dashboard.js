@@ -5,6 +5,8 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { getFocus, hasFeature, askCoachPath, PLAN_LABEL } from "@/lib/focus";
 import Avatar from "@/components/Avatar";
+import { startCall } from "@/lib/calls";
+import { useToast } from "@/context/ToastContext";
 
 function StatCard({ icon: Icon, label, value, unit, accent, delay }) {
   return (
@@ -21,6 +23,7 @@ function StatCard({ icon: Icon, label, value, unit, accent, delay }) {
 }
 
 function CoachCard({ type, coach, unread, navigate }) {
+  const { push } = useToast();
   const label = type === "yoga" ? "Yoga coach" : "Fitness & nutrition coach";
   if (!coach) {
     return (
@@ -42,6 +45,9 @@ function CoachCard({ type, coach, unread, navigate }) {
         <div className="truncate" style={{ fontSize: 14.5, fontWeight: 600 }}>{coach.name}</div>
         <div className="truncate" style={{ fontSize: 12.5, color: "var(--text-3)" }}>{label}</div>
       </div>
+      <button className="btn btn-ghost" onClick={() => startCall(coach.user_id, navigate, push)} aria-label={`Video call ${coach.name}`} title="Video call" data-testid={`call-coach-${type}`} style={{ padding: "9px 11px" }}>
+        <Icons.Video size={16} />
+      </button>
       <button className="btn btn-ghost" onClick={() => navigate(askCoachPath(coach.user_id))} style={{ padding: "9px 14px", fontSize: 13, position: "relative" }}>
         <Icons.MessageCircle size={16} /> <span>Message</span>
         {unread > 0 && <span className="badge" style={{ position: "absolute", top: -6, right: -6 }}>{unread}</span>}

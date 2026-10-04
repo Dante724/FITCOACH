@@ -10,6 +10,7 @@ import { ScoreRing, CheckList } from "@/components/PoseResult";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
+import { startCall } from "@/lib/calls";
 import { GOAL_LABEL, PLAN_LABEL, timeAgo } from "@/lib/focus";
 
 const TRACK_TYPES = { fitness: ["workout", "meal"], yoga: ["yoga"] };
@@ -158,6 +159,40 @@ function PoseReviewCard({ check, canReview, onDone }) {
   );
 }
 
+function ScheduleModal({ clientId, clientName, onClose, onDone }) {
+  const { push } = useToast();
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const [date, setDate] = useState(tomorrow);
+  const [time, setTime] = useState("07:00");
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.post(`/coach/clients/${clientId}/sessions`, { date, time });
+      push(`Session scheduled. ${clientName.split(" ")[0]} has been notified.`, "success");
+      onDone();
+    } catch (e) { push(e?.response?.data?.detail || "Could not schedule.", "error"); } finally { setSaving(false); }
+  };
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="glass modal fade-up" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400 }} data-testid="schedule-modal">
+        <div className="row" style={{ justifyContent: "space-between", marginBottom: 4 }}>
+          <h3 style={{ fontSize: 22 }}>Schedule a session</h3>
+          <button className="icon-btn" onClick={onClose} aria-label="Close"><Icons.X size={18} /></button>
+        </div>
+        <p style={{ fontSize: 13.5, color: "var(--text-2)", marginBottom: 18 }}>In-app video call with {clientName}. You'll both get reminders an hour and 10 minutes before.</p>
+        <div className="grid-2" style={{ gap: 12 }}>
+          <div><label className="label">Date</label><input className="field" type="date" min={new Date().toISOString().slice(0, 10)} value={date} onChange={(e) => setDate(e.target.value)} data-testid="schedule-date" /></div>
+          <div><label className="label">Time</label><input className="field" type="time" value={time} onChange={(e) => setTime(e.target.value)} data-testid="schedule-time" /></div>
+        </div>
+        <button className="btn btn-primary" onClick={save} disabled={saving || !date || !time} style={{ width: "100%", marginTop: 18 }} data-testid="schedule-save">
+          <Icons.CalendarPlus size={16} /> {saving ? "Scheduling…" : "Schedule"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function ClientDetail() {
   const { clientId } = useParams();
   const { user } = useAuth();
@@ -166,6 +201,8 @@ export default function ClientDetail() {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [chatContext, setChatContext] = useState(null);
+  const [scheduling, setScheduling] = useState(false);
+  const { push } = useToast();
 
   const load = useCallback(() => {
     api.get(`/coach/clients/${clientId}`).then((r) => setData(r.data)).catch((e) => setError(e?.response?.data?.detail || "Could not load client."));
@@ -199,6 +236,18 @@ export default function ClientDetail() {
           <div style={{ fontSize: 13.5, color: "var(--text-2)" }}>{GOAL_LABEL[client.focus] || "No goal yet"} · {client.email}</div>
         </div>
       </div>
+      {isCoach && (
+        <div className="row-wrap" style={{ marginBottom: 18 }}>
+          <button className="btn btn-primary" onClick={() => startCall(client.user_id, navigate, push)} data-testid="call-client"><Icons.Video size={16} /> Call now</button>
+          <button className="btn btn-ghost" onClick={() => setScheduling(true)} data-testid="schedule-client"><Icons.CalendarPlus size={16} /> Schedule session</button>
+          {data.upcoming_sessions?.map((b) => (
+            <button key={b.id} className="chip chip-neutral" onClick={() => navigate(`/call/${b.id}`)} style={{ border: "none", cursor: "pointer", padding: "6px 11px" }} title="Join this session">
+              <Icons.Video size={13} /> {b.date} · {b.time}
+            </button>
+          ))}
+        </div>
+      )}
+      {scheduling && <ScheduleModal clientId={clientId} clientName={client.name} onClose={() => setScheduling(false)} onDone={() => { setScheduling(false); load(); }} />}
 
       <div className="tabs" role="tablist">
         {tabs.map(([id, label, icon]) => {

@@ -203,3 +203,70 @@ class TestPoseChecks:
         s.headers["Authorization"] = f"Bearer {r.cookies.get('access_token')}"
         s.put(f"{API}/profile/intake", json={"focus": "fat_loss"})
         assert s.post(f"{API}/pose-checks", json=POSE).status_code == 400
+
+
+def _ist(minutes_from_now):
+    from datetime import datetime, timedelta, timezone
+    t = datetime.now(timezone(timedelta(hours=5, minutes=30))) + timedelta(minutes=minutes_from_now)
+    return t.strftime("%Y-%m-%d"), t.strftime("%H:%M")
+
+
+class TestCalls:
+    def test_instant_call_lifecycle(self, ctx):
+        c, fit, cid = ctx["client"], ctx["fit"], ctx["cid"]
+        sarah = fit.me["user_id"]
+        assert c.post(f"{API}/calls/instant", json={"peer_id": ctx["other"].me["user_id"]}).status_code == 403
+        assert ctx["other"].post(f"{API}/calls/instant", json={"peer_id": cid}).status_code == 403
+
+        call = c.post(f"{API}/calls/instant", json={"peer_id": sarah}).json()
+        assert call["status"] == "ringing" and call["role"] == "answerer" and call["peer_id"] == sarah
+        c.post(f"{API}/calls/{call['id']}/join")
+        live = fit.get(f"{API}/calls-live").json()
+        assert [i["id"] for i in live["incoming"]] == [call["id"]]
+        assert ctx["yoga"].get(f"{API}/calls/{call['id']}").status_code == 404
+
+        joined = fit.post(f"{API}/calls/{call['id']}/join").json()
+        assert joined["status"] == "active" and joined["role"] == "offerer" and joined["peer_present"]
+        fit.post(f"{API}/calls/{call['id']}/signal", json={"type": "offer", "payload": {"sdp": "v=0", "type": "offer"}})
+        fit.post(f"{API}/calls/{call['id']}/signal", json={"type": "ice", "payload": {"candidate": "c1"}})
+        got = c.get(f"{API}/calls/{call['id']}/signals").json()
+        assert [s["type"] for s in got["signals"]] == ["offer", "ice"] and got["peer_present"]
+        assert c.get(f"{API}/calls/{call['id']}/signals").json()["signals"] == []  # mailbox drained
+        c.post(f"{API}/calls/{call['id']}/signal", json={"type": "answer", "payload": {"sdp": "v=0", "type": "answer"}})
+        assert fit.get(f"{API}/calls/{call['id']}/signals").json()["signals"][0]["type"] == "answer"
+        assert c.post(f"{API}/calls/{call['id']}/signal", json={"type": "evil"}).status_code == 400
+
+        c.post(f"{API}/calls/{call['id']}/leave")
+        assert fit.get(f"{API}/calls/{call['id']}/signals").json()["signals"][-1]["type"] == "bye"
+
+    def test_decline(self, ctx):
+        c, fit, cid = ctx["client"], ctx["fit"], ctx["cid"]
+        # previous call between this pair may still be active; end it from both sides first
+        call = fit.post(f"{API}/calls/instant", json={"peer_id": cid}).json()
+        fit.post(f"{API}/calls/{call['id']}/leave")
+        call = ctx["yoga"].post(f"{API}/calls/instant", json={"peer_id": cid}).json()
+        ctx["yoga"].post(f"{API}/calls/{call['id']}/join")
+        assert c.post(f"{API}/calls/{call['id']}/decline").status_code == 200
+        assert c.get(f"{API}/calls/{call['id']}").json()["status"] == "declined"
+        assert c.post(f"{API}/calls/{call['id']}/join").status_code == 410
+
+    def test_coach_schedules_and_both_join_same_room(self, ctx):
+        fit, c, cid = ctx["fit"], ctx["client"], ctx["cid"]
+        d, t = _ist(6)
+        assert ctx["other"].post(f"{API}/coach/clients/{cid}/sessions", json={"date": d, "time": t}).status_code == 403
+        past_d, past_t = _ist(-120)
+        assert fit.post(f"{API}/coach/clients/{cid}/sessions", json={"date": past_d, "time": past_t}).status_code == 400
+        r = fit.post(f"{API}/coach/clients/{cid}/sessions", json={"date": d, "time": t})
+        assert r.status_code == 200, r.text
+        booking = r.json()
+        assert any(b["id"] == booking["id"] for b in c.get(f"{API}/bookings").json())
+        soon = c.get(f"{API}/calls-live").json()["starting_soon"]
+        assert any(s["booking_id"] == booking["id"] and 0 <= s["minutes"] <= 7 for s in soon)
+        a = c.post(f"{API}/calls/booking/{booking['id']}").json()
+        b = fit.post(f"{API}/calls/booking/{booking['id']}").json()
+        assert a["id"] == b["id"] and a["kind"] == "scheduled"
+        assert ctx["yoga"].post(f"{API}/calls/booking/{booking['id']}").status_code == 404
+
+    def test_ice_servers(self, ctx):
+        ice = ctx["client"].get(f"{API}/calls/ice").json()
+        assert ice["iceServers"][0]["urls"][0].startswith("stun:")

@@ -7,11 +7,16 @@ import Avatar from "@/components/Avatar";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import useCoaches from "@/lib/useCoaches";
+import { startCall } from "@/lib/calls";
+import { useToast } from "@/context/ToastContext";
+import { useNavigate } from "react-router-dom";
 
 // Client ↔ coach chat. Everything stays in the app — no WhatsApp needed.
 export default function Messages() {
   const { user } = useAuth();
   const coaches = useCoaches();
+  const navigate = useNavigate();
+  const { push } = useToast();
   const [params, setParams] = useSearchParams();
   const [unread, setUnread] = useState({});
 
@@ -47,12 +52,15 @@ export default function Messages() {
               ))}
             </div>
           )}
-          <div className="row" style={{ padding: "4px 6px 12px" }}>
+          <div className="row" style={{ padding: "4px 6px 12px", width: "100%" }}>
             <Avatar name={active.name} picture={active.picture} size={38} />
             <div className="min0">
               <div style={{ fontWeight: 600, fontSize: 14.5 }}>{active.name}</div>
               <div style={{ fontSize: 12, color: "var(--text-3)" }}>{active.type === "yoga" ? "Yoga coach" : "Fitness & nutrition coach"}</div>
             </div>
+            <button className="btn btn-ghost" onClick={() => startCall(active.user_id, navigate, push)} data-testid="call-from-chat" style={{ marginLeft: "auto", padding: "8px 12px", fontSize: 13 }}>
+              <Icons.Video size={15} /> Video call
+            </button>
           </div>
           <Chat clientId={user.user_id} coachId={active.user_id} meId={user.user_id} otherName={active.name}
             initialContext={params.get("coach") === active.user_id ? initialContext : null} onRead={loadUnread} />

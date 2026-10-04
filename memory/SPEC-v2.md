@@ -138,6 +138,8 @@ Start with **8–10 common poses** (Warrior I/II, Tree, Triangle, Downward Dog, 
 | Coach "Needs attention" queue + weekly brief per client (rule-based) | ✅ Built |
 | In-app coach ↔ client chat with context (meal, workout, plan, photo) | ✅ Built (text only; polling every 8s) |
 | Responsive: phone (375), tablet (768), laptop (1366) | ✅ Checked in browser |
+| In-app video calls (WebRTC, no Zoom/Jitsi): booked sessions + instant "Call now", ringing, echo/noise suppression toggle, reconnect | ✅ Built (STUN only by default — add a TURN server for strict networks) |
+| Coach schedules sessions; reminders 1h & 10 min before; "starting soon" banner; desktop alerts while the app is open | ✅ Built (no push when the app is closed yet) |
 | Admin tier editor (DB-backed memberships) | ⏳ Next |
 | Yoga pose check: live on-device tracking with cues, 10s hold or uploaded clip → score + corrections + one annotated still → yoga coach confirms/adjusts → client | ✅ Built (8 poses; camera tested only via a still photo — needs a real-phone test) |
 | Voice notes in chat, AI-written weekly brief | ⏳ Later |

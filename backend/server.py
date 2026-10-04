@@ -15,6 +15,7 @@ from email.message import EmailMessage
 from pathlib import Path
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 
 import bcrypt
 import jwt
@@ -56,6 +57,17 @@ SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
 SMTP_PORT = int(os.environ.get('SMTP_PORT', '465'))
 EMAIL_ENABLED = os.environ.get('EMAIL_ENABLED', 'true').lower() == 'true'
 REMINDER_HOURS_BEFORE = int(os.environ.get('REMINDER_HOURS_BEFORE', '24'))
+# Session dates/times are entered as local wall-clock time in the business's timezone.
+APP_TZ = ZoneInfo(os.environ.get('APP_TIMEZONE', 'Asia/Kolkata'))
+# Optional TURN relay for calls on restrictive networks (STUN alone works for most home/mobile networks).
+TURN_URLS = [u.strip() for u in os.environ.get('TURN_URLS', '').split(',') if u.strip()]
+TURN_USERNAME = os.environ.get('TURN_USERNAME', '')
+TURN_CREDENTIAL = os.environ.get('TURN_CREDENTIAL', '')
+
+
+def booking_dt(date: str, time: str) -> datetime:
+    """A booking's start as an aware datetime (raises ValueError on bad input)."""
+    return datetime.strptime(f"{date} {time}", "%Y-%m-%d %H:%M").replace(tzinfo=APP_TZ)
 
 MEMBERSHIP_PLANS = [
     {"id": "monthly", "name": "Monthly", "price_inr": 15000, "days": 30, "blurb": "Full access, billed monthly"},
@@ -503,7 +515,7 @@ async def send_due_reminders():
     cursor = db.bookings.find({"reminder_email_sent": {"$ne": True}, "reminder_at": {"$lte": now_iso, "$ne": ""}})
     async for b in cursor:
         try:
-            session_dt = datetime.strptime(f"{b['date']} {b['time']}", "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
+            session_dt = booking_dt(b["date"], b["time"])
         except (ValueError, KeyError):
             await db.bookings.update_one({"id": b["id"]}, {"$set": {"reminder_email_sent": True}})
             continue
@@ -820,6 +832,45 @@ async def list_bookings(user: User = Depends(get_current_user)):
     return docs
 
 
+async def _create_booking(client_doc: dict, trainer: dict, date: str, time: str, request: Request,
+                          background: BackgroundTasks, check_availability: bool, scheduled_by: Optional[User] = None) -> Booking:
+    try:
+        session_dt = booking_dt(date, time)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date or time")
+    if session_dt < datetime.now(timezone.utc) - timedelta(minutes=5):
+        raise HTTPException(status_code=400, detail="That time has already passed")
+    if check_availability:
+        days = trainer.get("available_days") or DEFAULT_DAYS
+        times = trainer.get("available_times") or DEFAULT_TIMES
+        if session_dt.weekday() not in days or time not in times:
+            raise HTTPException(status_code=409, detail="Trainer is not available at this time")
+    # Prevent double booking across ALL clients for this trainer/date/time
+    if await db.bookings.find_one({"trainer_id": trainer["user_id"], "date": date, "time": time}):
+        raise HTTPException(status_code=409, detail="This slot is already booked")
+
+    booking = Booking(
+        user_id=client_doc["user_id"], client_name=client_doc.get("name", ""), client_email=client_doc.get("email", ""),
+        trainer_id=trainer["user_id"], trainer_name=trainer.get("name"), trainer_email=trainer.get("email", ""),
+        specialty=trainer.get("specialty") or "Personal Trainer", date=date, time=time,
+    )
+    booking.room = _room_for(booking.id)
+    booking.reminder_at = (session_dt - timedelta(hours=REMINDER_HOURS_BEFORE)).astimezone(timezone.utc).isoformat()
+    doc = booking.model_dump()
+    doc["starts_at"] = session_dt.astimezone(timezone.utc).isoformat()
+    doc["scheduled_by"] = scheduled_by.user_id if scheduled_by else client_doc["user_id"]
+    await db.bookings.insert_one(doc)
+    when = f"{date} at {time}"
+    if scheduled_by:
+        await push_notification(client_doc["user_id"], "Session scheduled", f"{trainer.get('name')} scheduled a video session on {when}.", "/booking")
+    else:
+        await push_notification(client_doc["user_id"], "Session booked", f"With {booking.trainer_name} on {when}.", "/booking")
+        await push_notification(trainer["user_id"], "New booking", f"{client_doc.get('name')} booked {when}.", "/trainer")
+    origin = str(request.base_url).rstrip("/")
+    background.add_task(send_booking_emails, booking.model_dump(), origin)
+    return booking
+
+
 @api_router.post("/bookings", response_model=Booking)
 async def create_booking(payload: BookingCreate, request: Request, background: BackgroundTasks, user: User = Depends(get_current_user)):
     trainer = await db.users.find_one({"user_id": payload.trainer_id, "role": "trainer"}, {"_id": 0})
@@ -827,35 +878,24 @@ async def create_booking(payload: BookingCreate, request: Request, background: B
         raise HTTPException(status_code=400, detail="Invalid trainer")
     if user.role == "client" and payload.trainer_id not in _my_coach_ids(user):
         raise HTTPException(status_code=403, detail="You can only book sessions with your own coach")
-    try:
-        session_dt = datetime.strptime(f"{payload.date} {payload.time}", "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid date")
-    weekday = session_dt.weekday()
-    days = trainer.get("available_days") or DEFAULT_DAYS
-    times = trainer.get("available_times") or DEFAULT_TIMES
-    if weekday not in days or payload.time not in times:
-        raise HTTPException(status_code=409, detail="Trainer is not available at this time")
-    # Prevent double booking across ALL clients for this trainer/date/time
-    clash = await db.bookings.find_one({"trainer_id": payload.trainer_id, "date": payload.date, "time": payload.time})
-    if clash:
-        raise HTTPException(status_code=409, detail="This slot is already booked")
+    return await _create_booking(user.model_dump(), trainer, payload.date, payload.time, request, background, check_availability=True)
 
-    booking = Booking(
-        user_id=user.user_id, client_name=user.name, client_email=user.email,
-        trainer_id=trainer["user_id"], trainer_name=trainer.get("name"), trainer_email=trainer.get("email", ""),
-        specialty=trainer.get("specialty") or "Personal Trainer", date=payload.date, time=payload.time,
-    )
-    booking.room = _room_for(booking.id)
-    booking.reminder_at = (session_dt - timedelta(hours=REMINDER_HOURS_BEFORE)).isoformat()
-    await db.bookings.insert_one(booking.model_dump())
-    await push_notification(user.user_id, "Session booked",
-                            f"With {booking.trainer_name} on {booking.date} at {booking.time}.", "/booking")
-    await push_notification(trainer["user_id"], "New booking",
-                            f"{user.name} booked {booking.date} at {booking.time}.", "/trainer")
-    origin = str(request.base_url).rstrip("/")
-    background.add_task(send_booking_emails, booking.model_dump(), origin)
-    return booking
+
+class CoachScheduleRequest(BaseModel):
+    date: str
+    time: str
+
+
+@api_router.post("/coach/clients/{client_id}/sessions", response_model=Booking)
+async def coach_schedule_session(client_id: str, payload: CoachScheduleRequest, request: Request, background: BackgroundTasks,
+                                 user: User = Depends(require_role("trainer"))):
+    """A coach schedules a video session for one of their clients at any time they choose."""
+    client_doc = await _client_access(user, client_id)
+    if not re.match(r"^\d{2}:\d{2}$", payload.time or ""):
+        raise HTTPException(status_code=400, detail="Time must be HH:MM")
+    trainer = await db.users.find_one({"user_id": user.user_id}, {"_id": 0})
+    return await _create_booking(client_doc, trainer, payload.date, payload.time, request, background,
+                                 check_availability=False, scheduled_by=user)
 
 
 @api_router.delete("/bookings/{booking_id}")
@@ -1059,7 +1099,7 @@ async def list_notifications(user: User = Depends(get_current_user)):
     ).to_list(300)
     for b in bookings:
         try:
-            dt = datetime.strptime(f"{b['date']} {b['time']}", "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
+            dt = booking_dt(b["date"], b["time"])
         except (ValueError, KeyError):
             continue
         delta = dt - datetime.now(timezone.utc)
@@ -1767,7 +1807,12 @@ async def coach_client_detail(client_id: str, user: User = Depends(require_role(
     pose_checks = []
     if "yoga" in tracks:
         pose_checks = await db.pose_checks.find({"client_id": client_id}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    bq = {"user_id": client_id, "starts_at": {"$gte": (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()}}
+    if user.role == "trainer":
+        bq["trainer_id"] = user.user_id
+    upcoming = await db.bookings.find(bq, {"_id": 0}).sort("starts_at", 1).to_list(20)
     return {"client": c, "tracks": tracks, "coaches": coaches, "brief": await _client_brief(c, _fitness_view(user, c)), "progress": progress, "pose_checks": pose_checks,
+            "upcoming_sessions": upcoming,
             "photos": photos, "sessions": sessions, "food": foods, "plans": plans}
 
 
@@ -1942,6 +1987,232 @@ async def unread_messages(user: User = Depends(get_current_user)):
         counts = {}
     return {"total": sum(counts.values()), "threads": counts}
 
+
+# ───────────────────────────── In-app video calls (WebRTC) ─────────────────────────────
+# Media flows peer-to-peer between the two browsers. This server only relays the small
+# connection messages (offer / answer / ICE candidates) and tracks who is in the room.
+PRESENCE_TTL = timedelta(seconds=9)
+RING_TIMEOUT = timedelta(seconds=45)
+SIGNAL_TYPES = {"offer", "answer", "ice", "bye", "ready"}
+
+
+class InstantCallRequest(BaseModel):
+    peer_id: str
+
+
+class SignalRequest(BaseModel):
+    type: str
+    payload: Optional[dict] = None
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _is_fresh(ts: Optional[str], ttl: timedelta = PRESENCE_TTL) -> bool:
+    dt = _parse_dt(ts)
+    return bool(dt and datetime.now(timezone.utc) - dt < ttl)
+
+
+def _call_out(call: dict, user: User) -> dict:
+    call = {k: v for k, v in call.items() if k != "_id"}
+    me_coach = user.user_id == call["coach_id"]
+    peer_id = call["client_id"] if me_coach else call["coach_id"]
+    call["me"] = user.user_id
+    call["peer_id"] = peer_id
+    call["peer_name"] = call["client_name"] if me_coach else call["coach_name"]
+    call["role"] = "offerer" if me_coach else "answerer"  # the coach always starts the connection (no glare)
+    call["peer_present"] = _is_fresh((call.get("present") or {}).get(peer_id))
+    return call
+
+
+async def _call_for(call_id: str, user: User) -> dict:
+    call = await db.calls.find_one({"id": call_id}, {"_id": 0})
+    if not call or user.user_id not in (call["client_id"], call["coach_id"]):
+        raise HTTPException(status_code=404, detail="Call not found")
+    return call
+
+
+async def _pair(user: User, peer_id: str) -> tuple:
+    """Return (client_doc, coach_doc) if user and peer are a client and one of their assigned coaches."""
+    peer = await db.users.find_one({"user_id": peer_id}, {"_id": 0, "password_hash": 0})
+    if not peer:
+        raise HTTPException(status_code=404, detail="User not found")
+    client_doc, coach_doc = (user.model_dump(), peer) if user.role == "client" else (peer, user.model_dump())
+    if client_doc.get("role") != "client" or coach_doc.get("role") != "trainer" or \
+            coach_doc["user_id"] not in (client_doc.get("fitness_coach_id"), client_doc.get("yoga_coach_id")):
+        raise HTTPException(status_code=403, detail="You can only call your own coach or clients")
+    return client_doc, coach_doc
+
+
+def _new_call(client_doc: dict, coach_doc: dict, kind: str, created_by: str, booking_id: Optional[str] = None) -> dict:
+    return {
+        "id": str(uuid.uuid4()), "kind": kind, "booking_id": booking_id,
+        "client_id": client_doc["user_id"], "client_name": client_doc.get("name"),
+        "coach_id": coach_doc["user_id"], "coach_name": coach_doc.get("name"),
+        "created_by": created_by, "status": "ringing" if kind == "instant" else "scheduled",
+        "present": {}, "created_at": _now_iso(), "started_at": None, "ended_at": None,
+    }
+
+
+@api_router.get("/calls/ice")
+async def call_ice_servers(user: User = Depends(get_current_user)):
+    servers = [{"urls": ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"]}]
+    if TURN_URLS:
+        servers.append({"urls": TURN_URLS, "username": TURN_USERNAME, "credential": TURN_CREDENTIAL})
+    return {"iceServers": servers, "relay": bool(TURN_URLS)}
+
+
+@api_router.post("/calls/instant")
+async def start_instant_call(payload: InstantCallRequest, user: User = Depends(require_role("client", "trainer"))):
+    client_doc, coach_doc = await _pair(user, payload.peer_id)
+    # reuse a call between this pair that is still ringing or live
+    recent = (datetime.now(timezone.utc) - RING_TIMEOUT).isoformat()
+    existing = await db.calls.find_one({"client_id": client_doc["user_id"], "coach_id": coach_doc["user_id"], "kind": "instant",
+                                        "status": {"$in": ["ringing", "active"]}, "created_at": {"$gt": recent}}, {"_id": 0})
+    if existing:
+        return _call_out(existing, user)
+    call = _new_call(client_doc, coach_doc, "instant", user.user_id)
+    call["present"] = {user.user_id: _now_iso()}
+    await db.calls.insert_one(dict(call))
+    return _call_out(call, user)
+
+
+@api_router.post("/calls/booking/{booking_id}")
+async def call_for_booking(booking_id: str, user: User = Depends(get_current_user)):
+    booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
+    if not booking or user.user_id not in (booking.get("user_id"), booking.get("trainer_id")):
+        raise HTTPException(status_code=404, detail="Session not found")
+    call = await db.calls.find_one({"booking_id": booking_id}, {"_id": 0})
+    if not call:
+        client_doc = await db.users.find_one({"user_id": booking["user_id"]}, {"_id": 0}) or {"user_id": booking["user_id"], "name": booking.get("client_name")}
+        coach_doc = await db.users.find_one({"user_id": booking["trainer_id"]}, {"_id": 0}) or {"user_id": booking["trainer_id"], "name": booking.get("trainer_name")}
+        call = _new_call(client_doc, coach_doc, "scheduled", user.user_id, booking_id)
+        call["date"], call["time"] = booking.get("date"), booking.get("time")
+        await db.calls.insert_one(dict(call))
+    return _call_out(call, user)
+
+
+@api_router.get("/calls/{call_id}")
+async def get_call(call_id: str, user: User = Depends(get_current_user)):
+    return _call_out(await _call_for(call_id, user), user)
+
+
+@api_router.post("/calls/{call_id}/join")
+async def join_call(call_id: str, user: User = Depends(get_current_user)):
+    call = await _call_for(call_id, user)
+    if call["status"] in ("declined", "missed") and call["kind"] == "instant":
+        raise HTTPException(status_code=410, detail="This call has ended")
+    update = {f"present.{user.user_id}": _now_iso()}
+    peer_id = call["client_id"] if user.user_id == call["coach_id"] else call["coach_id"]
+    if call["status"] in ("ringing", "scheduled", "ended") and _is_fresh((call.get("present") or {}).get(peer_id)):
+        update.update({"status": "active", "started_at": call.get("started_at") or _now_iso(), "ended_at": None})
+    await db.calls.update_one({"id": call_id}, {"$set": update})
+    # clear anything stale addressed to me from a previous attempt
+    await db.call_signals.delete_many({"call_id": call_id, "to": user.user_id})
+    if call["kind"] == "instant" and call["status"] == "ringing" and user.user_id == call["created_by"] and not call.get("notified"):
+        await db.calls.update_one({"id": call_id}, {"$set": {"notified": True}})
+        await push_notification(peer_id, f"Incoming call from {user.name}", "Tap to answer.", f"/call/live/{call_id}")
+    return _call_out(await db.calls.find_one({"id": call_id}, {"_id": 0}), user)
+
+
+@api_router.post("/calls/{call_id}/signal")
+async def send_signal(call_id: str, payload: SignalRequest, user: User = Depends(get_current_user)):
+    call = await _call_for(call_id, user)
+    if payload.type not in SIGNAL_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid signal")
+    if len(json.dumps(payload.payload or {})) > 60_000:
+        raise HTTPException(status_code=400, detail="Signal too large")
+    to = call["client_id"] if user.user_id == call["coach_id"] else call["coach_id"]
+    if payload.type == "offer":
+        # a fresh offer supersedes anything the peer hasn't read yet from an older attempt
+        await db.call_signals.delete_many({"call_id": call_id, "to": to})
+    await db.call_signals.insert_one({"id": str(uuid.uuid4()), "call_id": call_id, "from": user.user_id, "to": to,
+                                      "type": payload.type, "payload": payload.payload or {}, "created_at": _now_iso()})
+    return {"ok": True}
+
+
+@api_router.get("/calls/{call_id}/signals")
+async def poll_signals(call_id: str, user: User = Depends(get_current_user)):
+    """Heartbeat + mailbox: marks me present and returns (and removes) messages addressed to me."""
+    call = await _call_for(call_id, user)
+    peer_id = call["client_id"] if user.user_id == call["coach_id"] else call["coach_id"]
+    update = {f"present.{user.user_id}": _now_iso()}
+    peer_here = _is_fresh((call.get("present") or {}).get(peer_id))
+    if peer_here and call["status"] != "active":
+        update.update({"status": "active", "started_at": call.get("started_at") or _now_iso(), "ended_at": None})
+    await db.calls.update_one({"id": call_id}, {"$set": update})
+    docs = await db.call_signals.find({"call_id": call_id, "to": user.user_id}, {"_id": 0}).sort("created_at", 1).to_list(200)
+    if docs:
+        await db.call_signals.delete_many({"id": {"$in": [d["id"] for d in docs]}})
+    status = update.get("status", call["status"])
+    return {"signals": [{"type": d["type"], "payload": d["payload"]} for d in docs], "peer_present": peer_here, "status": status}
+
+
+@api_router.post("/calls/{call_id}/leave")
+async def leave_call(call_id: str, user: User = Depends(get_current_user)):
+    call = await _call_for(call_id, user)
+    peer_id = call["client_id"] if user.user_id == call["coach_id"] else call["coach_id"]
+    update = {f"present.{user.user_id}": None}
+    if call["status"] == "ringing" and call["kind"] == "instant":
+        update["status"] = "missed"
+        await push_notification(peer_id, f"Missed call from {user.name}", "Call them back from Messages or your dashboard.", "/dashboard" if user.role == "trainer" else f"/trainer/clients/{user.user_id}")
+    elif call["status"] == "active" and not _is_fresh((call.get("present") or {}).get(peer_id)):
+        update.update({"status": "ended", "ended_at": _now_iso()})
+    await db.calls.update_one({"id": call_id}, {"$set": update})
+    await db.call_signals.insert_one({"id": str(uuid.uuid4()), "call_id": call_id, "from": user.user_id, "to": peer_id,
+                                      "type": "bye", "payload": {}, "created_at": _now_iso()})
+    return {"ok": True}
+
+
+@api_router.post("/calls/{call_id}/decline")
+async def decline_call(call_id: str, user: User = Depends(get_current_user)):
+    call = await _call_for(call_id, user)
+    if call["status"] == "ringing" and user.user_id != call["created_by"]:
+        await db.calls.update_one({"id": call_id}, {"$set": {"status": "declined", "ended_at": _now_iso()}})
+        await db.call_signals.insert_one({"id": str(uuid.uuid4()), "call_id": call_id, "from": user.user_id, "to": call["created_by"],
+                                          "type": "bye", "payload": {"reason": "declined"}, "created_at": _now_iso()})
+    return {"ok": True}
+
+
+@api_router.get("/calls-live")
+async def calls_live(user: User = Depends(get_current_user)):
+    """What the app shell polls: an incoming call to ring for, and booked sessions starting soon."""
+    incoming = []
+    recent = (datetime.now(timezone.utc) - RING_TIMEOUT).isoformat()
+    async for c in db.calls.find({"status": "ringing", "kind": "instant", "created_at": {"$gt": recent},
+                                  "$or": [{"client_id": user.user_id}, {"coach_id": user.user_id}]}, {"_id": 0}):
+        if c["created_by"] != user.user_id and _is_fresh((c.get("present") or {}).get(c["created_by"])):
+            incoming.append(_call_out(c, user))
+    soon = []
+    now = datetime.now(timezone.utc)
+    window_start, window_end = (now - timedelta(minutes=60)).isoformat(), (now + timedelta(minutes=15)).isoformat()
+    async for b in db.bookings.find({"$or": [{"user_id": user.user_id}, {"trainer_id": user.user_id}],
+                                     "starts_at": {"$gte": window_start, "$lte": window_end}}, {"_id": 0}):
+        starts = _parse_dt(b["starts_at"])
+        mins = int((starts - now).total_seconds() // 60)
+        mine_is_client = b["user_id"] == user.user_id
+        soon.append({"booking_id": b["id"], "with": b.get("trainer_name") if mine_is_client else b.get("client_name"),
+                     "date": b["date"], "time": b["time"], "minutes": mins})
+    soon.sort(key=lambda x: x["minutes"])
+    return {"incoming": incoming, "starting_soon": soon}
+
+
+async def send_session_alerts():
+    """In-app reminders to both sides about an hour and 10 minutes before each booked session."""
+    now = datetime.now(timezone.utc)
+    soon = (now + timedelta(minutes=10)).isoformat()
+    hour = (now + timedelta(minutes=60)).isoformat()
+    async for b in db.bookings.find({"starts_at": {"$gt": now.isoformat(), "$lte": hour}}, {"_id": 0}):
+        if b["starts_at"] <= soon and not b.get("alert_10_sent"):
+            label, flags = "in 10 minutes", {"alert_10_sent": True, "alert_60_sent": True}
+        elif not b.get("alert_60_sent"):
+            label, flags = "in about an hour", {"alert_60_sent": True}
+        else:
+            continue
+        await db.bookings.update_one({"id": b["id"]}, {"$set": flags})
+        for uid, other in ((b["user_id"], b.get("trainer_name")), (b["trainer_id"], b.get("client_name"))):
+            await push_notification(uid, f"Session {label}", f"Video session with {other} at {b['time']}. Join from the app.", f"/call/{b['id']}")
 
 class PaymentOrderRequest(BaseModel):
     type: str  # "plan" or "session"
@@ -2132,6 +2403,8 @@ async def create_indexes():
         await db.plans.create_index([("client_id", 1), ("type", 1), ("status", 1)])
         await db.messages.create_index([("client_id", 1), ("coach_id", 1), ("created_at", 1)])
         await db.pose_checks.create_index([("client_id", 1), ("created_at", -1)])
+        await db.calls.create_index("id", unique=True)
+        await db.call_signals.create_index([("call_id", 1), ("to", 1)])
     except Exception as e:
         logger.warning(f"Index creation skipped: {e}")
     await seed_roles()
@@ -2157,6 +2430,7 @@ def _start_scheduler():
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         _scheduler = AsyncIOScheduler(timezone="UTC")
         _scheduler.add_job(send_due_reminders, "interval", minutes=5, id="reminders", replace_existing=True)
+        _scheduler.add_job(send_session_alerts, "interval", minutes=1, id="session_alerts", replace_existing=True)
         _scheduler.start()
         logger.info("Reminder scheduler started (email_configured=%s)", email_configured())
     except Exception:
