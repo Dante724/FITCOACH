@@ -17,7 +17,7 @@ const PROGRAMS = [
 ];
 
 const PLANS = [
-  { name: "Monthly", price: "15,000", period: "/month", accent: "#17A79C", features: ["All four programmes", "AI food & body-scan tools", "1 trainer video session / week", "In-app progress tracking"] },
+  { name: "Monthly", price: "15,000", period: "/month", accent: "#17A79C", features: ["All four programmes", "AI food tracking", "1 trainer video session / week", "In-app progress tracking"] },
   { name: "Quarterly", price: "30,000", period: "/3 months", accent: "#E0603A", featured: true, features: ["Everything in Monthly", "Priority trainer booking", "2 trainer sessions / week", "AI meal-plan builder"] },
   { name: "Annual", price: "85,000", period: "/year", accent: "#d8981f", features: ["Everything in Quarterly", "Quarterly body assessments", "Unlimited video sessions", "Save vs paying monthly"] },
 ];
@@ -69,7 +69,7 @@ export default function Landing() {
             Your strongest<br />self, <span style={{ background: "linear-gradient(135deg, #E0603A, #F28C79)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>coached.</span>
           </h1>
           <p style={{ fontSize: 17.5, color: "#9aa4b4", lineHeight: 1.75, maxWidth: 500, marginBottom: 36 }}>
-            Personal training built around you — strength, yoga, muscle building and fat loss, with AI nutrition tracking, body scans and live video sessions with real coaches.
+            Personal training built around you — strength, yoga, muscle building and fat loss, with AI nutrition tracking and live video sessions with real coaches.
           </p>
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 40 }}>
             <button className="ld-pill ld-pill-primary" data-testid="hero-signup-btn" onClick={go} style={{ padding: "16px 32px", fontSize: 16 }}>Start training <Icons.ArrowRight size={18} /></button>

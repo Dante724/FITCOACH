@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import { Zap, Activity, CalendarCheck, ScanLine, AlertCircle } from "lucide-react";
+import { Zap, Activity, CalendarCheck, Utensils, AlertCircle } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { roleHome } from "@/lib/focus";
 
@@ -67,10 +67,10 @@ export default function Login() {
             Train with<br /><span style={{ color: "var(--accent)" }}>intelligence.</span>
           </h1>
           <p style={{ fontSize: 16, color: "var(--text-2)", lineHeight: 1.7, maxWidth: 400 }}>
-            Book sessions, track your progress, log meals with AI nutrition analysis and scan your body type — all in one focused workspace.
+            Book sessions, track your progress, log meals with AI nutrition analysis and work with your own coach — all in one focused workspace.
           </p>
           <div style={{ display: "flex", gap: 14, marginTop: 34 }}>
-            {[{ i: Activity, t: "Progress tracking" }, { i: CalendarCheck, t: "Easy booking" }, { i: ScanLine, t: "AI body scan" }].map(({ i: Ic, t }) => (
+            {[{ i: Activity, t: "Progress tracking" }, { i: CalendarCheck, t: "Easy booking" }, { i: Utensils, t: "AI food tracking" }].map(({ i: Ic, t }) => (
               <div key={t} className="clay-sm" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8, flex: 1 }}>
                 <Ic size={20} color="var(--accent)" />
                 <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-2)" }}>{t}</span>

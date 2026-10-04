@@ -7,7 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 
 const ICONS = { strength: "Dumbbell", nutrition: "Salad", yoga: "Flower2", muscle_fat: "Flame" };
-const FEATURE_LABEL = { workouts: "Workouts", progress: "Progress", bodyscan: "AI Body Scan", booking: "Booking", food: "AI Food Track" };
+const FEATURE_LABEL = { workouts: "Workouts", progress: "Progress", booking: "Booking", food: "AI Food Track" };
 
 export default function FocusSelect() {
   const { user, setUser } = useAuth();

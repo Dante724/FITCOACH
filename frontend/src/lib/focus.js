@@ -5,7 +5,7 @@ export const FOCUS_OPTIONS = [
     label: "Strength & Conditioning",
     tagline: "Build raw power, speed and athletic capacity.",
     accent: "var(--accent)",
-    features: ["workouts", "progress", "bodyscan", "booking"],
+    features: ["workouts", "progress", "booking"],
   },
   {
     key: "nutrition",
@@ -26,7 +26,7 @@ export const FOCUS_OPTIONS = [
     label: "Muscle Building & Fat Loss",
     tagline: "Recomposition through training and nutrition.",
     accent: "var(--amber)",
-    features: ["bodyscan", "food", "mealplan", "workouts", "progress", "booking"],
+    features: ["food", "mealplan", "workouts", "progress", "booking"],
   },
 ];
 
@@ -37,7 +37,6 @@ export const FEATURE_META = {
   progress: { path: "/progress", label: "Progress", icon: "TrendingUp" },
   food: { path: "/food", label: "AI Food Track", icon: "Utensils" },
   mealplan: { path: "/meal-plans", label: "Meal Plans", icon: "UtensilsCrossed" },
-  bodyscan: { path: "/bodyscan", label: "AI Body Scan", icon: "ScanLine" },
   membership: { path: "/membership", label: "Membership", icon: "CreditCard" },
 };
 

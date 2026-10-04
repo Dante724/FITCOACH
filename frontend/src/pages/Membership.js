@@ -8,7 +8,7 @@ import { payWithRazorpay } from "@/lib/payments";
 
 const PLAN_ACCENT = { monthly: "var(--teal)", quarterly: "var(--accent)", annual: "var(--amber)" };
 const PLAN_FEATURES = {
-  monthly: ["All four programmes", "AI food & body-scan tools", "1 trainer session / week", "In-app progress tracking"],
+  monthly: ["All four programmes", "AI food tracking", "1 trainer session / week", "In-app progress tracking"],
   quarterly: ["Everything in Monthly", "Priority trainer booking", "2 trainer sessions / week", "AI meal-plan builder"],
   annual: ["Everything in Quarterly", "Quarterly body assessments", "Unlimited video sessions", "Best value — save vs monthly"],
 };

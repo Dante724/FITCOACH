@@ -1,5 +1,7 @@
 # FitCoach — Product Requirements & Progress
 
+> **2026-10-04:** AI Body Scan removed (endpoints, page, nav, tests, marketing copy). v2 direction lives in `SPEC-v2.md`.
+
 ## Original problem statement
 Client-focused fitness app (originally a single-file Claude demo, "FitCoach Pro"). Client should
 access only: Booking, their Progress, AI Food Track, quick AI Body Scan (body type), and Gym Workout

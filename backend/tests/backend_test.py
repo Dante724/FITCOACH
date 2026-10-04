@@ -1,11 +1,8 @@
 """
 FitCoach backend tests (pytest)
-Covers: auth, focus, trainers, bookings, progress, workouts, food (Gemini),
-body scan (Gemini vision).
+Covers: auth, focus, trainers, bookings, progress, workouts, food (Gemini).
 """
 import os
-import io
-import base64
 import uuid
 import pytest
 import requests
@@ -34,35 +31,6 @@ def cookie_client():
 @pytest.fixture(scope="module")
 def anon():
     return requests.Session()
-
-
-# Real jpeg image with visual features (procedurally generated silhouette)
-@pytest.fixture(scope="module")
-def person_image_b64():
-    from PIL import Image, ImageDraw
-    img = Image.new("RGB", (240, 360), (230, 220, 200))
-    d = ImageDraw.Draw(img)
-    # head
-    d.ellipse((100, 30, 140, 78), fill=(210, 175, 145))
-    # torso
-    d.rectangle((90, 80, 150, 200), fill=(80, 100, 160))
-    # arms
-    d.rectangle((70, 82, 90, 190), fill=(80, 100, 160))
-    d.rectangle((150, 82, 170, 190), fill=(80, 100, 160))
-    # hands
-    d.ellipse((66, 186, 92, 208), fill=(210, 175, 145))
-    d.ellipse((148, 186, 174, 208), fill=(210, 175, 145))
-    # legs
-    d.rectangle((95, 200, 118, 330), fill=(40, 40, 60))
-    d.rectangle((122, 200, 145, 330), fill=(40, 40, 60))
-    # shoes
-    d.rectangle((90, 328, 122, 344), fill=(30, 30, 30))
-    d.rectangle((122, 328, 152, 344), fill=(30, 30, 30))
-    # ground line
-    d.line((0, 345, 240, 345), fill=(120, 120, 120), width=2)
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=85)
-    return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
 # ─────────────────────────── Auth ───────────────────────────
@@ -228,22 +196,3 @@ class TestFoodAI:
         assert r.status_code == 200
 
 
-# ─────────────────────────── AI Body Scan (Gemini vision) ───────────────────────────
-class TestBodyScan:
-    scan_id = None
-
-    def test_analyze_body(self, bearer, person_image_b64):
-        r = bearer.post(f"{API}/bodyscan/analyze", json={"image_base64": person_image_b64}, timeout=120)
-        assert r.status_code == 200, r.text
-        data = r.json()
-        result = data["result"]
-        assert result["body_type"] in {"Ectomorph", "Mesomorph", "Endomorph"}
-        assert isinstance(result["description"], str) and len(result["description"]) > 10
-        assert isinstance(result["training_focus"], str) and len(result["training_focus"]) > 5
-        assert isinstance(result["nutrition_focus"], str) and len(result["nutrition_focus"]) > 5
-        TestBodyScan.scan_id = data["id"]
-
-    def test_history(self, bearer):
-        r = bearer.get(f"{API}/bodyscan/history")
-        assert r.status_code == 200
-        assert any(h["id"] == TestBodyScan.scan_id for h in r.json())

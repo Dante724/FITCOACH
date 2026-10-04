@@ -271,10 +271,6 @@ class FoodAnalyzeRequest(BaseModel):
     description: str
 
 
-class BodyScanRequest(BaseModel):
-    image_base64: str
-
-
 class WorkoutSessionCreate(BaseModel):
     name: str
     exercises: List[dict] = []
@@ -1252,50 +1248,6 @@ async def save_meal_plan(payload: MealPlanCreate, user: User = Depends(get_curre
 async def delete_meal_plan(plan_id: str, user: User = Depends(get_current_user)):
     await db.meal_plans.delete_one({"id": plan_id, "user_id": user.user_id})
     return {"ok": True}
-
-
-@api_router.post("/bodyscan/analyze")
-async def analyze_body(payload: BodyScanRequest, user: User = Depends(get_current_user)):
-    from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
-    b64 = payload.image_base64
-    if "," in b64 and b64.strip().startswith("data:"):
-        b64 = b64.split(",", 1)[1]
-    system = (
-        "You are a fitness body-composition assistant. Analyze the person's physique from the photo "
-        "and classify their somatotype. Respond ONLY with strict JSON, no prose, using this schema: "
-        '{"body_type": "Ectomorph"|"Mesomorph"|"Endomorph", "confidence": number (0-100), '
-        '"description": string, "training_focus": string, "nutrition_focus": string, '
-        '"recommended_split": string}. Be encouraging and professional.'
-    )
-    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"scan-{user.user_id}-{uuid.uuid4().hex[:6]}",
-                   system_message=system).with_model("gemini", GEMINI_MODEL)
-    try:
-        msg = UserMessage(
-            text="Analyze this body photo and return the JSON classification.",
-            file_contents=[ImageContent(image_base64=b64)],
-        )
-        reply = await chat.send_message(msg)
-        result = _extract_json(reply)
-    except Exception as e:
-        logger.exception("body scan failed")
-        raise HTTPException(status_code=502, detail=f"AI analysis failed: {e}")
-
-    doc = {
-        "id": str(uuid.uuid4()),
-        "user_id": user.user_id,
-        "result": result,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    await db.body_scans.insert_one(dict(doc))
-    doc.pop("_id", None)
-    return doc
-
-
-@api_router.get("/bodyscan/history")
-async def body_history(user: User = Depends(get_current_user)):
-    docs = await db.body_scans.find({"user_id": user.user_id}, {"_id": 0}).to_list(100)
-    docs.sort(key=lambda x: x.get("created_at", ""), reverse=True)
-    return docs
 
 
 class PaymentOrderRequest(BaseModel):
