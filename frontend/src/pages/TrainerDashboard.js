@@ -2,110 +2,139 @@ import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
 import PageHeader from "@/components/PageHeader";
+import Avatar from "@/components/Avatar";
 import { api } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
+import { GOAL_LABEL, PLAN_LABEL } from "@/lib/focus";
 
-const DAYS = [["Mon", 0], ["Tue", 1], ["Wed", 2], ["Thu", 3], ["Fri", 4], ["Sat", 5], ["Sun", 6]];
-const ALL_TIMES = ["06:00", "07:00", "08:00", "09:00", "10:00", "11:00", "16:00", "17:00", "18:00", "19:00", "20:00"];
+const KIND = {
+  session: { icon: "Video", color: "var(--teal)" },
+  approve: { icon: "BadgeCheck", color: "var(--accent)" },
+  message: { icon: "MessageCircle", color: "#7c6bd6" },
+  needs_plan: { icon: "ClipboardPlus", color: "var(--amber)" },
+  plateau: { icon: "TrendingDown", color: "var(--accent)" },
+  off_track: { icon: "TriangleAlert", color: "var(--accent)" },
+  inactive: { icon: "Moon", color: "var(--text-3)" },
+  no_food: { icon: "Utensils", color: "var(--text-3)" },
+};
+
+function AttentionItem({ item, onAction, busy }) {
+  const meta = KIND[item.kind] || { icon: "Circle", color: "var(--text-3)" };
+  const Icon = Icons[meta.icon] || Icons.Circle;
+  let action;
+  if (item.kind === "session") action = ["Join", "Video", () => onAction("join", item)];
+  else if (item.kind === "approve") action = ["Review", "ArrowRight", () => onAction("plans", item)];
+  else if (item.kind === "message") action = ["Reply", "Reply", () => onAction("chat", item)];
+  else if (item.kind === "needs_plan") action = ["Draft with AI", "Sparkles", () => onAction("draft", item)];
+  else if (item.plan_type) action = ["Draft adjustment", "Sparkles", () => onAction("adjust", item)];
+  else action = ["Message", "MessageCircle", () => onAction("chat", item)];
+  const ActionIcon = Icons[action[1]] || Icons.ArrowRight;
+
+  return (
+    <div className="clay-inset" style={{ padding: "12px 14px", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }} data-testid={`attention-${item.kind}`}>
+      <div style={{ width: 38, height: 38, borderRadius: 11, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Icon size={18} color={meta.color} />
+      </div>
+      <div className="min0" style={{ flex: "1 1 180px", cursor: "pointer" }} onClick={() => onAction("open", item)}>
+        <div style={{ fontSize: 14, fontWeight: 700 }}>{item.client_name}</div>
+        <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>{item.text}</div>
+      </div>
+      <button className={item.kind === "approve" || item.kind === "session" ? "btn btn-primary" : "btn btn-ghost"} disabled={busy === item.id}
+        onClick={action[2]} style={{ padding: "8px 14px", fontSize: 12.5, marginLeft: "auto" }}>
+        <ActionIcon size={15} /> {busy === item.id ? "Working..." : action[0]}
+      </button>
+    </div>
+  );
+}
+
+function ClientCard({ c, onOpen }) {
+  const { brief } = c;
+  return (
+    <button className="clay fade-up" onClick={onOpen} data-testid={`client-card-${c.user_id}`}
+      style={{ padding: 18, border: "none", cursor: "pointer", textAlign: "left", color: "var(--text)", display: "flex", flexDirection: "column", gap: 10 }}>
+      <div className="row">
+        <Avatar name={c.name} picture={c.picture} size={42} />
+        <div className="min0" style={{ flex: 1 }}>
+          <div className="truncate" style={{ fontSize: 15, fontWeight: 700 }}>{c.name}</div>
+          <div style={{ fontSize: 12, color: "var(--text-3)" }}>{GOAL_LABEL[c.focus] || "No goal yet"}</div>
+        </div>
+        {c.unread > 0 && <span className="badge">{c.unread}</span>}
+      </div>
+      <div style={{ fontSize: 13, color: "var(--text-2)", lineHeight: 1.5 }}>{brief.headline}</div>
+      <div className="row-wrap" style={{ gap: 6 }}>
+        {c.active_plans.map((t) => <span key={t} className="chip chip-teal">{PLAN_LABEL[t]}</span>)}
+        {c.draft_plans.map((t) => <span key={t} className="chip chip-amber">{PLAN_LABEL[t]} draft</span>)}
+        {brief.flags.map((f) => <span key={f.kind} className="chip chip-accent">{f.text}</span>)}
+      </div>
+    </button>
+  );
+}
 
 export default function TrainerDashboard() {
+  const { user } = useAuth();
   const { push } = useToast();
   const navigate = useNavigate();
-  const [profile, setProfile] = useState(null);
-  const [sessions, setSessions] = useState([]);
-  const [saving, setSaving] = useState(false);
+  const [items, setItems] = useState(null);
+  const [clients, setClients] = useState(null);
+  const [query, setQuery] = useState("");
+  const [busy, setBusy] = useState("");
 
-  const loadSessions = useCallback(() => api.get("/trainer/sessions").then((r) => setSessions(r.data)).catch(() => {}), []);
-  useEffect(() => {
-    api.get("/trainer/me")
-      .then((r) => setProfile(r.data))
-      .catch(() => setProfile({ specialty: "", bio: "", available_days: [0, 1, 2, 3, 4], available_times: [] }));
-    loadSessions();
-  }, [loadSessions]);
+  const load = useCallback(() => {
+    api.get("/coach/attention").then((r) => setItems(r.data)).catch(() => setItems([]));
+    api.get("/coach/clients").then((r) => setClients(r.data)).catch(() => setClients([]));
+  }, []);
+  useEffect(() => { load(); }, [load]);
 
-  const toggleDay = (d) => setProfile((p) => ({ ...p, available_days: p.available_days.includes(d) ? p.available_days.filter((x) => x !== d) : [...p.available_days, d] }));
-  const toggleTime = (t) => setProfile((p) => ({ ...p, available_times: p.available_times.includes(t) ? p.available_times.filter((x) => x !== t) : [...p.available_times, t] }));
-
-  const save = async () => {
-    setSaving(true);
+  const onAction = async (kind, item) => {
+    const base = `/trainer/clients/${item.client_id}`;
+    if (kind === "join") return navigate(`/call/${item.booking_id}`);
+    if (kind === "open") return navigate(base);
+    if (kind === "plans") return navigate(`${base}?tab=plans`);
+    if (kind === "chat") return navigate(`${base}?tab=chat`);
+    setBusy(item.id);
     try {
-      await api.put("/trainer/me", profile);
-      push("Availability updated.", "success");
-    } catch { push("Could not save.", "error"); } finally { setSaving(false); }
+      await api.post(`/coach/clients/${item.client_id}/plans/draft`, { type: item.plan_type, notes: kind === "adjust" ? item.adjust_reason : undefined });
+      push("Draft ready — review and approve it.", "success");
+      navigate(`${base}?tab=plans`);
+    } catch (e) {
+      push(e?.response?.data?.detail || "Could not draft plan.", "error");
+    } finally { setBusy(""); }
   };
 
-  const isUpcoming = (s) => new Date(`${s.date}T${s.time}`) >= new Date(Date.now() - 3600 * 1000);
-
-  if (!profile) return <div className="spinner" style={{ margin: "80px auto" }} />;
+  const filtered = (clients || []).filter((c) => `${c.name} ${c.email}`.toLowerCase().includes(query.toLowerCase()));
+  const approvals = (items || []).filter((i) => i.kind === "approve").length;
 
   return (
     <div>
-      <PageHeader eyebrow="Trainer" title="My Sessions" subtitle="Set your availability, view your booked clients and join video calls." />
+      <PageHeader eyebrow={new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}
+        title={`Hi ${user?.name?.split(" ")[0] || "Coach"}`}
+        subtitle={items ? `${items.length} thing${items.length === 1 ? "" : "s"} need you today${approvals ? ` · ${approvals} plan${approvals > 1 ? "s" : ""} to approve` : ""}.` : "Loading your day..."} />
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
-        <div className="clay fade-up" style={{ padding: 26 }}>
-          <div className="eyebrow" style={{ marginBottom: 16 }}>Availability</div>
-
-          <label className="label">Specialty</label>
-          <input className="field" data-testid="trainer-specialty" value={profile.specialty} onChange={(e) => setProfile({ ...profile, specialty: e.target.value })} placeholder="e.g. Strength & Conditioning" style={{ marginBottom: 16 }} />
-
-          <label className="label">Available days</label>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18 }}>
-            {DAYS.map(([label, d]) => (
-              <button key={d} data-testid={`day-${d}`} onClick={() => toggleDay(d)} className={profile.available_days.includes(d) ? "" : "clay-inset"}
-                style={{ padding: "9px 14px", borderRadius: 10, border: profile.available_days.includes(d) ? "2px solid var(--accent)" : "none", background: profile.available_days.includes(d) ? "var(--accent-soft)" : undefined, color: profile.available_days.includes(d) ? "var(--accent)" : "var(--text-2)", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
-                {label}
-              </button>
-            ))}
-          </div>
-
-          <label className="label">Available time slots</label>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-            {ALL_TIMES.map((t) => (
-              <button key={t} data-testid={`time-${t}`} onClick={() => toggleTime(t)} className={profile.available_times.includes(t) ? "" : "clay-inset"}
-                style={{ padding: "10px 0", borderRadius: 10, border: profile.available_times.includes(t) ? "2px solid var(--teal)" : "none", background: profile.available_times.includes(t) ? "var(--teal-soft)" : undefined, color: profile.available_times.includes(t) ? "var(--teal)" : "var(--text-2)", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
-                {t}
-              </button>
-            ))}
-          </div>
-
-          <button className="btn btn-primary" data-testid="save-availability-btn" disabled={saving} onClick={save} style={{ width: "100%", marginTop: 20, padding: 13 }}>
-            <Icons.Save size={17} /> {saving ? "Saving..." : "Save availability"}
-          </button>
+      <div className="clay fade-up" style={{ padding: 20, marginBottom: 20 }}>
+        <div className="row" style={{ justifyContent: "space-between", marginBottom: 14 }}>
+          <div className="eyebrow">Needs attention</div>
+          <button className="icon-btn" onClick={load} title="Refresh"><Icons.RefreshCw size={16} /></button>
         </div>
-
-        <div className="clay fade-up" style={{ padding: 26, animationDelay: "80ms" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <div className="eyebrow">Booked sessions</div>
-            <span className="chip chip-neutral">{sessions.length}</span>
-          </div>
-          {sessions.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "48px 0", color: "var(--text-3)" }}>
-              <Icons.CalendarClock size={34} style={{ marginBottom: 10, opacity: 0.6 }} />
-              <div style={{ fontSize: 14 }}>No sessions booked yet.</div>
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 11 }} data-testid="trainer-sessions-list">
-              {sessions.map((s) => (
-                <div key={s.id} className="clay-inset" style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{ width: 44, height: 44, borderRadius: 12, background: "var(--accent-soft)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--accent)" }}>
-                    <span style={{ fontSize: 16, fontWeight: 800, lineHeight: 1 }}>{new Date(s.date + "T12:00").getDate()}</span>
-                    <span style={{ fontSize: 10, fontWeight: 600 }}>{new Date(s.date + "T12:00").toLocaleDateString("en-US", { month: "short" })}</span>
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700 }}>{s.client_name || "Client"} · {s.time}</div>
-                    <div style={{ fontSize: 12, color: "var(--text-3)" }}>{s.paid ? "Paid" : "Unpaid"}</div>
-                  </div>
-                  {isUpcoming(s) && (
-                    <button className="btn btn-primary" data-testid={`trainer-join-${s.id}`} onClick={() => navigate(`/call/${s.id}`)} style={{ padding: "8px 14px", fontSize: 12.5 }}>
-                      <Icons.Video size={15} /> Join
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+        {items === null && <div className="spinner" style={{ margin: "30px auto" }} />}
+        {items?.length === 0 && (
+          <div className="empty"><Icons.PartyPopper size={30} style={{ opacity: 0.6, marginBottom: 8 }} /><div>All caught up. Nice work.</div></div>
+        )}
+        <div className="stack" data-testid="attention-list">
+          {items?.map((i) => <AttentionItem key={i.id} item={i} onAction={onAction} busy={busy} />)}
         </div>
+      </div>
+
+      <div className="row-wrap" style={{ justifyContent: "space-between", marginBottom: 14 }}>
+        <div className="eyebrow">My clients ({clients?.length ?? 0})</div>
+        <div style={{ position: "relative", flex: "0 1 280px", minWidth: 200 }}>
+          <Icons.Search size={16} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "var(--text-3)" }} />
+          <input className="field" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search clients..." style={{ paddingLeft: 38 }} />
+        </div>
+      </div>
+      {clients?.length === 0 && <div className="clay empty">No clients assigned to you yet. Your admin assigns clients from the Admin Console.</div>}
+      <div className="grid-cards" data-testid="client-list">
+        {filtered.map((c) => <ClientCard key={c.user_id} c={c} onOpen={() => navigate(`/trainer/clients/${c.user_id}`)} />)}
       </div>
     </div>
   );

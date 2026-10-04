@@ -14,7 +14,7 @@ const FIELDS = [
   { id: "arms", label: "Arms", unit: "cm" },
 ];
 
-function Sparkline({ data }) {
+export function Sparkline({ data }) {
   const pts = data.map((d) => d.weight).filter((v) => typeof v === "number");
   if (pts.length < 2) return <div style={{ height: 150, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-3)", fontSize: 13.5 }}>Log at least two weight entries to see your trend.</div>;
   const W = 520, H = 150, pad = 16;

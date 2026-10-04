@@ -1,50 +1,71 @@
-// Focus programmes and the distinct feature set each one unlocks.
+// Client goals and the feature set each one unlocks.
 export const FOCUS_OPTIONS = [
   {
-    key: "strength",
-    label: "Strength & Conditioning",
-    tagline: "Build raw power, speed and athletic capacity.",
+    key: "fat_loss",
+    label: "Fat Loss",
+    tagline: "Lose fat and keep your strength, with a coach-approved training and nutrition plan.",
     accent: "var(--accent)",
-    features: ["workouts", "progress", "booking"],
+    icon: "Flame",
+    coaches: ["fitness"],
+    features: ["workouts", "mealplan", "food", "progress", "booking", "messages"],
   },
   {
-    key: "nutrition",
-    label: "Nutrition Plan",
-    tagline: "Dial in your diet with AI-assisted food tracking.",
-    accent: "var(--teal)",
-    features: ["food", "mealplan", "progress", "booking"],
+    key: "muscle_gain",
+    label: "Muscle Gain",
+    tagline: "Build lean muscle with progressive training and the right amount of food.",
+    accent: "var(--amber)",
+    icon: "Dumbbell",
+    coaches: ["fitness"],
+    features: ["workouts", "mealplan", "food", "progress", "booking", "messages"],
   },
   {
     key: "yoga",
     label: "Yoga",
-    tagline: "Mobility, balance and mindful movement.",
+    tagline: "Mobility, balance and calm with a practice built for your body by a yoga coach.",
     accent: "#7c6bd6",
-    features: ["workouts", "progress", "booking"],
+    icon: "Flower2",
+    coaches: ["yoga"],
+    features: ["yoga", "progress", "booking", "messages"],
   },
   {
-    key: "muscle_fat",
-    label: "Muscle Building & Fat Loss",
-    tagline: "Recomposition through training and nutrition.",
-    accent: "var(--amber)",
-    features: ["food", "mealplan", "workouts", "progress", "booking"],
+    key: "hybrid",
+    label: "Fitness + Yoga",
+    tagline: "A fitness coach and a yoga coach working on the same goal.",
+    accent: "var(--teal)",
+    icon: "Sparkles",
+    coaches: ["fitness", "yoga"],
+    features: ["workouts", "yoga", "mealplan", "food", "progress", "booking", "messages"],
   },
 ];
 
+// v1 programme keys → v2 goals (the backend migrates these too)
+const LEGACY = { strength: "muscle_gain", muscle_fat: "fat_loss", nutrition: "fat_loss" };
+
 export const FEATURE_META = {
-  dashboard: { path: "/dashboard", label: "Overview", icon: "LayoutDashboard" },
-  workouts: { path: "/workouts", label: "Workouts", icon: "Dumbbell" },
-  booking: { path: "/booking", label: "Book Session", icon: "CalendarDays" },
+  dashboard: { path: "/dashboard", label: "Today", icon: "LayoutDashboard" },
+  workouts: { path: "/workouts", label: "My Training", icon: "Dumbbell" },
+  yoga: { path: "/yoga", label: "My Yoga", icon: "Flower2" },
+  mealplan: { path: "/meal-plans", label: "My Nutrition", icon: "UtensilsCrossed" },
+  food: { path: "/food", label: "Food Log", icon: "Utensils" },
   progress: { path: "/progress", label: "Progress", icon: "TrendingUp" },
-  food: { path: "/food", label: "AI Food Track", icon: "Utensils" },
-  mealplan: { path: "/meal-plans", label: "Meal Plans", icon: "UtensilsCrossed" },
+  booking: { path: "/booking", label: "Book Session", icon: "CalendarDays" },
+  messages: { path: "/messages", label: "Messages", icon: "MessageCircle" },
   membership: { path: "/membership", label: "Membership", icon: "CreditCard" },
 };
 
+export const PLAN_LABEL = { workout: "Training plan", meal: "Nutrition plan", yoga: "Yoga practice" };
+export const GOAL_LABEL = { fat_loss: "Fat loss", muscle_gain: "Muscle gain", yoga: "Yoga", hybrid: "Fitness + Yoga" };
+
 export function getFocus(key) {
-  return FOCUS_OPTIONS.find((f) => f.key === key) || null;
+  const k = LEGACY[key] || key;
+  return FOCUS_OPTIONS.find((f) => f.key === k) || null;
 }
 
-// Ordered nav for a given focus: Overview first, then focus-specific features, then Membership.
+export function hasFeature(focusKey, feature) {
+  return !!getFocus(focusKey)?.features.includes(feature);
+}
+
+// Ordered nav for a given goal: Today first, then goal-specific features, then Membership.
 export function navForFocus(key) {
   const focus = getFocus(key);
   const feats = focus ? focus.features : [];
@@ -64,5 +85,30 @@ export function roleHome(user) {
   if (!user) return "/login";
   if (user.role === "admin") return "/admin";
   if (user.role === "trainer") return "/trainer";
-  return user.focus ? "/dashboard" : "/focus";
+  return getFocus(user.focus) ? "/dashboard" : "/focus";
+}
+
+// Link that opens the chat with a coach, optionally attaching what the question is about.
+export function askCoachPath(coachId, context) {
+  const q = new URLSearchParams({ coach: coachId || "" });
+  if (context) {
+    q.set("ctype", context.type);
+    q.set("cid", context.id);
+    q.set("clabel", context.label || "");
+  }
+  return `/messages?${q.toString()}`;
+}
+
+export function initials(name) {
+  return (name || "?").split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
+}
+
+export function timeAgo(iso) {
+  if (!iso) return "";
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  if (s < 86400 * 7) return `${Math.floor(s / 86400)}d ago`;
+  return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }

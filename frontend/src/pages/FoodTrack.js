@@ -1,8 +1,11 @@
 import { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { api } from "@/lib/api";
 import { useToast } from "@/context/ToastContext";
+import { askCoachPath } from "@/lib/focus";
+import useCoaches from "@/lib/useCoaches";
 
 function Macro({ label, value, unit, color }) {
   return (
@@ -15,6 +18,8 @@ function Macro({ label, value, unit, color }) {
 
 export default function FoodTrack() {
   const { push } = useToast();
+  const navigate = useNavigate();
+  const coach = useCoaches()?.fitness;
   const [desc, setDesc] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [logs, setLogs] = useState([]);
@@ -44,10 +49,10 @@ export default function FoodTrack() {
 
   return (
     <div>
-      <PageHeader eyebrow="Nutrition" title="AI Food Track" subtitle="Describe your meal in plain language. Gemini estimates the calories and macros for you." />
+      <PageHeader eyebrow="Nutrition" title="Food Log" subtitle="Describe your meal in plain language. AI estimates the calories and macros, and your coach can see your log." />
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 18 }}>
-        <div className="clay fade-up" style={{ padding: 26 }}>
+      <div className="grid-main-side">
+        <div className="clay fade-up min0" style={{ padding: 22 }}>
           <label className="label">What did you eat?</label>
           <textarea data-testid="food-input" className="field" rows={4} value={desc} onChange={(e) => setDesc(e.target.value)}
             placeholder="e.g. Grilled chicken breast with a cup of brown rice, steamed broccoli and a tablespoon of olive oil"
@@ -69,9 +74,17 @@ export default function FoodTrack() {
                         <div style={{ fontSize: 15, fontWeight: 700 }}>{l.result?.meal_name || "Meal"}</div>
                         <div style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 2 }}>{l.description}</div>
                       </div>
-                      <Icons.Trash2 size={16} data-testid={`delete-food-${l.id}`} style={{ cursor: "pointer", color: "var(--text-3)", flexShrink: 0 }} onClick={() => remove(l.id)} />
+                      <div className="row" style={{ gap: 2, flexShrink: 0 }}>
+                        {coach && (
+                          <button className="icon-btn" title="Ask your coach about this meal" data-testid={`ask-food-${l.id}`}
+                            onClick={() => navigate(askCoachPath(coach.user_id, { type: "food", id: l.id, label: l.result?.meal_name || l.description }))}>
+                            <Icons.MessageCircle size={16} />
+                          </button>
+                        )}
+                        <button className="icon-btn" title="Delete" data-testid={`delete-food-${l.id}`} onClick={() => remove(l.id)}><Icons.Trash2 size={16} /></button>
+                      </div>
                     </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                    <div className="grid-macros">
                       <Macro label="Calories" value={Math.round(l.result?.calories || 0)} unit="" color="var(--accent)" />
                       <Macro label="Protein" value={Math.round(l.result?.protein_g || 0)} unit="g" color="var(--teal)" />
                       <Macro label="Carbs" value={Math.round(l.result?.carbs_g || 0)} unit="g" color="var(--amber)" />

@@ -10,22 +10,22 @@ const IMG = {
 };
 
 const PROGRAMS = [
-  { title: "Strength & Conditioning", img: IMG.strength, icon: "Dumbbell", accent: "#E0603A", desc: "Raw power, speed and athletic capacity through progressive, evidence-based programming." },
-  { title: "Muscle Building", img: IMG.muscle, icon: "Flame", accent: "#d8981f", desc: "Hypertrophy-focused training and precise nutrition to add quality lean mass, week after week." },
-  { title: "Yoga", img: IMG.yoga, icon: "Flower2", accent: "#9d7cf0", desc: "Mobility, balance and calm with guided vinyasa and restorative flows led by certified instructors." },
-  { title: "Fat Loss", img: IMG.nutrition, icon: "HeartPulse", accent: "#17A79C", desc: "Sustainable conditioning and AI-guided nutrition to strip body fat while preserving muscle." },
+  { title: "Fat Loss", img: IMG.nutrition, icon: "HeartPulse", accent: "#17A79C", desc: "Training and a nutrition plan built around Indian food, approved and adjusted by your own coach." },
+  { title: "Muscle Gain", img: IMG.muscle, icon: "Flame", accent: "#d8981f", desc: "Progressive training and the right amount of food to add lean muscle, week after week." },
+  { title: "Yoga", img: IMG.yoga, icon: "Flower2", accent: "#9d7cf0", desc: "Mobility, balance and calm with a practice designed for your body by a certified yoga coach." },
+  { title: "Fitness + Yoga", img: IMG.strength, icon: "Dumbbell", accent: "#E0603A", desc: "A fitness coach and a yoga coach working together on the same goal." },
 ];
 
 const PLANS = [
-  { name: "Monthly", price: "15,000", period: "/month", accent: "#17A79C", features: ["All four programmes", "AI food tracking", "1 trainer video session / week", "In-app progress tracking"] },
-  { name: "Quarterly", price: "30,000", period: "/3 months", accent: "#E0603A", featured: true, features: ["Everything in Monthly", "Priority trainer booking", "2 trainer sessions / week", "AI meal-plan builder"] },
+  { name: "Monthly", price: "15,000", period: "/month", accent: "#17A79C", features: ["Your own assigned coach", "AI food tracking", "1 trainer video session / week", "In-app progress tracking"] },
+  { name: "Quarterly", price: "30,000", period: "/3 months", accent: "#E0603A", featured: true, features: ["Everything in Monthly", "Priority trainer booking", "2 trainer sessions / week", "Coach-approved nutrition plan"] },
   { name: "Annual", price: "85,000", period: "/year", accent: "#d8981f", features: ["Everything in Quarterly", "Quarterly body assessments", "Unlimited video sessions", "Save vs paying monthly"] },
 ];
 
 const STEPS = [
   { icon: "UserPlus", title: "Create your account", desc: "Sign up in seconds with email or Google." },
-  { icon: "Target", title: "Choose your focus", desc: "Pick a programme tailored to your goal." },
-  { icon: "Video", title: "Train with a coach", desc: "Book sessions and meet your trainer on live video." },
+  { icon: "Target", title: "Tell us your goal", desc: "Answer a few questions and we match you with your own coach." },
+  { icon: "BadgeCheck", title: "Follow a coach-approved plan", desc: "AI drafts it, your coach checks and approves it, then adjusts it as you progress." },
 ];
 
 function Nav() {
@@ -69,7 +69,7 @@ export default function Landing() {
             Your strongest<br />self, <span style={{ background: "linear-gradient(135deg, #E0603A, #F28C79)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>coached.</span>
           </h1>
           <p style={{ fontSize: 17.5, color: "#9aa4b4", lineHeight: 1.75, maxWidth: 500, marginBottom: 36 }}>
-            Personal training built around you — strength, yoga, muscle building and fat loss, with AI nutrition tracking and live video sessions with real coaches.
+            Your own coach for fat loss, muscle gain and yoga. AI drafts your plans in minutes; your coach approves every one, tracks your progress and is a message away.
           </p>
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 40 }}>
             <button className="ld-pill ld-pill-primary" data-testid="hero-signup-btn" onClick={go} style={{ padding: "16px 32px", fontSize: 16 }}>Start training <Icons.ArrowRight size={18} /></button>

@@ -17,6 +17,9 @@ import Workouts from "@/pages/Workouts";
 import Membership from "@/pages/Membership";
 import AdminPanel from "@/pages/AdminPanel";
 import TrainerDashboard from "@/pages/TrainerDashboard";
+import TrainerAvailability from "@/pages/TrainerAvailability";
+import ClientDetail from "@/pages/ClientDetail";
+import Messages from "@/pages/Messages";
 import VideoCall from "@/pages/VideoCall";
 import Profile from "@/pages/Profile";
 
@@ -54,7 +57,9 @@ function AppRouter() {
 
       <Route element={<RequireAuth roles={CLIENT_ROLES} requireFocus><Layout /></RequireAuth>}>
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/workouts" element={<Workouts />} />
+        <Route path="/workouts" element={<Workouts kind="workout" />} />
+        <Route path="/yoga" element={<Workouts kind="yoga" />} />
+        <Route path="/messages" element={<Messages />} />
         <Route path="/booking" element={<Booking />} />
         <Route path="/progress" element={<Progress />} />
         <Route path="/food" element={<FoodTrack />} />
@@ -64,10 +69,13 @@ function AppRouter() {
 
       <Route element={<RequireAuth roles={ADMIN_ROLES}><Layout /></RequireAuth>}>
         <Route path="/admin" element={<AdminPanel />} />
+        <Route path="/admin/clients/:clientId" element={<ClientDetail />} />
       </Route>
 
       <Route element={<RequireAuth roles={TRAINER_ROLES}><Layout /></RequireAuth>}>
         <Route path="/trainer" element={<TrainerDashboard />} />
+        <Route path="/trainer/clients/:clientId" element={<ClientDetail />} />
+        <Route path="/trainer/availability" element={<TrainerAvailability />} />
       </Route>
 
       <Route element={<RequireAuth><Layout /></RequireAuth>}>

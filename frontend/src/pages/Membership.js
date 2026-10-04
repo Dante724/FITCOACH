@@ -8,8 +8,8 @@ import { payWithRazorpay } from "@/lib/payments";
 
 const PLAN_ACCENT = { monthly: "var(--teal)", quarterly: "var(--accent)", annual: "var(--amber)" };
 const PLAN_FEATURES = {
-  monthly: ["All four programmes", "AI food tracking", "1 trainer session / week", "In-app progress tracking"],
-  quarterly: ["Everything in Monthly", "Priority trainer booking", "2 trainer sessions / week", "AI meal-plan builder"],
+  monthly: ["Your own assigned coach", "AI food tracking", "1 trainer session / week", "In-app progress tracking"],
+  quarterly: ["Everything in Monthly", "Priority trainer booking", "2 trainer sessions / week", "Coach-approved nutrition plan"],
   annual: ["Everything in Quarterly", "Quarterly body assessments", "Unlimited video sessions", "Best value — save vs monthly"],
 };
 const PLAN_TERM = { monthly: "per month", quarterly: "per 3 months", annual: "per year" };
@@ -44,7 +44,7 @@ export default function Membership() {
 
   return (
     <div>
-      <PageHeader eyebrow="Billing" title="Membership" subtitle="Unlock unlimited access to your programme, trainers and AI tools." />
+      <PageHeader eyebrow="Billing" title="Membership" subtitle="Keep your coach, your plans and your progress tracking active." />
 
       {config && !config.enabled && (
         <div className="glass fade-up" data-testid="payments-disabled-banner" style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 12, marginBottom: 20, borderLeft: "3px solid var(--amber)" }}>

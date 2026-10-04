@@ -3,18 +3,83 @@ import { useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { getFocus, navForFocus } from "@/lib/focus";
+import { getFocus, hasFeature, askCoachPath, PLAN_LABEL } from "@/lib/focus";
+import Avatar from "@/components/Avatar";
 
 function StatCard({ icon: Icon, label, value, unit, accent, delay }) {
   return (
-    <div className="clay fade-up" style={{ padding: 22, animationDelay: `${delay}ms` }}>
-      <div style={{ width: 42, height: 42, borderRadius: 13, background: `${accent}1f`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
-        <Icon size={21} color={accent} />
+    <div className="clay fade-up stat-card" style={{ padding: 20, animationDelay: `${delay}ms` }}>
+      <div className="stat-icon" style={{ width: 40, height: 40, borderRadius: 12, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
+        <Icon size={20} color={accent} />
       </div>
       <div style={{ fontSize: 12.5, color: "var(--text-3)", fontWeight: 600, marginBottom: 4 }}>{label}</div>
-      <div className="display" style={{ fontSize: 28, fontWeight: 800 }}>
-        {value}{unit && <span style={{ fontSize: 14, fontWeight: 500, color: "var(--text-2)" }}> {unit}</span>}
+      <div className="display" style={{ fontSize: 26, fontWeight: 800 }}>
+        {value}{unit && <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-2)" }}> {unit}</span>}
       </div>
+    </div>
+  );
+}
+
+function CoachCard({ type, coach, unread, navigate }) {
+  const label = type === "yoga" ? "Yoga coach" : "Fitness & nutrition coach";
+  if (!coach) {
+    return (
+      <div className="clay-inset row" style={{ padding: 14 }} data-testid={`coach-pending-${type}`}>
+        <div style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <Icons.Hourglass size={20} color="var(--accent)" />
+        </div>
+        <div className="min0">
+          <div style={{ fontSize: 14, fontWeight: 700 }}>Matching your {label.toLowerCase()}</div>
+          <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>We'll notify you as soon as they're assigned.</div>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="clay-inset row" style={{ padding: 14 }} data-testid={`coach-${type}`}>
+      <Avatar name={coach.name} picture={coach.picture} size={44} />
+      <div className="min0" style={{ flex: 1 }}>
+        <div className="truncate" style={{ fontSize: 14.5, fontWeight: 700 }}>{coach.name}</div>
+        <div className="truncate" style={{ fontSize: 12.5, color: "var(--text-3)" }}>{label}</div>
+      </div>
+      <button className="btn btn-ghost" onClick={() => navigate(askCoachPath(coach.user_id))} style={{ padding: "9px 14px", fontSize: 13, position: "relative" }}>
+        <Icons.MessageCircle size={16} /> <span>Message</span>
+        {unread > 0 && <span className="badge" style={{ position: "absolute", top: -6, right: -6 }}>{unread}</span>}
+      </button>
+    </div>
+  );
+}
+
+function PlanPreview({ plan, type, navigate }) {
+  const path = { workout: "/workouts", yoga: "/yoga", meal: "/meal-plans" }[type];
+  return (
+    <div className="clay fade-up" style={{ padding: 22 }}>
+      <div className="row" style={{ justifyContent: "space-between", marginBottom: 14 }}>
+        <div className="min0">
+          <div className="eyebrow">{PLAN_LABEL[type]}</div>
+          <h3 className="display truncate" style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>{plan ? plan.content.title : "Being prepared"}</h3>
+        </div>
+        {plan && <button className="btn btn-ghost" onClick={() => navigate(path)} style={{ padding: "9px 16px", fontSize: 13 }}>Open</button>}
+      </div>
+      {!plan && <div style={{ fontSize: 13.5, color: "var(--text-2)", lineHeight: 1.6 }}>Your coach is reviewing your details and will approve your {PLAN_LABEL[type].toLowerCase()} soon.</div>}
+      {plan && type !== "meal" && (
+        <div className="stack" style={{ gap: 8 }}>
+          {(plan.content.days?.[0]?.exercises || []).slice(0, 4).map((ex, i) => (
+            <div key={i} className="clay-inset row" style={{ padding: "11px 14px", justifyContent: "space-between" }}>
+              <span className="truncate" style={{ fontSize: 13.5, fontWeight: 600 }}>{ex.name}</span>
+              <span className="chip chip-neutral" style={{ flexShrink: 0 }}>{ex.sets} × {ex.reps}</span>
+            </div>
+          ))}
+          <div style={{ fontSize: 12, color: "var(--text-3)" }}>{plan.content.days?.length} days · approved by {plan.approved_by_name}</div>
+        </div>
+      )}
+      {plan && type === "meal" && (
+        <div className="row-wrap">
+          <span className="chip chip-accent">{Math.round(plan.content.total_calories)} kcal / day</span>
+          <span className="chip chip-teal">{Math.round(plan.content.total_protein_g)} g protein</span>
+          <span className="chip chip-neutral">{plan.content.meals?.length} meals</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -26,87 +91,60 @@ export default function Dashboard() {
   const [progress, setProgress] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [sessions, setSessions] = useState([]);
-  const [plan, setPlan] = useState(null);
+  const [foods, setFoods] = useState([]);
+  const [plans, setPlans] = useState(null);
+  const [coaches, setCoaches] = useState(null);
+  const [unread, setUnread] = useState({});
 
   useEffect(() => {
     api.get("/progress").then((r) => setProgress(r.data)).catch(() => {});
     api.get("/bookings").then((r) => setBookings(r.data)).catch(() => {});
     api.get("/workouts/sessions").then((r) => setSessions(r.data)).catch(() => {});
-    api.get("/workouts/plan").then((r) => setPlan(r.data)).catch(() => {});
-  }, []);
+    api.get("/my/plans").then((r) => setPlans(r.data)).catch(() => setPlans({}));
+    api.get("/my/coaches").then((r) => setCoaches(r.data)).catch(() => {});
+    api.get("/messages/unread").then((r) => setUnread(r.data.threads || {})).catch(() => {});
+    if (hasFeature(user?.focus, "food")) api.get("/food/logs").then((r) => setFoods(r.data)).catch(() => {});
+  }, [user?.focus]);
 
-  const latest = progress[progress.length - 1] || {};
+  const latest = [...progress].reverse().find((p) => p.weight != null) || {};
   const hour = new Date().getHours();
-  const getGreeting = () => {
-    if (hour < 12) return "Good morning";
-    if (hour < 17) return "Good afternoon";
-    return "Good evening";
-  };
-  const greet = getGreeting();
-  const nav = navForFocus(user?.focus).filter((n) => n.feature !== "dashboard");
-  const showWorkouts = focus?.features.includes("workouts");
+  const greet = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const weekAgo = Date.now() - 7 * 86400000;
+  const today = new Date().toISOString().slice(0, 10);
+  const upcoming = bookings.filter((b) => new Date(`${b.date}T${b.time}`) >= new Date());
+  const planTypes = [hasFeature(user?.focus, "workouts") && "workout", hasFeature(user?.focus, "yoga") && "yoga", hasFeature(user?.focus, "mealplan") && "meal"].filter(Boolean);
 
   return (
     <div>
-      <div className="fade-up" style={{ marginBottom: 28 }}>
-        <div className="eyebrow" style={{ marginBottom: 8 }}>{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</div>
+      <div className="fade-up" style={{ marginBottom: 24 }}>
+        <div className="eyebrow" style={{ marginBottom: 8 }}>{new Date().toLocaleDateString("en-IN", { weekday: "long", month: "long", day: "numeric" })}</div>
         <h1 style={{ fontSize: 32, fontWeight: 800 }}>{greet}, {user?.name?.split(" ")[0]}</h1>
-        {focus && <p style={{ fontSize: 14.5, color: "var(--text-2)", marginTop: 8 }}>Your <strong style={{ color: focus.accent }}>{focus.label}</strong> workspace is ready.</p>}
+        {focus && <p style={{ fontSize: 14.5, color: "var(--text-2)", marginTop: 8 }}>Goal: <strong style={{ color: focus.accent }}>{focus.label}</strong></p>}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 20 }}>
-        <StatCard icon={Icons.Weight} label="Latest weight" value={latest.weight ?? "—"} unit={latest.weight ? "kg" : ""} accent="var(--accent)" delay={0} />
-        <StatCard icon={Icons.CalendarDays} label="Upcoming sessions" value={bookings.length} accent="var(--teal)" delay={60} />
-        <StatCard icon={Icons.Dumbbell} label="Logged workouts" value={sessions.length} accent="#7c6bd6" delay={120} />
-        <StatCard icon={Icons.LineChart} label="Progress entries" value={progress.length} accent="var(--amber)" delay={180} />
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 18 }}>
-        {showWorkouts && plan ? (
-          <div className="clay fade-up" style={{ padding: 26 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-              <div>
-                <div className="eyebrow">Today's session</div>
-                <h3 className="display" style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>{plan.name}</h3>
-              </div>
-              <button className="btn btn-ghost" onClick={() => navigate("/workouts")} style={{ padding: "9px 16px", fontSize: 13 }}>Open</button>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-              {plan.exercises.map((ex, i) => (
-                <div key={`${ex.name}-${i}`} className="clay-inset" style={{ padding: "13px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 14, fontWeight: 600 }}>{ex.name}</span>
-                  <span className="chip chip-accent">{ex.meta}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="clay fade-up" style={{ padding: 26 }}>
-            <div className="eyebrow" style={{ marginBottom: 6 }}>Your programme</div>
-            <h3 className="display" style={{ fontSize: 20, fontWeight: 700, marginBottom: 10 }}>{focus?.label}</h3>
-            <p style={{ fontSize: 14.5, color: "var(--text-2)", lineHeight: 1.7 }}>{focus?.tagline} Use the tools below to stay on track and hit your goals consistently.</p>
-          </div>
-        )}
-
-        <div className="clay fade-up" style={{ padding: 26 }}>
-          <div className="eyebrow" style={{ marginBottom: 16 }}>Quick access</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {nav.map((item) => {
-              const Icon = Icons[item.icon] || Icons.Circle;
-              return (
-                <button key={item.path} data-testid={`quick-${item.feature}`} onClick={() => navigate(item.path)}
-                  className="clay-inset" style={{ border: "none", cursor: "pointer", padding: "14px 16px", display: "flex", alignItems: "center", gap: 13, textAlign: "left" }}>
-                  <div style={{ width: 38, height: 38, borderRadius: 11, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <Icon size={18} color="var(--accent)" />
-                  </div>
-                  <span style={{ fontSize: 14.5, fontWeight: 600, flex: 1 }}>{item.label}</span>
-                  <Icons.ChevronRight size={18} color="var(--text-3)" />
-                </button>
-              );
-            })}
-          </div>
+      <div className="clay fade-up" style={{ padding: 20, marginBottom: 18 }}>
+        <div className="eyebrow" style={{ marginBottom: 12 }}>Your coach{focus?.coaches.length > 1 ? "es" : ""}</div>
+        <div className="grid-2" style={{ gap: 12 }}>
+          {(focus?.coaches || []).map((t) => (
+            <CoachCard key={t} type={t} coach={coaches?.[t]} unread={coaches?.[t] ? unread[coaches[t].user_id] : 0} navigate={navigate} />
+          ))}
         </div>
       </div>
+
+      <div className="grid-stats" style={{ marginBottom: 18 }}>
+        <StatCard icon={Icons.Weight} label="Latest weight" value={latest.weight ?? "—"} unit={latest.weight ? "kg" : ""} accent="var(--accent)" delay={0} />
+        <StatCard icon={Icons.Dumbbell} label="Sessions this week" value={sessions.filter((s) => new Date(s.created_at).getTime() >= weekAgo).length} accent="#7c6bd6" delay={60} />
+        <StatCard icon={Icons.CalendarDays} label="Upcoming calls" value={upcoming.length} accent="var(--teal)" delay={120} />
+        {hasFeature(user?.focus, "food")
+          ? <StatCard icon={Icons.Utensils} label="Meals logged today" value={foods.filter((f) => (f.created_at || "").slice(0, 10) === today).length} accent="var(--amber)" delay={180} />
+          : <StatCard icon={Icons.LineChart} label="Progress entries" value={progress.length} accent="var(--amber)" delay={180} />}
+      </div>
+
+      {plans && (
+        <div className="grid-cards">
+          {planTypes.map((t) => <PlanPreview key={t} type={t} plan={plans[t]} navigate={navigate} />)}
+        </div>
+      )}
     </div>
   );
 }

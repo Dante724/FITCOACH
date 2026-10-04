@@ -72,11 +72,11 @@ export default function Booking() {
 
   return (
     <div>
-      <PageHeader eyebrow="Schedule" title="Book a Session" subtitle="Reserve time with a certified trainer, then meet them on a live video call." />
+      <PageHeader eyebrow="Schedule" title="Book a Session" subtitle="Reserve a live video session with your coach." />
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
-        <div className="clay fade-up" style={{ padding: 26 }}>
-          <div className="eyebrow" style={{ marginBottom: 14 }}>Choose your trainer</div>
+      <div className="grid-2">
+        <div className="clay fade-up min0" style={{ padding: 22 }}>
+          <div className="eyebrow" style={{ marginBottom: 14 }}>{trainers.length > 1 ? "Choose your coach" : "Your coach"}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 22 }}>
             {trainers.map((t) => (
               <button key={t.trainer_id} data-testid={`trainer-${t.trainer_id}`} onClick={() => setTrainerId(t.trainer_id)}
@@ -89,7 +89,7 @@ export default function Booking() {
                 {trainerId === t.trainer_id && <Icons.Check size={18} color="var(--accent)" />}
               </button>
             ))}
-            {trainers.length === 0 && <div style={{ fontSize: 13.5, color: "var(--text-3)", padding: "10px 0" }}>No trainers available yet.</div>}
+            {trainers.length === 0 && <div className="clay-inset" style={{ fontSize: 13.5, color: "var(--text-2)", padding: 16 }}>You can book sessions once your coach has been assigned.</div>}
           </div>
 
           <label className="label">Date</label>
@@ -99,7 +99,7 @@ export default function Booking() {
           {slots.length === 0 ? (
             <div className="clay-inset" style={{ padding: "16px", textAlign: "center", fontSize: 13, color: "var(--text-3)" }}>No open slots on this day. Try another date.</div>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 9 }}>
+            <div className="grid-slots">
               {slots.map((s) => (
                 <button key={s} data-testid={`slot-${s}`} onClick={() => setTime(s)}
                   className={time === s ? "" : "clay-inset"}
@@ -116,7 +116,7 @@ export default function Booking() {
           </button>
         </div>
 
-        <div className="clay fade-up" style={{ padding: 26, animationDelay: "80ms" }}>
+        <div className="clay fade-up min0" style={{ padding: 22, animationDelay: "80ms" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
             <div className="eyebrow">Upcoming sessions</div>
             <span className="chip chip-neutral">{bookings.length} booked</span>

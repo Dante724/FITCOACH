@@ -127,7 +127,22 @@ Start with **8–10 common poses** (Warrior I/II, Tree, Triangle, Downward Dog, 
 | Pose scoring is wrong and hurts trust | Coach always confirms before the client sees feedback (built into 3.4). |
 | Clients feel they have no control | Questionnaire preferences + a "request a change" button on the plan, which goes to the coach. |
 
-## 9. Open questions
+## 9. Build status (branch `v2-coach-led`, 2026-10-04)
+| Area | Status |
+|---|---|
+| Goal questionnaire (fat loss / muscle gain / yoga / fitness + yoga) | ✅ Built |
+| Admin: assign fitness/yoga coach, coach type, workload, "needs a coach" filter | ✅ Built |
+| Permissions: coaches only see their own clients and their own track's plans; clients only book their own coach | ✅ Built + tested |
+| AI draft → coach edits inline → approve → client sees "Approved by …" | ✅ Built (template fallback when AI is unavailable) |
+| Adjustments with a reason shown to the client; plan history | ✅ Built |
+| Coach "Needs attention" queue + weekly brief per client (rule-based) | ✅ Built |
+| In-app coach ↔ client chat with context (meal, workout, plan, photo) | ✅ Built (text only; polling every 8s) |
+| Responsive: phone (375), tablet (768), laptop (1366) | ✅ Checked in browser |
+| Admin tier editor (DB-backed memberships) | ⏳ Next |
+| Yoga pose check (clip + on-device scoring + coach review) | ⏳ Next |
+| Voice notes in chat, AI-written weekly brief | ⏳ Later |
+
+## 10. Open questions
 - Coach payouts: salary or per-client? (affects admin reporting)
 - Should clients message their coach in-app, or keep using WhatsApp?
 - Are there clients without a membership who only pay per session?

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
@@ -27,7 +28,10 @@ export default function Layout() {
   if (role === "admin") {
     nav = [{ feature: "admin", path: "/admin", label: "Admin Console", icon: "ShieldCheck" }];
   } else if (role === "trainer") {
-    nav = [{ feature: "trainer", path: "/trainer", label: "My Sessions", icon: "CalendarClock" }];
+    nav = [
+      { feature: "trainer", path: "/trainer", label: "Clients & Today", icon: "LayoutDashboard", end: true },
+      { feature: "availability", path: "/trainer/availability", label: "Availability", icon: "CalendarClock" },
+    ];
   } else {
     nav = navForFocus(user?.focus);
   }
@@ -39,10 +43,15 @@ export default function Layout() {
   }, [location.pathname, user, role, navigate]);
 
   const initials = (user?.name || "U").split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
-  const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
+  const roleLabel = role === "trainer" ? `${user?.coach_type === "yoga" ? "Yoga" : "Fitness"} coach` : role.charAt(0).toUpperCase() + role.slice(1);
   const [drawer, setDrawer] = useState(false);
+  const [unread, setUnread] = useState(0);
 
   useEffect(() => { setDrawer(false); }, [location.pathname]);
+  useEffect(() => {
+    if (role !== "client") return;
+    api.get("/messages/unread").then((r) => setUnread(r.data.total || 0)).catch(() => {});
+  }, [role, location.pathname]);
 
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
@@ -60,7 +69,7 @@ export default function Layout() {
         <div style={{ padding: "0 6px 22px" }}><Logo /></div>
         {role === "client" && focus && (
           <div className="clay-inset" style={{ padding: "10px 14px", marginBottom: 18 }}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-3)" }}>Programme</div>
+            <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-3)" }}>Goal</div>
             <div style={{ fontSize: 13, fontWeight: 700, marginTop: 3, color: focus.accent }}>{focus.label}</div>
           </div>
         )}
@@ -70,11 +79,11 @@ export default function Layout() {
             <div style={{ fontSize: 13, fontWeight: 700, marginTop: 3, color: role === "admin" ? "var(--accent)" : "var(--teal)" }}>{roleLabel}</div>
           </div>
         )}
-        <nav style={{ display: "flex", flexDirection: "column", gap: 5, flex: 1 }}>
+        <nav style={{ display: "flex", flexDirection: "column", gap: 5, flex: 1, overflowY: "auto", minHeight: 0 }}>
           {nav.map((item) => {
             const Icon = Icons[item.icon] || Icons.Circle;
             return (
-              <NavLink key={item.path} to={item.path} data-testid={`nav-${item.feature}`}
+              <NavLink key={item.path} to={item.path} end={item.end} data-testid={`nav-${item.feature}`}
                 style={({ isActive }) => ({
                   display: "flex", alignItems: "center", gap: 12, padding: "11px 14px", borderRadius: 14,
                   fontSize: 14, fontWeight: 600, textDecoration: "none",
@@ -84,7 +93,8 @@ export default function Layout() {
                   transition: "all 0.18s ease",
                 })}>
                 <Icon size={18} />
-                <span>{item.label}</span>
+                <span style={{ flex: 1 }}>{item.label}</span>
+                {item.feature === "messages" && unread > 0 && <span className="badge">{unread}</span>}
               </NavLink>
             );
           })}
