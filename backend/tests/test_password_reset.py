@@ -123,6 +123,3 @@ def test_change_password_while_signed_in(api):
     run(server.db.users.update_one({"user_id": me["user_id"]}, {"$unset": {"password_hash": ""}}))
     assert api.get("/api/auth/password", headers=this_device).json()["has_password"] is False
     assert api.put("/api/auth/password", json={"new_password": "FirstPass99"}, headers=this_device).status_code == 200
-    # the main admin's password is controlled by the server setting
-    admin = {"Authorization": "Bearer " + api.post("/api/auth/login", json={"email": "admin@fitcoach.com", "password": "Admin@12345"}).json()["access_token"]}
-    assert api.put("/api/auth/password", json={"current_password": "Admin@12345", "new_password": "Whatever123"}, headers=admin).status_code == 400

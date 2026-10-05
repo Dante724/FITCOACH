@@ -28,6 +28,7 @@ import { rememberReferral } from "@/lib/membership";
 import Legal from "@/pages/Legal";
 import { ForgotPassword, ResetPassword } from "@/pages/PasswordReset";
 import { ConsentScreen } from "@/components/Privacy";
+import ForcedPasswordChange from "@/components/ForcedPasswordChange";
 
 const AdminLeads = lazy(() => import("@/pages/AdminLeads"));
 const CallCheck = lazy(() => import("@/pages/CallCheck"));
@@ -53,6 +54,7 @@ function RequireAuth({ children, roles, requireFocus }) {
   if (loading) return <Loader />;
   if (!user) return <Navigate to="/login" replace />;
   if (roles && !roles.includes(user.role)) return <Navigate to={roleHome(user)} replace />;
+  if (user.must_change_password) return <ForcedPasswordChange />;
   if (user.role === "client" && !user.consents?.health_data) return <ConsentScreen />;
   if (requireFocus && user.role === "client" && !user.focus) return <Navigate to="/focus" replace />;
   return children;

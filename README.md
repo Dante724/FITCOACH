@@ -74,9 +74,14 @@ user even if `CORS_ORIGINS` is missing.
   password. Needs the Gmail settings (`GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD`). Resetting signs out the account's other
   devices. Links point to your website: set `APP_URL` (e.g. `https://fitcoach-web.onrender.com`), otherwise the first
   `CORS_ORIGINS` entry is used.
-- **No email set up?** Admin Console → the key icon next to a person copies a reset link you can send them directly.
+- **No email set up?** Admin Console → the key icon next to a person → "Copy reset link" to send them directly.
 - **Change password:** Profile → Password. People who joined with Google can add a password there too.
-- The main admin's password is always the `ADMIN_PASSWORD` setting on the server.
+- **Admins:** change your own password at the bottom of the Admin Console (10+ characters). It's kept across
+  restarts. `ADMIN_PASSWORD` on the server is used when the admin account is first created, and again only if you
+  change that value — that's the emergency reset if you're ever locked out.
+- **Temporary passwords:** Admin Console → key icon next to a person → "Set a temporary password" (for someone
+  who can't receive email). They're signed out everywhere and must choose their own password at next sign-in.
+  Password changes are recorded in an audit log.
 
 ## Install as an app + notifications
 

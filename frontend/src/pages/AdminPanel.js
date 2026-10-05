@@ -6,6 +6,8 @@ import Avatar from "@/components/Avatar";
 import { api } from "@/lib/api";
 import { useToast } from "@/context/ToastContext";
 import { useAuth } from "@/context/AuthContext";
+import PasswordCard from "@/components/PasswordCard";
+import PasswordHelpModal from "@/components/PasswordHelpModal";
 import { getFocus, GOAL_LABEL } from "@/lib/focus";
 
 const LEGAL_LABELS = { business_name: "BUSINESS_NAME (your full name)", business_address: "BUSINESS_ADDRESS", grievance_officer: "GRIEVANCE_OFFICER", jurisdiction_city: "JURISDICTION_CITY", contact_email: "PRIVACY_CONTACT_EMAIL" };
@@ -137,6 +139,8 @@ export default function AdminPanel() {
     } catch (e) { push(e?.response?.data?.detail || "Could not update role.", "error"); }
   };
 
+  const [pwFor, setPwFor] = useState(null);
+
   // For people who can't get the reset email: copy a one-hour link and send it to them in chat or by text.
   const copyResetLink = async (u) => {
     try {
@@ -174,6 +178,7 @@ export default function AdminPanel() {
     <div>
       <PageHeader eyebrow="Administration" title="Admin Console" subtitle="Assign coaches, manage roles and control memberships." />
       <LegalDetailsWarning />
+      {pwFor && <PasswordHelpModal user={pwFor} onClose={() => setPwFor(null)} onCopyLink={copyResetLink} />}
 
       <div className="grid-stats" style={{ marginBottom: 20 }}>
         <Stat icon={Icons.Users} label="Clients" value={stats?.clients ?? "—"} accent="var(--accent)" delay={0} />
@@ -257,7 +262,7 @@ export default function AdminPanel() {
                     {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                   </select>
                   {u.user_id !== me?.user_id && (
-                    <button className="icon-btn" title="Copy a password reset link" aria-label={`Copy password reset link for ${u.name}`} data-testid={`reset-link-${u.user_id}`} onClick={() => copyResetLink(u)}>
+                    <button className="icon-btn" title="Password help" aria-label={`Password help for ${u.name}`} data-testid={`reset-link-${u.user_id}`} onClick={() => setPwFor(u)}>
                       <Icons.KeyRound size={17} />
                     </button>
                   )}
@@ -333,6 +338,9 @@ export default function AdminPanel() {
           </div>
         </div>
       )}
+      <div style={{ marginTop: 24, maxWidth: 620 }} data-testid="admin-own-password">
+        <PasswordCard title="Your admin password" />
+      </div>
     </div>
   );
 }

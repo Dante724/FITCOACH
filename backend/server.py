@@ -294,6 +294,7 @@ class User(BaseModel):
     subscription_status: Optional[str] = None
     referral_code: Optional[str] = None
     consents: Optional[dict] = None
+    must_change_password: Optional[bool] = None
     created_at: Optional[str] = None
 
 
@@ -1110,25 +1111,51 @@ class ChangePasswordRequest(BaseModel):
 async def password_status(user: User = Depends(get_current_user)):
     doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0, "password_hash": 1, "google_sub": 1}) or {}
     return {"has_password": bool(doc.get("password_hash")), "google": bool(doc.get("google_sub")),
-            "managed_by_server": user.role == "admin" and user.email == ADMIN_EMAIL}
+            "is_main_admin": user.role == "admin" and user.email == ADMIN_EMAIL}
 
 
 @api_router.put("/auth/password")
 async def change_password(payload: ChangePasswordRequest, response: Response, user: User = Depends(get_current_user)):
     """Change your password while signed in (or add one if you joined with Google). Other devices are signed out."""
-    if user.role == "admin" and user.email == ADMIN_EMAIL:
-        raise HTTPException(status_code=400, detail="The main admin password is set with ADMIN_PASSWORD on the server")
-    if len(payload.new_password) < 8:
-        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+    min_len = 10 if user.role == "admin" else 8
+    if len(payload.new_password) < min_len:
+        raise HTTPException(status_code=400, detail=f"New password must be at least {min_len} characters")
     doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0, "password_hash": 1}) or {}
     if doc.get("password_hash") and not verify_password(payload.current_password or "", doc["password_hash"]):
         raise HTTPException(status_code=400, detail="Your current password isn't right")
     await db.users.update_one({"user_id": user.user_id}, {"$set": {"password_hash": hash_password(payload.new_password),
-                                                                  "password_changed_at": _now_iso()}})
+                                                                  "password_changed_at": _now_iso(), "must_change_password": False}})
     await db.password_resets.update_many({"user_id": user.user_id}, {"$set": {"used": True}})
+    await db.audit_log.insert_one({"id": str(uuid.uuid4()), "action": "password_changed", "user_id": user.user_id, "by": user.user_id, "at": _now_iso()})
     token = create_access_token(user.user_id, user.email)  # keep this device signed in
     set_access_cookie(response, token)
     return {"ok": True, "access_token": token}
+
+
+class AdminSetPassword(BaseModel):
+    new_password: str
+
+
+@api_router.post("/admin/users/{target_id}/password")
+async def admin_set_password(target_id: str, payload: AdminSetPassword, user: User = Depends(require_role("admin"))):
+    """Give someone a temporary password (e.g. a coach without email). They're signed out everywhere and must
+    choose their own password the next time they sign in."""
+    if target_id == user.user_id:
+        raise HTTPException(status_code=400, detail="Change your own password from the Password card instead")
+    target = await db.users.find_one({"user_id": target_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.get("role") == "admin" and target.get("email") == ADMIN_EMAIL:
+        raise HTTPException(status_code=400, detail="The main admin changes their own password")
+    if len(payload.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Temporary password must be at least 8 characters")
+    await db.users.update_one({"user_id": target_id}, {"$set": {"password_hash": hash_password(payload.new_password),
+                                                                "password_changed_at": _now_iso(), "must_change_password": True}})
+    await db.password_resets.update_many({"user_id": target_id}, {"$set": {"used": True}})
+    await db.login_attempts.delete_many({"identifier": {"$regex": f":{re.escape(target.get('email') or '')}$"}})
+    await db.audit_log.insert_one({"id": str(uuid.uuid4()), "action": "temporary_password_set", "user_id": target_id, "by": user.user_id, "at": _now_iso()})
+    await push_notification(target_id, "Your password was reset", f"{user.name} set a temporary password for you. You'll choose a new one when you sign in.", "/profile")
+    return {"ok": True}
 
 
 @api_router.post("/admin/users/{target_id}/reset-link")
@@ -3853,7 +3880,8 @@ async def erase_client(user_id: str, by: str):
                         ("workout_sessions", "user_id"), ("plans", "client_id"), ("pose_checks", "client_id"), ("messages", "client_id"),
                         ("bookings", "user_id"), ("calls", "client_id"), ("notifications", "user_id"), ("dismissed_reminders", "user_id"),
                         ("push_subscriptions", "user_id"), ("ai_summaries", "client_id"), ("membership_events", "user_id"),
-                        ("consent_log", "user_id"), ("subscriptions", "user_id"), ("user_foods", "user_id"), ("password_resets", "user_id"), ("referrals", "referee_id"), ("referrals", "referrer_id")]:
+                        ("consent_log", "user_id"), ("subscriptions", "user_id"), ("user_foods", "user_id"), ("password_resets", "user_id"),
+                        ("audit_log", "user_id"), ("referrals", "referee_id"), ("referrals", "referrer_id")]:
         await db[coll].delete_many({field: user_id})
     await db.leads.delete_many({"email": u.get("email")})
     await db.login_attempts.delete_many({"identifier": {"$regex": f":{re.escape(u.get('email') or '')}$"}})
@@ -4384,8 +4412,21 @@ async def seed_roles():
             "role": "admin", "picture": None, "focus": None,
             "password_hash": hash_password(ADMIN_PASSWORD), "created_at": datetime.now(timezone.utc).isoformat(),
         })
-    elif not verify_password(ADMIN_PASSWORD, admin.get("password_hash", "")):
-        await db.users.update_one({"email": ADMIN_EMAIL}, {"$set": {"password_hash": hash_password(ADMIN_PASSWORD), "role": "admin"}})
+        await db.app_settings.update_one({"_id": "admin_env_password"}, {"$set": {
+            "fingerprint": hashlib.sha256(f"{ADMIN_PASSWORD}|{JWT_SECRET}".encode()).hexdigest(), "at": _now_iso()}}, upsert=True)
+    else:
+        # ADMIN_PASSWORD is applied when it's first set or when you change it on the server (an emergency reset).
+        # A password the admin changed in the app is kept across restarts otherwise.
+        fingerprint = hashlib.sha256(f"{ADMIN_PASSWORD}|{JWT_SECRET}".encode()).hexdigest()
+        applied = (await db.app_settings.find_one({"_id": "admin_env_password"}) or {}).get("fingerprint")
+        if applied != fingerprint:
+            if not verify_password(ADMIN_PASSWORD, admin.get("password_hash", "")):
+                await db.users.update_one({"email": ADMIN_EMAIL}, {"$set": {"password_hash": hash_password(ADMIN_PASSWORD), "role": "admin",
+                                                                          "password_changed_at": _now_iso()}})
+                logger.info("Admin password set from ADMIN_PASSWORD")
+            await db.app_settings.update_one({"_id": "admin_env_password"}, {"$set": {"fingerprint": fingerprint, "at": _now_iso()}}, upsert=True)
+        elif admin.get("role") != "admin":
+            await db.users.update_one({"email": ADMIN_EMAIL}, {"$set": {"role": "admin"}})
 
     if not SEED_DEMO_DATA:
         return

@@ -5,10 +5,10 @@ import { api, setToken } from "@/lib/api";
 import { useToast } from "@/context/ToastContext";
 
 // Profile → Password: change it while signed in, or add one if you joined with Google.
-export default function PasswordCard() {
+export default function PasswordCard({ title = "Password", forced = false, onDone }) {
   const { push } = useToast();
   const [status, setStatus] = useState(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(forced);
   const [cur, setCur] = useState("");
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
@@ -20,7 +20,8 @@ export default function PasswordCard() {
   const reset = () => { setOpen(false); setCur(""); setPw(""); setPw2(""); setError(""); };
   const save = async (e) => {
     e.preventDefault();
-    if (pw.length < 8) { setError("Use at least 8 characters."); return; }
+    const min = status.is_main_admin ? 10 : 8;
+    if (pw.length < min) { setError(`Use at least ${min} characters.`); return; }
     if (pw !== pw2) { setError("The two new passwords don't match."); return; }
     setSaving(true); setError("");
     try {
@@ -29,6 +30,7 @@ export default function PasswordCard() {
       push(status.has_password ? "Password changed. Other devices have been signed out." : "Password added — you can now sign in with email too.", "success");
       setStatus({ ...status, has_password: true });
       reset();
+      onDone?.();
     } catch (err) { setError(err?.response?.data?.detail || "Couldn't change your password."); } finally { setSaving(false); }
   };
 
@@ -36,14 +38,19 @@ export default function PasswordCard() {
     <div className="clay" style={{ padding: 24 }} data-testid="password-card">
       <div className="row" style={{ justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div className="min0">
-          <div className="eyebrow" style={{ marginBottom: 4 }}>Password</div>
+          <div className="eyebrow" style={{ marginBottom: 4 }}>{title}</div>
           <div style={{ fontSize: 13.5, color: "var(--text-2)" }}>
-            {status.managed_by_server ? "The main admin password is set on the server (ADMIN_PASSWORD)."
+            {forced ? "You signed in with a temporary password. Choose your own to continue."
               : status.has_password ? "Change the password you use to sign in with email."
               : "You sign in with Google. Add a password to also sign in with your email."}
           </div>
+          {status.is_main_admin && !forced && (
+            <div style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 6 }}>
+              Locked out? Change <code>ADMIN_PASSWORD</code> on the server (Render → Environment) and restart — it resets this account to that password.
+            </div>
+          )}
         </div>
-        {!status.managed_by_server && !open && (
+        {!open && (
           <button className="btn btn-ghost" onClick={() => setOpen(true)} data-testid="change-password"><Icons.KeyRound size={16} /> {status.has_password ? "Change password" : "Add a password"}</button>
         )}
       </div>
@@ -51,9 +58,9 @@ export default function PasswordCard() {
         <form onSubmit={save} style={{ marginTop: 16 }}>
           {status.has_password && (
             <>
-              <label className="label" htmlFor="cp-cur">Current password</label>
+              <label className="label" htmlFor="cp-cur">{forced ? "Temporary password" : "Current password"}</label>
               <input id="cp-cur" className="field" type="password" autoComplete="current-password" value={cur} onChange={(e) => setCur(e.target.value)} data-testid="cp-current" />
-              <div style={{ textAlign: "right", marginTop: 6 }}><Link to="/forgot-password" style={{ fontSize: 12.5, color: "var(--ink)" }}>Forgot it?</Link></div>
+              {!forced && <div style={{ textAlign: "right", marginTop: 6 }}><Link to="/forgot-password" style={{ fontSize: 12.5, color: "var(--ink)" }}>Forgot it?</Link></div>}
             </>
           )}
           <label className="label" htmlFor="cp-new" style={{ marginTop: 10 }}>New password</label>
@@ -62,7 +69,7 @@ export default function PasswordCard() {
           <input id="cp-new2" className="field" type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} data-testid="cp-new2" />
           {error && <div className="form-error" role="alert">{error}</div>}
           <div className="row" style={{ gap: 8, marginTop: 14 }}>
-            <button type="button" className="btn btn-ghost" onClick={reset} style={{ flex: 1 }}>Cancel</button>
+            {!forced && <button type="button" className="btn btn-ghost" onClick={reset} style={{ flex: 1 }}>Cancel</button>}
             <button type="submit" className="btn btn-primary" disabled={saving || !pw || !pw2 || (status.has_password && !cur)} style={{ flex: 1 }} data-testid="cp-save">{saving ? "Saving…" : "Save"}</button>
           </div>
         </form>
