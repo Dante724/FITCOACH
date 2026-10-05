@@ -3376,7 +3376,10 @@ async def send_session_alerts():
             label, flags = "in about an hour", {"alert_60_sent": True}
         else:
             continue
-        await db.bookings.update_one({"id": b["id"]}, {"$set": flags})
+        # claim it atomically so two runners (the built-in timer and /cron/tick) never both send it
+        claim = {"id": b["id"], "alert_10_sent": {"$ne": True}} if "alert_10_sent" in flags else {"id": b["id"], "alert_60_sent": {"$ne": True}}
+        if not (await db.bookings.update_one(claim, {"$set": flags})).modified_count:
+            continue
         for uid, other in ((b["user_id"], b.get("trainer_name")), (b["trainer_id"], b.get("client_name"))):
             await push_notification(uid, f"Session {label}", f"Video session with {other} at {b['time']}. Join from the app.", f"/call/{b['id']}",
                                     push={"tag": f"session-{b['id']}", "urgency": "high" if minutes_label_soon(label) else "normal"})
@@ -3792,13 +3795,15 @@ async def send_membership_reminders():
     soon = (now + timedelta(days=3)).isoformat()
     async for u in db.users.find({"role": "client", "membership_expires_at": {"$gt": now.isoformat(), "$lte": soon},
                                   "subscription_status": {"$ne": "active"}}, {"_id": 0}):
-        if u.get("expiry_notice_for") != u["membership_expires_at"]:
-            await db.users.update_one({"user_id": u["user_id"]}, {"$set": {"expiry_notice_for": u["membership_expires_at"]}})
+        claimed = await db.users.update_one({"user_id": u["user_id"], "expiry_notice_for": {"$ne": u["membership_expires_at"]}},
+                                            {"$set": {"expiry_notice_for": u["membership_expires_at"]}})
+        if claimed.modified_count:
             label = "Your free trial" if u.get("membership_plan") == "trial" else "Your membership"
             await push_notification(u["user_id"], f"{label} ends soon", "Renew now to keep your coach, plans and sessions.", "/membership")
     async for u in db.users.find({"role": "client", "membership_expires_at": {"$lte": now.isoformat(), "$gt": (now - timedelta(days=2)).isoformat()}}, {"_id": 0}):
-        if u.get("expired_notice_for") != u["membership_expires_at"]:
-            await db.users.update_one({"user_id": u["user_id"]}, {"$set": {"expired_notice_for": u["membership_expires_at"]}})
+        claimed = await db.users.update_one({"user_id": u["user_id"], "expired_notice_for": {"$ne": u["membership_expires_at"]}},
+                                            {"$set": {"expired_notice_for": u["membership_expires_at"]}})
+        if claimed.modified_count:
             await push_notification(u["user_id"], "Your membership has ended", "Renew to pick up where you left off with your coach.", "/membership")
 
 
@@ -4313,6 +4318,50 @@ async def storage_watch():
     tip = "Move files to object storage in Insights" if rep_["files_in_db"] else "Upgrade your MongoDB plan"
     async for admin in db.users.find({"role": "admin"}, {"_id": 0, "user_id": 1}):
         await push_notification(admin["user_id"], f"Database {pct:.0f}% full", f"{tip} before uploads start failing.", "/admin/insights")
+
+
+# ───────────────────────────── External cron (free hosting) ─────────────────────────────
+# On a free Render instance the server sleeps after 15 minutes without traffic, which also pauses the built-in timer.
+# A free external scheduler (cron-job.org, UptimeRobot…) calling /api/cron/tick every 5 minutes keeps it awake and
+# runs anything that's due. Every job is safe to run twice.
+CRON_SECRET = os.environ.get("CRON_SECRET", "").strip()
+CRON_JOBS = [  # (name, minimum minutes between runs, job)
+    ("session_alerts", 0, lambda: send_session_alerts()),
+    ("email_reminders", 0, lambda: send_due_reminders()),
+    ("membership_reminders", 30, lambda: send_membership_reminders()),
+    ("storage_watch", 12 * 60, lambda: storage_watch()),
+    ("purge_leads", 24 * 60, lambda: purge_old_leads()),
+    ("backup", 20 * 60, lambda: backup_to_storage()),
+]
+_tick_lock = asyncio.Lock()
+
+
+@api_router.api_route("/cron/tick", methods=["GET", "POST"])
+async def cron_tick(request: Request, key: Optional[str] = None):
+    if not CRON_SECRET:
+        raise HTTPException(status_code=503, detail="Set CRON_SECRET on the server to use the external scheduler")
+    supplied = key or request.headers.get("x-cron-key") or ""
+    if not secrets.compare_digest(supplied.encode(), CRON_SECRET.encode()):
+        raise HTTPException(status_code=403, detail="Wrong key")
+    if _tick_lock.locked():
+        return {"ok": True, "skipped": "already running"}
+    async with _tick_lock:
+        state = await db.app_settings.find_one({"_id": "cron_state"}) or {}
+        now = datetime.now(timezone.utc)
+        ran, failed = [], []
+        for name, every, job in CRON_JOBS:
+            last = _parse_dt(state.get(name))
+            if every and last and now - last < timedelta(minutes=every):
+                continue
+            try:
+                await job()
+                ran.append(name)
+                await db.app_settings.update_one({"_id": "cron_state"}, {"$set": {name: _now_iso()}}, upsert=True)
+            except Exception:
+                logger.exception("cron job %s failed", name)
+                failed.append(name)
+        await db.app_settings.update_one({"_id": "cron_state"}, {"$set": {"last_tick": _now_iso()}}, upsert=True)
+        return {"ok": True, "ran": ran, "failed": failed}
 
 
 @api_router.get("/admin/email/status")

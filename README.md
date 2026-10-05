@@ -43,6 +43,20 @@ reminders and calls. `REACT_APP_BACKEND_URL` is baked in at build time — redep
   microphone, AI noise removal and the network before a session.
 - Free-trial intro sessions wait for the coach to confirm them (switch off in Admin → Billing & payouts).
 
+## Free hosting (Render free plan)
+
+A free Render web service sleeps after 15 minutes without traffic (the first visitor then waits up to a minute)
+and its built-in timer stops, so reminders and backups would pause. Render gives 750 free hours a month — enough
+for one service running all month — so keep it awake with a free external scheduler:
+
+1. On the API service set `CRON_SECRET` to a long random value.
+2. Create a free job at **cron-job.org** (or an UptimeRobot HTTP monitor) for
+   `https://<your-api>/api/cron/tick?key=<CRON_SECRET>`, every **5 minutes**.
+
+Each call keeps the server awake and runs anything due — session reminders, email reminders, membership reminders
+(30 min), storage check (12 h), lead clean-up and the nightly backup (daily). Jobs never send anything twice, even
+when the built-in timer runs too. For a busy business, Render's Starter plan (~$7/month) removes the need for this.
+
 ## Storage & backups
 
 MongoDB Atlas's free tier holds 512 MB and has no automatic backups. (It doesn't sleep — it only pauses after 60
