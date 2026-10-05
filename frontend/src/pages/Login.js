@@ -101,6 +101,7 @@ export default function Login() {
             <div style={{ marginBottom: 20 }}>
               <label className="label">Password</label>
               <input className="field" type="password" data-testid="auth-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={tab === "register" ? "Min 8 characters" : "Enter password"} required />
+              {tab === "login" && <div style={{ textAlign: "right", marginTop: 8 }}><Link to="/forgot-password" style={{ fontSize: 13, color: "var(--ink)" }} data-testid="forgot-link">Forgot password?</Link></div>}
             </div>
             {tab === "register" && (
               <div style={{ marginTop: -6, marginBottom: 20 }}>

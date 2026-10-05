@@ -1,8 +1,8 @@
 /* FitCoach service worker: shows push notifications (even when the app is closed), handles taps and
    call actions, and keeps the app shell available offline. Registered from src/index.js as /sw.js?api=<API URL>. */
 const API_BASE = new URL(self.location.href).searchParams.get("api") || "";
-const SHELL_CACHE = "fitcoach-shell-v2";
-const ASSET_CACHE = "fitcoach-assets-v2";
+const SHELL_CACHE = "fitcoach-shell-v3";
+const ASSET_CACHE = "fitcoach-assets-v3";
 
 // Install: keep a copy of the app shell and its main scripts/styles so FitCoach opens with no connection.
 self.addEventListener("install", (event) => {
@@ -41,14 +41,25 @@ self.addEventListener("fetch", (event) => {
     })());
     return;
   }
-  // Built scripts, styles, fonts and icons have content-hashed names: serve from cache, fetch once.
   if (url.origin === self.location.origin && (url.pathname.startsWith("/static/") || url.pathname.startsWith("/icons/"))) {
+    // Built files with a content hash in the name (main.3f2a9c1b.js) never change: cache first.
+    // Anything else (icons, dev-server bundles) may change under the same name: network first, cache as fallback.
+    const hashed = /\.[0-9a-f]{8,}\.(js|css|woff2?|png|jpg|svg)$/.test(url.pathname);
     event.respondWith((async () => {
-      const hit = await caches.match(req);
-      if (hit) return hit;
-      const res = await fetch(req);
-      if (res.ok) (await caches.open(ASSET_CACHE)).put(req, res.clone());
-      return res;
+      const cache = await caches.open(ASSET_CACHE);
+      if (hashed) {
+        const hit = await cache.match(req);
+        if (hit) return hit;
+      }
+      try {
+        const res = await fetch(req);
+        if (res.ok) cache.put(req, res.clone());
+        return res;
+      } catch (e) {
+        const hit = await cache.match(req);
+        if (hit) return hit;
+        throw e;
+      }
     })());
     return;
   }

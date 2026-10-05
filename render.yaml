@@ -59,6 +59,8 @@ services:
         sync: false
       - key: COACH_CREDENTIALS
         sync: false
+      - key: APP_URL
+        sync: false
 
   - type: web
     name: fitcoach-web

@@ -177,6 +177,7 @@ def create_access_token(user_id: str, email: str) -> str:
         "sub": user_id,
         "email": email,
         "type": "access",
+        "iat": int(datetime.now(timezone.utc).timestamp()),
         "exp": datetime.now(timezone.utc) + timedelta(days=ACCESS_TOKEN_DAYS),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
@@ -423,7 +424,12 @@ async def _user_from_jwt(token: str) -> Optional[User]:
     if payload.get("type") != "access":
         return None
     user_doc = await db.users.find_one({"user_id": payload.get("sub")}, {"_id": 0})
-    return User(**user_doc) if user_doc else None
+    if not user_doc:
+        return None
+    changed = _parse_dt(user_doc.get("password_changed_at"))
+    if changed and int(payload.get("iat") or 0) < int(changed.timestamp()):
+        return None  # signed in before a password reset — sign in again
+    return User(**user_doc)
 
 
 async def get_current_user(
@@ -732,6 +738,16 @@ def _email_shell(title: str, lines: List[str], cta_label: str = "", cta_url: str
     )
 
 
+def app_url(request: Optional[Request] = None) -> str:
+    """The website's address for links in emails: APP_URL, else the first CORS origin, else the caller's origin."""
+    url = os.environ.get("APP_URL", "").strip() or os.environ.get("APP_ORIGIN", "").strip()
+    if not url and CORS_ORIGINS:
+        url = CORS_ORIGINS[0]
+    if not url and request is not None:
+        url = request.headers.get("origin") or str(request.base_url)
+    return url.rstrip("/")
+
+
 async def send_booking_emails(booking: dict, app_origin: str):
     when = f"{booking['date']} at {booking['time']}"
     join = f"{app_origin}/call/{booking['id']}"
@@ -769,7 +785,6 @@ async def send_due_reminders():
             await db.bookings.update_one({"id": b["id"]}, {"$set": {"reminder_email_sent": True}})
             continue
         when = f"{b['date']} at {b['time']}"
-        origin = os.environ.get('APP_ORIGIN', '')
         await send_email(
             [b.get("client_email"), b.get("trainer_email")], "Reminder: your FitCoach session is coming up",
             f"Your session is scheduled for {when}.",
@@ -933,6 +948,119 @@ async def logout(response: Response):
     # Tokens are stateless JWTs; the app also forgets its stored token.
     response.delete_cookie("access_token", path="/", secure=True, samesite="none")
     return {"ok": True}
+
+
+# ───────────────────────────── Password reset ─────────────────────────────
+RESET_TTL = timedelta(hours=1)
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password: str
+
+
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+async def create_reset_link(user: dict, request: Optional[Request], created_by: str, ip_key: Optional[str] = None) -> str:
+    """One-time link valid for an hour. Only a hash of the token is stored."""
+    token = secrets.token_urlsafe(32)
+    await db.password_resets.insert_one({"id": str(uuid.uuid4()), "user_id": user["user_id"], "token_hash": _hash_token(token),
+                                         "created_by": created_by, "ip_key": ip_key, "used": False, "created_at": _now_iso(),
+                                         "expires_at": (datetime.now(timezone.utc) + RESET_TTL).isoformat()})
+    return f"{app_url(request)}/reset-password?token={token}"
+
+
+@api_router.post("/auth/forgot")
+async def forgot_password(payload: ForgotPasswordRequest, request: Request):
+    """Email a reset link. Always answers the same way so nobody can test which emails have accounts."""
+    email = (payload.email or "").strip().lower()
+    ok = {"ok": True, "email_enabled": email_configured()}
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        return ok
+    hour_ago = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    ip_key = f"reset:{hashlib.sha256(get_client_ip(request).encode()).hexdigest()[:16]}"
+    if await db.password_resets.count_documents({"ip_key": ip_key, "created_at": {"$gte": hour_ago}}) >= 10:
+        return ok
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        await db.password_resets.insert_one({"id": str(uuid.uuid4()), "ip_key": ip_key, "created_at": _now_iso(), "used": True})
+        return ok
+    if await db.password_resets.count_documents({"user_id": user["user_id"], "created_at": {"$gte": hour_ago}}) >= 3:
+        return ok
+    link = await create_reset_link(user, request, "self", ip_key)
+    first = (user.get("name") or "there").split(" ")[0]
+    await send_email([email], "Reset your FitCoach password",
+                     f"Hi {first}, use this link within an hour to choose a new password: {link}\n\nIf you didn't ask for this, ignore this email.",
+                     _email_shell("Reset your password", [f"Hi {first},", "Someone (hopefully you) asked to reset your FitCoach password. "
+                                  "The link works once, for the next hour.", "If you didn't ask for this, you can ignore this email — your password won't change."],
+                                  "Choose a new password", link))
+    return ok
+
+
+@api_router.post("/auth/reset")
+async def reset_password(payload: ResetPasswordRequest):
+    if len(payload.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    rec = await db.password_resets.find_one({"token_hash": _hash_token(payload.token or ""), "used": False}, {"_id": 0})
+    expires = _parse_dt(rec.get("expires_at")) if rec else None
+    if not rec or not expires or expires < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="This reset link has expired or was already used. Ask for a new one.")
+    user = await db.users.find_one({"user_id": rec["user_id"]}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=400, detail="This reset link is no longer valid.")
+    await db.password_resets.update_many({"user_id": user["user_id"]}, {"$set": {"used": True}})
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"password_hash": hash_password(payload.password),
+                                                                     "password_changed_at": _now_iso()}})
+    await db.login_attempts.delete_many({"identifier": {"$regex": f":{re.escape(user['email'])}$"}})
+    await push_notification(user["user_id"], "Password changed", "Your FitCoach password was just changed. If this wasn't you, contact us.", "/profile")
+    return {"ok": True, "email": user["email"]}
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: Optional[str] = None
+    new_password: str
+
+
+@api_router.get("/auth/password")
+async def password_status(user: User = Depends(get_current_user)):
+    doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0, "password_hash": 1, "google_sub": 1}) or {}
+    return {"has_password": bool(doc.get("password_hash")), "google": bool(doc.get("google_sub")),
+            "managed_by_server": user.role == "admin" and user.email == ADMIN_EMAIL}
+
+
+@api_router.put("/auth/password")
+async def change_password(payload: ChangePasswordRequest, response: Response, user: User = Depends(get_current_user)):
+    """Change your password while signed in (or add one if you joined with Google). Other devices are signed out."""
+    if user.role == "admin" and user.email == ADMIN_EMAIL:
+        raise HTTPException(status_code=400, detail="The main admin password is set with ADMIN_PASSWORD on the server")
+    if len(payload.new_password) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+    doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0, "password_hash": 1}) or {}
+    if doc.get("password_hash") and not verify_password(payload.current_password or "", doc["password_hash"]):
+        raise HTTPException(status_code=400, detail="Your current password isn't right")
+    await db.users.update_one({"user_id": user.user_id}, {"$set": {"password_hash": hash_password(payload.new_password),
+                                                                  "password_changed_at": _now_iso()}})
+    await db.password_resets.update_many({"user_id": user.user_id}, {"$set": {"used": True}})
+    token = create_access_token(user.user_id, user.email)  # keep this device signed in
+    set_access_cookie(response, token)
+    return {"ok": True, "access_token": token}
+
+
+@api_router.post("/admin/users/{target_id}/reset-link")
+async def admin_reset_link(target_id: str, request: Request, user: User = Depends(require_role("admin"))):
+    """For when email isn't set up: the admin copies the link and sends it to the person directly."""
+    target = await db.users.find_one({"user_id": target_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target["user_id"] == user.user_id:
+        raise HTTPException(status_code=400, detail="Change your own admin password with ADMIN_PASSWORD on the server")
+    return {"link": await create_reset_link(target, request, f"admin:{user.user_id}"), "expires_in_minutes": int(RESET_TTL.total_seconds() // 60)}
 
 
 @api_router.put("/profile/focus", response_model=User)
@@ -1112,7 +1240,7 @@ async def _create_booking(client_doc: dict, trainer: dict, date: str, time: str,
     else:
         await push_notification(client_doc["user_id"], "Session booked", f"With {booking.trainer_name} on {when}.", "/booking")
         await push_notification(trainer["user_id"], "New booking", f"{client_doc.get('name')} booked {when}.", "/trainer")
-    origin = str(request.base_url).rstrip("/")
+    origin = app_url(request)
     background.add_task(send_booking_emails, booking.model_dump(), origin)
     return booking
 
@@ -3545,7 +3673,7 @@ async def erase_client(user_id: str, by: str):
                         ("workout_sessions", "user_id"), ("plans", "client_id"), ("pose_checks", "client_id"), ("messages", "client_id"),
                         ("bookings", "user_id"), ("calls", "client_id"), ("notifications", "user_id"), ("dismissed_reminders", "user_id"),
                         ("push_subscriptions", "user_id"), ("ai_summaries", "client_id"), ("membership_events", "user_id"),
-                        ("consent_log", "user_id"), ("subscriptions", "user_id"), ("user_foods", "user_id"), ("referrals", "referee_id"), ("referrals", "referrer_id")]:
+                        ("consent_log", "user_id"), ("subscriptions", "user_id"), ("user_foods", "user_id"), ("password_resets", "user_id"), ("referrals", "referee_id"), ("referrals", "referrer_id")]:
         await db[coll].delete_many({field: user_id})
     await db.leads.delete_many({"email": u.get("email")})
     await db.login_attempts.delete_many({"identifier": {"$regex": f":{re.escape(u.get('email') or '')}$"}})
@@ -3894,6 +4022,8 @@ async def create_indexes():
         await db.leads.create_index([("status", 1), ("created_at", -1)])
         await db.food_logs.create_index([("user_id", 1), ("client_ref", 1)], unique=True, partialFilterExpression={"client_ref": {"$type": "string"}})
         await db.user_foods.create_index("id", unique=True)
+        await db.password_resets.create_index("token_hash")
+        await db.password_resets.create_index("expires_at")
         await db.leads.create_index("id", unique=True)
         await db.daily_logs.create_index([("user_id", 1), ("date", 1)], unique=True)
         await db.plan_templates.create_index([("coach_id", 1), ("type", 1)])

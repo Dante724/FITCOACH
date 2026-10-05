@@ -79,3 +79,55 @@ test("tapping with the app closed opens it on the right screen", async () => {
   await w.fire("notificationclick", { action: "", notification: { close: () => {}, data: { url: "/messages" } } });
   expect(w.opened).toEqual(["/messages"]);
 });
+
+// ── offline caching ─────────────────────────────────────
+function loadCachingWorker({ online = true, network = {} } = {}) {
+  const listeners = {};
+  const store = new Map();
+  const cache = { match: async (req) => store.get(req.url || req) || null, put: async (req, res) => { store.set(req.url || req, res); }, addAll: async () => {} };
+  const state = { online };
+  const context = {
+    self: { location: { href: "https://app.fitcoach.test/sw.js", origin: "https://app.fitcoach.test" }, addEventListener: (t, fn) => { listeners[t] = fn; },
+      skipWaiting: async () => {}, registration: {}, clients: { claim: async () => {} } },
+    URL, Date, JSON, Array, Boolean, Response: { error: () => ({ error: true }) },
+    caches: { keys: async () => [], open: async () => cache, match: async (req) => store.get(req.url || req) || null, delete: async () => true },
+    fetch: async (req) => {
+      if (!state.online) throw new TypeError("offline");
+      const body = network[req.url || req] || "fresh";
+      return { ok: true, body, clone() { return this; } };
+    },
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "..", "public", "sw.js"), "utf8"), context);
+  const get = async (url, mode = "no-cors") => {
+    let res;
+    listeners.fetch({ request: { url, method: "GET", mode }, respondWith: (p) => { res = p; } });
+    return res ? res : "not-handled";
+  };
+  return { get, store, state };
+}
+
+test("hashed build files come from the cache once stored", async () => {
+  const w = loadCachingWorker({ network: { "https://app.fitcoach.test/static/js/main.3f2a9c1b.js": "v1" } });
+  expect((await w.get("https://app.fitcoach.test/static/js/main.3f2a9c1b.js")).body).toBe("v1");
+  w.state.online = false;
+  expect((await w.get("https://app.fitcoach.test/static/js/main.3f2a9c1b.js")).body).toBe("v1");
+});
+
+test("unhashed files (dev bundles) always try the network first, so updates show up", async () => {
+  const w = loadCachingWorker({ network: { "https://app.fitcoach.test/static/js/bundle.js": "old" } });
+  await w.get("https://app.fitcoach.test/static/js/bundle.js");
+  w.store.set("https://app.fitcoach.test/static/js/bundle.js", { body: "old" });
+  const fresh = loadCachingWorker({ network: { "https://app.fitcoach.test/static/js/bundle.js": "new" } });
+  fresh.store.set("https://app.fitcoach.test/static/js/bundle.js", { body: "old" });
+  expect((await fresh.get("https://app.fitcoach.test/static/js/bundle.js")).body).toBe("new");
+  fresh.state.online = false;
+  expect((await fresh.get("https://app.fitcoach.test/static/js/bundle.js")).body).toBe("new"); // last good copy offline
+});
+
+test("page loads fall back to the cached app shell offline; API calls are left to the app", async () => {
+  const w = loadCachingWorker();
+  await w.get("https://app.fitcoach.test/food", "navigate");
+  w.state.online = false;
+  expect(await w.get("https://app.fitcoach.test/food", "navigate")).toBeTruthy();
+  expect(await w.get("https://api.fitcoach.test/api/food/logs")).toBe("not-handled");
+});

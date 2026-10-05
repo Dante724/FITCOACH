@@ -26,6 +26,7 @@ import AdminBilling from "@/pages/AdminBilling";
 import MembershipGate from "@/components/MembershipGate";
 import { rememberReferral } from "@/lib/membership";
 import Legal from "@/pages/Legal";
+import { ForgotPassword, ResetPassword } from "@/pages/PasswordReset";
 import { ConsentScreen } from "@/components/Privacy";
 
 const AdminLeads = lazy(() => import("@/pages/AdminLeads"));
@@ -85,6 +86,8 @@ function AppRouter() {
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/privacy" element={<Legal page="privacy" />} />
       <Route path="/terms" element={<Legal page="terms" />} />
       <Route path="/refunds" element={<Legal page="refunds" />} />

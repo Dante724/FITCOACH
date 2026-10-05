@@ -5,6 +5,7 @@ import PageHeader from "@/components/PageHeader";
 import Avatar from "@/components/Avatar";
 import { api } from "@/lib/api";
 import { useToast } from "@/context/ToastContext";
+import { useAuth } from "@/context/AuthContext";
 import { getFocus, GOAL_LABEL } from "@/lib/focus";
 
 const LEGAL_LABELS = { business_name: "BUSINESS_NAME (your full name)", business_address: "BUSINESS_ADDRESS", grievance_officer: "GRIEVANCE_OFFICER", jurisdiction_city: "JURISDICTION_CITY", contact_email: "PRIVACY_CONTACT_EMAIL" };
@@ -86,6 +87,7 @@ function AssignModal({ client, coaches, onClose, onSaved }) {
 }
 
 export default function AdminPanel() {
+  const { user: me } = useAuth();
   const { push } = useToast();
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
@@ -128,6 +130,15 @@ export default function AdminPanel() {
       push(`${u.name} is now ${role}.`, "success");
       load();
     } catch (e) { push(e?.response?.data?.detail || "Could not update role.", "error"); }
+  };
+
+  // For people who can't get the reset email: copy a one-hour link and send it to them in chat or by text.
+  const copyResetLink = async (u) => {
+    try {
+      const { link, expires_in_minutes: mins } = (await api.post(`/admin/users/${u.user_id}/reset-link`)).data;
+      try { await navigator.clipboard.writeText(link); push(`Reset link for ${u.name} copied — send it to them. It works once, for ${mins} minutes.`, "success"); }
+      catch { window.prompt(`Reset link for ${u.name} (works once, for ${mins} minutes):`, link); }
+    } catch (e) { push(e?.response?.data?.detail || "Could not create a reset link.", "error"); }
   };
 
   const setCoachType = async (u, coach_type) => {
@@ -240,6 +251,11 @@ export default function AdminPanel() {
                   <select className="field" data-testid={`role-select-${u.user_id}`} value={u.role} onChange={(e) => setRole(u, e.target.value)} style={{ padding: "8px 10px", fontSize: 13, width: 110 }} aria-label="Role">
                     {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                   </select>
+                  {u.user_id !== me?.user_id && (
+                    <button className="icon-btn" title="Copy a password reset link" aria-label={`Copy password reset link for ${u.name}`} data-testid={`reset-link-${u.user_id}`} onClick={() => copyResetLink(u)}>
+                      <Icons.KeyRound size={17} />
+                    </button>
+                  )}
                   {u.role === "client" && (<>
                     <button className={missing.length ? "btn btn-primary" : "btn btn-ghost"} data-testid={`assign-${u.user_id}`} onClick={() => setAssignFor(u)} style={{ padding: "8px 12px", fontSize: 12.5 }}>
                       <Icons.UserPlus size={14} /> Coach

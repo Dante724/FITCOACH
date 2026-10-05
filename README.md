@@ -29,6 +29,16 @@ reminders and calls. `REACT_APP_BACKEND_URL` is baked in at build time — redep
 3. Put the client ID (`…apps.googleusercontent.com`) in the API's `GOOGLE_CLIENT_ID`. The "Continue with Google"
    button appears automatically. Existing accounts with the same email are linked, not duplicated.
 
+## Passwords
+
+- **Forgot password:** "Forgot password?" on the sign-in page emails a one-time link (valid 1 hour) to choose a new
+  password. Needs the Gmail settings (`GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD`). Resetting signs out the account's other
+  devices. Links point to your website: set `APP_URL` (e.g. `https://fitcoach-web.onrender.com`), otherwise the first
+  `CORS_ORIGINS` entry is used.
+- **No email set up?** Admin Console → the key icon next to a person copies a reset link you can send them directly.
+- **Change password:** Profile → Password. People who joined with Google can add a password there too.
+- The main admin's password is always the `ADMIN_PASSWORD` setting on the server.
+
 ## Install as an app + notifications
 
 FitCoach is an installable web app (PWA) with push notifications, so calls, session reminders, messages
