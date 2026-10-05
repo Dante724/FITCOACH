@@ -80,3 +80,36 @@ def test_admin_sets_a_temporary_password(api):
     assert api.post(f"/api/admin/users/{me_admin['user_id']}/password", json={"new_password": "Whatever123"}, headers=admin).status_code == 400
     coach = bearer(login(api, "sarah.trainer@fitcoach.com", "Trainer@123"))
     assert api.post(f"/api/admin/users/{reg['user_id']}/password", json={"new_password": "Whatever123"}, headers=coach).status_code == 403
+
+
+def test_older_account_records_can_still_sign_in(api):
+    """Accounts from earlier versions stored real dates/ids; signing in must not crash on them."""
+    from datetime import datetime, timezone
+    from bson import ObjectId
+    email = f"legacy_{uuid.uuid4().hex[:6]}@example.com"
+    run(server.db.users.insert_one({
+        "user_id": f"user_{uuid.uuid4().hex[:12]}", "email": email, "name": "Legacy Admin", "role": "admin",
+        "password_hash": server.hash_password("LegacyPass123"), "created_at": datetime(2025, 3, 1, 10, 0),
+        "membership_expires_at": datetime(2026, 1, 1, tzinfo=timezone.utc), "available_days": "1,2,3",
+        "session_credits": "4", "fitness_coach_id": ObjectId(), "picture": None,
+    }))
+    r = login(api, email, "LegacyPass123")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["role"] == "admin" and body["created_at"].startswith("2025-03-01") and body["session_credits"] == 4
+    assert api.get("/api/auth/me", headers=bearer(r)).status_code == 200
+
+
+def test_admin_email_that_signed_up_as_client_becomes_admin(api, monkeypatch):
+    email = f"owner_{uuid.uuid4().hex[:6]}@example.com"
+    api.post("/api/auth/register", json={"name": "Owner", "email": email, "password": "SamePassword123", "consent": True})
+    monkeypatch.setattr(server, "ADMIN_EMAIL", email)
+    monkeypatch.setattr(server, "ADMIN_PASSWORD", "SamePassword123")  # same password → only the role needed fixing
+    try:
+        run(server.seed_roles())
+        r = login(api, email, "SamePassword123")
+        assert r.json()["role"] == "admin"
+    finally:
+        monkeypatch.setattr(server, "ADMIN_EMAIL", "admin@fitcoach.com")
+        monkeypatch.setattr(server, "ADMIN_PASSWORD", ORIGINAL)
+        run(server.seed_roles())

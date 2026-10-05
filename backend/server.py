@@ -25,7 +25,7 @@ import bcrypt
 import jwt
 import httpx
 import engine
-from pydantic import BaseModel, Field, ConfigDict, EmailStr
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -273,6 +273,41 @@ def get_client_ip(request: Request) -> str:
 # ───────────────────────────── Models ─────────────────────────────
 class User(BaseModel):
     model_config = ConfigDict(extra="ignore")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_older_records(cls, data):
+        """Accounts created by earlier versions (or edited by hand) may store dates as real dates, ids as ObjectIds or
+        lists as text. Normalise them so one odd field can never stop someone signing in."""
+        if not isinstance(data, dict):
+            return data
+        out = {}
+        for k, v in data.items():
+            if isinstance(v, datetime):
+                v = (v if v.tzinfo else v.replace(tzinfo=timezone.utc)).isoformat()
+            elif v.__class__.__name__ == "ObjectId":
+                v = str(v)
+            out[k] = v
+        expected = {"available_days": list, "available_times": list, "intake": dict, "consents": dict}
+        for k, t in expected.items():
+            if k in out and out[k] is not None and not isinstance(out[k], t):
+                out[k] = None
+        for k in ("session_credits", "max_clients"):
+            if out.get(k) is not None:
+                try:
+                    out[k] = int(out[k])
+                except (TypeError, ValueError):
+                    out[k] = None
+        if out.get("must_change_password") is not None and not isinstance(out["must_change_password"], bool):
+            out["must_change_password"] = bool(out["must_change_password"])
+        for k in ("name", "role", "picture", "focus", "specialty", "bio", "membership_plan", "membership_expires_at", "coach_type",
+                  "fitness_coach_id", "yoga_coach_id", "subscription_status", "referral_code", "created_at"):
+            if out.get(k) is not None and not isinstance(out[k], str):
+                out[k] = str(out[k])
+        if not out.get("name"):
+            out["name"] = (out.get("email") or "User").split("@")[0]
+        return out
+
     user_id: str
     email: str
     name: str
@@ -4425,7 +4460,7 @@ async def seed_roles():
                                                                           "password_changed_at": _now_iso()}})
                 logger.info("Admin password set from ADMIN_PASSWORD")
             await db.app_settings.update_one({"_id": "admin_env_password"}, {"$set": {"fingerprint": fingerprint, "at": _now_iso()}}, upsert=True)
-        elif admin.get("role") != "admin":
+        if admin.get("role") != "admin":  # e.g. the email first signed up as a client
             await db.users.update_one({"email": ADMIN_EMAIL}, {"$set": {"role": "admin"}})
 
     if not SEED_DEMO_DATA:
