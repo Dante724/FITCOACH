@@ -120,7 +120,7 @@ function PoseReviewCard({ check, canReview, onDone }) {
   return (
     <div className="clay fade-up" style={{ padding: 18 }} data-testid={`pose-review-${check.id}`}>
       <div className="grid-2" style={{ gap: 16 }}>
-        {check.snapshot ? <img src={check.snapshot} alt={`${check.pose_label} snapshot`} style={{ width: "100%", maxHeight: 420, objectFit: "contain", borderRadius: 14, background: "#11141b" }} />
+        {check.snapshot ? <img src={fileSrc(check.snapshot)} alt={`${check.pose_label} snapshot`} style={{ width: "100%", maxHeight: 420, objectFit: "contain", borderRadius: 14, background: "#11141b" }} />
           : <div className="clay-inset empty" style={{ minHeight: 200, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><Icons.ImageOff size={18} /> The client turned off photo storage</div>}
         <div className="min0">
           <div className="row" style={{ gap: 12, marginBottom: 12 }}>

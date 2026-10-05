@@ -4,6 +4,7 @@ import * as Icons from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { api } from "@/lib/api";
 import { timeAgo } from "@/lib/focus";
+import StorageCard from "@/components/StorageCard";
 
 const inr = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 const pct = (n) => (n == null ? "—" : `${n}%`);
@@ -127,6 +128,8 @@ export default function AdminInsights() {
           ))}
         </div>
       </div>
+
+      <StorageCard />
 
       <div className="clay fade-up" style={{ padding: 20 }} data-testid="coach-response">
         <div className="eyebrow" style={{ marginBottom: 4 }}>Coach response times</div>

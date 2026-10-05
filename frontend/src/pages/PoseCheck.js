@@ -4,7 +4,7 @@ import * as Icons from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import PoseCamera from "@/components/PoseCamera";
 import { ScoreRing, CheckList } from "@/components/PoseResult";
-import { api } from "@/lib/api";
+import { api, fileSrc } from "@/lib/api";
 import { POSES, POSE_KEYS, matchPose } from "@/lib/poses";
 import { timeAgo } from "@/lib/focus";
 import { useToast } from "@/context/ToastContext";
@@ -17,7 +17,7 @@ function HistoryItem({ c }) {
   const flags = reviewed ? c.coach_flags : c.flags;
   return (
     <div className="clay-inset" style={{ padding: 14, display: "flex", gap: 14, flexWrap: "wrap" }} data-testid="pose-history-item">
-      {c.snapshot ? <img src={c.snapshot} alt={`${c.pose_label} snapshot`} style={{ width: 96, height: 128, objectFit: "cover", borderRadius: 12, flexShrink: 0, background: "#11141b" }} />
+      {c.snapshot ? <img src={fileSrc(c.snapshot)} alt={`${c.pose_label} snapshot`} style={{ width: 96, height: 128, objectFit: "cover", borderRadius: 12, flexShrink: 0, background: "#11141b" }} />
         : <div style={{ width: 96, height: 128, borderRadius: 12, flexShrink: 0, background: "var(--surface-2)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-3)" }} title="Photo deleted"><Icons.ImageOff size={20} /></div>}
       <div className="min0" style={{ flex: "1 1 200px" }}>
         <div className="row" style={{ justifyContent: "space-between", marginBottom: 6 }}>

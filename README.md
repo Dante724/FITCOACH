@@ -43,6 +43,25 @@ reminders and calls. `REACT_APP_BACKEND_URL` is baked in at build time — redep
   microphone, AI noise removal and the network before a session.
 - Free-trial intro sessions wait for the coach to confirm them (switch off in Admin → Billing & payouts).
 
+## Storage & backups
+
+MongoDB Atlas's free tier holds 512 MB and has no automatic backups. (It doesn't sleep — it only pauses after 60
+days without connections, and the API connects every minute.)
+
+- **Photos, voice notes and pose snapshots** go to S3-compatible object storage when it's configured, so the
+  database only holds text and numbers. Cloudflare R2 has 10 GB free: create a bucket, create an R2 API token
+  with *Object Read & Write*, and set `S3_ENDPOINT` (`https://<account-id>.r2.cloudflarestorage.com`),
+  `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`. Files are still served through the API, so only the
+  right people can see them.
+- **Admin → Insights → Storage & backups** shows how full the database is and moves existing files out of the
+  database with one click. Admins get a notification at 80% and 95% full.
+- **Backups:** "Download backup" there any time. With object storage set up, a backup is also saved every night
+  at 03:00 IST to `backups/` in the bucket, keeping the latest 14.
+- **Restore:** `python scripts/restore_backup.py <backup.json.gz> --mongo-url "<url>" --db fitcoach` (add
+  `--replace` to overwrite an existing database).
+- For production, a paid Atlas tier (Flex or M10) adds Atlas's own continuous backups — recommended once you
+  have paying clients.
+
 ## Security note
 
 Set `CORS_ORIGINS` to your website's address. The app signs requests with a header, never a cookie, and the

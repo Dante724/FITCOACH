@@ -12,6 +12,9 @@ import logging
 import uuid
 import secrets
 import hashlib
+import gzip
+import binascii
+import base64
 from email.message import EmailMessage
 from pathlib import Path
 from typing import List, Optional
@@ -94,6 +97,67 @@ IMAGE_MIME = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "we
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
 
 
+# ── File storage: S3-compatible object storage (Cloudflare R2, Backblaze B2, AWS S3) when configured,
+# otherwise inside MongoDB. Object storage keeps the database small; files are still served through the API so
+# the same access rules apply.
+S3_ENDPOINT = os.environ.get("S3_ENDPOINT", "").strip()           # e.g. https://<account>.r2.cloudflarestorage.com
+S3_BUCKET = os.environ.get("S3_BUCKET", "").strip()
+S3_ACCESS_KEY_ID = os.environ.get("S3_ACCESS_KEY_ID", "").strip()
+S3_SECRET_ACCESS_KEY = os.environ.get("S3_SECRET_ACCESS_KEY", "").strip()
+S3_REGION = os.environ.get("S3_REGION", "auto").strip() or "auto"
+_s3_client = None
+
+
+def object_storage_enabled() -> bool:
+    return bool(S3_BUCKET and S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY)
+
+
+def _s3():
+    global _s3_client
+    if _s3_client is None:
+        import boto3
+        from botocore.config import Config
+        _s3_client = boto3.client("s3", endpoint_url=S3_ENDPOINT or None, aws_access_key_id=S3_ACCESS_KEY_ID,
+                                  aws_secret_access_key=S3_SECRET_ACCESS_KEY, region_name=S3_REGION,
+                                  config=Config(signature_version="s3v4", retries={"max_attempts": 3}))
+    return _s3_client
+
+
+async def blob_put(path: str, data: bytes, content_type: str) -> str:
+    """Save file bytes; returns where they went ("s3" or "db")."""
+    if object_storage_enabled():
+        await asyncio.to_thread(_s3().put_object, Bucket=S3_BUCKET, Key=path, Body=data, ContentType=content_type)
+        return "s3"
+    await db.file_blobs.insert_one({"storage_path": path, "data": data})
+    return "db"
+
+
+async def blob_get(path: str, store: Optional[str]) -> Optional[bytes]:
+    if store == "s3":
+        try:
+            obj = await asyncio.to_thread(_s3().get_object, Bucket=S3_BUCKET, Key=path)
+            return await asyncio.to_thread(obj["Body"].read)
+        except Exception:
+            logger.exception("Could not read %s from object storage", path)
+            return None
+    blob = await db.file_blobs.find_one({"storage_path": path})
+    return bytes(blob["data"]) if blob else None
+
+
+async def blob_delete(records: List[dict]):
+    """Delete the bytes for these file records, wherever they're stored."""
+    in_db = [r["storage_path"] for r in records if r.get("store", "db") != "s3"]
+    in_s3 = [r["storage_path"] for r in records if r.get("store") == "s3"]
+    if in_db:
+        await db.file_blobs.delete_many({"storage_path": {"$in": in_db}})
+    for i in range(0, len(in_s3), 1000):
+        chunk = in_s3[i:i + 1000]
+        try:
+            await asyncio.to_thread(_s3().delete_objects, Bucket=S3_BUCKET, Delete={"Objects": [{"Key": k} for k in chunk], "Quiet": True})
+        except Exception:
+            logger.exception("Could not delete %s files from object storage", len(chunk))
+
+
 async def store_image(file: "UploadFile", owner_id: str, kind: str) -> dict:
     """Validate an uploaded image and save it. Returns the files-registry record."""
     ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
@@ -111,7 +175,7 @@ async def store_image(file: "UploadFile", owner_id: str, kind: str) -> dict:
         "content_type": content_type, "size": len(data), "kind": kind, "is_deleted": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    await db.file_blobs.insert_one({"storage_path": path, "data": data})
+    record["store"] = await blob_put(path, data, content_type)
     await db.files.insert_one(dict(record))
     record.pop("_id", None)
     return record
@@ -141,7 +205,7 @@ async def store_voice(file: "UploadFile", owner_id: str, allowed: List[str]) -> 
         "content_type": AUDIO_MIME[ext], "size": len(data), "kind": "voice", "allowed": allowed, "is_deleted": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    await db.file_blobs.insert_one({"storage_path": path, "data": data})
+    record["store"] = await blob_put(path, data, AUDIO_MIME[ext])
     await db.files.insert_one(dict(record))
     record.pop("_id", None)
     return record
@@ -1152,10 +1216,10 @@ async def serve_file(path: str,
         owner_doc = await db.users.find_one({"user_id": owner}, {"_id": 0, "fitness_coach_id": 1, "yoga_coach_id": 1}) or {}
         if viewer.user_id not in (owner_doc.get("fitness_coach_id"), owner_doc.get("yoga_coach_id")):
             raise HTTPException(status_code=404, detail="File not found")
-    blob = await db.file_blobs.find_one({"storage_path": path})
-    if not blob:
+    data = await blob_get(path, record.get("store"))
+    if data is None:
         raise HTTPException(status_code=404, detail="File not found")
-    return Response(content=bytes(blob["data"]), media_type=record.get("content_type", "application/octet-stream"),
+    return Response(content=data, media_type=record.get("content_type", "application/octet-stream"),
                     headers={"Cache-Control": "private, max-age=3600"})
 
 
@@ -1678,8 +1742,10 @@ async def delete_progress_photo(photo_id: str, user: User = Depends(get_current_
         raise HTTPException(status_code=404, detail="Photo not found")
     await db.progress_photos.update_one({"id": photo_id, "user_id": user.user_id}, {"$set": {"is_deleted": True}})
     if photo.get("storage_path"):
+        rec = await db.files.find_one({"storage_path": photo["storage_path"]}, {"_id": 0, "storage_path": 1, "store": 1})
         await db.files.update_one({"storage_path": photo["storage_path"]}, {"$set": {"is_deleted": True}})
-        await db.file_blobs.delete_one({"storage_path": photo["storage_path"]})
+        if rec:
+            await blob_delete([rec])
     return {"ok": True}
 
 
@@ -2721,6 +2787,17 @@ async def create_pose_check(payload: PoseCheckCreate, user: User = Depends(requi
         raise HTTPException(status_code=400, detail="Invalid snapshot")
     if len(snap) > MAX_SNAPSHOT_CHARS:
         raise HTTPException(status_code=400, detail="Snapshot is too large")
+    # Keep the image as a file (object storage when configured) rather than inside the database record.
+    mime, b64 = snap[5:].split(";base64,", 1)
+    try:
+        img = base64.b64decode(b64, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid snapshot")
+    snap_path = f"pose/{user.user_id}/{uuid.uuid4().hex}.{ {'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp'}[mime] }"
+    store = await blob_put(snap_path, img, mime)
+    await db.files.insert_one({"id": str(uuid.uuid4()), "storage_path": snap_path, "owner_id": user.user_id, "original_filename": "pose-snapshot",
+                               "content_type": mime, "size": len(img), "kind": "pose", "store": store, "is_deleted": False,
+                               "created_at": _now_iso()})
     checks = [{"id": _txt(c.get("id"), 40), "label": _txt(c.get("label"), 60), "ok": bool(c.get("ok")),
                "value": _num(c.get("value"), 1000), "unit": _txt(c.get("unit"), 4), "cue": _txt(c.get("cue"), 160) or None}
               for c in payload.checks[:12] if isinstance(c, dict)]
@@ -2728,7 +2805,7 @@ async def create_pose_check(payload: PoseCheckCreate, user: User = Depends(requi
         "id": str(uuid.uuid4()), "client_id": user.user_id, "client_name": user.name, "coach_id": user.yoga_coach_id,
         "pose": _txt(payload.pose, 30), "pose_label": _txt(payload.pose_label, 60),
         "score": max(0, min(100, payload.score)), "checks": checks, "flags": [_txt(f, 160) for f in payload.flags[:8] if _txt(f, 160)],
-        "snapshot": snap, "frames": payload.frames, "plan_id": payload.plan_id, "status": "pending",
+        "snapshot": file_url(snap_path), "snapshot_path": snap_path, "frames": payload.frames, "plan_id": payload.plan_id, "status": "pending",
         "coach_verdict": None, "coach_flags": None, "coach_score": None, "coach_note": None,
         "created_at": datetime.now(timezone.utc).isoformat(), "reviewed_at": None,
     }
@@ -3710,16 +3787,15 @@ async def require_photo_consent(user: User):
 
 
 async def _delete_files(query: dict) -> int:
-    files = await db.files.find(query, {"_id": 0, "storage_path": 1}).to_list(5000)
-    paths = [f["storage_path"] for f in files]
-    if paths:
-        await db.file_blobs.delete_many({"storage_path": {"$in": paths}})
-        await db.files.delete_many({"storage_path": {"$in": paths}})
-    return len(paths)
+    files = await db.files.find(query, {"_id": 0, "storage_path": 1, "store": 1}).to_list(5000)
+    if files:
+        await blob_delete(files)
+        await db.files.delete_many({"storage_path": {"$in": [f["storage_path"] for f in files]}})
+    return len(files)
 
 
 async def _erase_photos(user_id: str) -> int:
-    n = await _delete_files({"owner_id": user_id, "kind": "progress"})
+    n = await _delete_files({"owner_id": user_id, "kind": {"$in": ["progress", "pose"]}})
     await db.progress_photos.delete_many({"user_id": user_id})
     await db.pose_checks.update_many({"client_id": user_id, "snapshot": {"$ne": None}}, {"$set": {"snapshot": None, "snapshot_removed": True}})
     return n
@@ -4052,6 +4128,130 @@ async def admin_insights(user: User = Depends(require_role("admin"))):
     }
 
 
+# ───────────────────────────── Storage, backups ─────────────────────────────
+DB_STORAGE_LIMIT_MB = int(os.environ.get("DB_STORAGE_LIMIT_MB", "512") or 512)  # MongoDB Atlas free tier = 512 MB
+BACKUP_KEEP = 14
+SKIP_IN_BACKUP = {"file_blobs", "call_signals"}  # file bytes are backed up separately; call signals are throwaway
+
+
+async def storage_report() -> dict:
+    """How full the database is, where files live, and the last automatic backup."""
+    files = await db.files.find({"is_deleted": False}, {"_id": 0, "size": 1, "store": 1}).to_list(200000)
+    in_db = [f for f in files if f.get("store", "db") != "s3"]
+    in_s3 = [f for f in files if f.get("store") == "s3"]
+    estimated = False
+    try:
+        st = await db.command("dbStats")
+        used = int(st.get("dataSize", 0) + st.get("indexSize", 0))
+    except Exception:  # some local/test databases don't support dbStats
+        estimated = True
+        used = sum(int(f.get("size") or 0) for f in in_db)
+        for name in await db.list_collection_names():
+            if name != "file_blobs":
+                used += await db[name].count_documents({}) * 1024
+    limit = DB_STORAGE_LIMIT_MB * 1024 * 1024
+    backup = await db.app_settings.find_one({"_id": "backup_status"}, {"_id": 0}) or {}
+    return {"used_bytes": used, "limit_bytes": limit, "pct": round(100 * used / limit, 1) if limit else None, "estimated": estimated,
+            "files_in_db": len(in_db), "files_in_db_bytes": sum(int(f.get("size") or 0) for f in in_db),
+            "files_in_storage": len(in_s3), "files_in_storage_bytes": sum(int(f.get("size") or 0) for f in in_s3),
+            "object_storage": object_storage_enabled(), "backup": backup}
+
+
+@api_router.get("/admin/storage")
+async def admin_storage(user: User = Depends(require_role("admin"))):
+    return await storage_report()
+
+
+@api_router.post("/admin/storage/migrate")
+async def admin_migrate_files(limit: int = 200, user: User = Depends(require_role("admin"))):
+    """Move photos and voice notes out of the database into object storage, a batch at a time."""
+    if not object_storage_enabled():
+        raise HTTPException(status_code=400, detail="Set up object storage first (S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY)")
+    moved = failed = 0
+    for rec in await db.files.find({"store": {"$ne": "s3"}}, {"_id": 0}).to_list(max(1, min(limit, 500))):
+        blob = await db.file_blobs.find_one({"storage_path": rec["storage_path"]})
+        if not blob:
+            await db.files.update_one({"storage_path": rec["storage_path"]}, {"$set": {"store": "missing"}})
+            continue
+        try:
+            await asyncio.to_thread(_s3().put_object, Bucket=S3_BUCKET, Key=rec["storage_path"], Body=bytes(blob["data"]),
+                                    ContentType=rec.get("content_type") or "application/octet-stream")
+        except Exception:
+            logger.exception("Could not move %s to object storage", rec["storage_path"])
+            failed += 1
+            continue
+        await db.files.update_one({"storage_path": rec["storage_path"]}, {"$set": {"store": "s3"}})
+        await db.file_blobs.delete_one({"storage_path": rec["storage_path"]})
+        moved += 1
+    remaining = await db.files.count_documents({"store": {"$nin": ["s3", "missing"]}})
+    return {"moved": moved, "failed": failed, "remaining": remaining}
+
+
+async def build_backup(include_files: bool = False) -> bytes:
+    """Every collection as MongoDB Extended JSON, gzipped. Restore with backend/scripts/restore_backup.py."""
+    from bson import json_util
+    out = {"app": "fitcoach", "version": 1, "created_at": _now_iso(), "collections": {}}
+    for name in sorted(await db.list_collection_names()):
+        if name in SKIP_IN_BACKUP and not (include_files and name == "file_blobs"):
+            continue
+        out["collections"][name] = await db[name].find({}).to_list(None)
+    return gzip.compress(json_util.dumps(out).encode("utf-8"))
+
+
+@api_router.get("/admin/backup")
+async def admin_download_backup(include_files: bool = False, user: User = Depends(require_role("admin"))):
+    data = await build_backup(include_files)
+    name = f"fitcoach-backup-{datetime.now(APP_TZ).strftime('%Y-%m-%d-%H%M')}{'-with-files' if include_files else ''}.json.gz"
+    await db.app_settings.update_one({"_id": "backup_status"}, {"$set": {"last_download_at": _now_iso(), "last_download_by": user.name}}, upsert=True)
+    return Response(content=data, media_type="application/gzip", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+async def backup_to_storage() -> Optional[dict]:
+    """Nightly: save a backup to object storage and keep the newest 14."""
+    if not object_storage_enabled():
+        return None
+    status = {"last_attempt_at": _now_iso()}
+    try:
+        data = await build_backup()
+        key = f"backups/fitcoach-{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H%M%SZ')}.json.gz"
+        await asyncio.to_thread(_s3().put_object, Bucket=S3_BUCKET, Key=key, Body=data, ContentType="application/gzip")
+        listing = await asyncio.to_thread(_s3().list_objects_v2, Bucket=S3_BUCKET, Prefix="backups/")
+        keys = sorted(o["Key"] for o in listing.get("Contents", []))
+        old = keys[:-BACKUP_KEEP]
+        if old:
+            await asyncio.to_thread(_s3().delete_objects, Bucket=S3_BUCKET, Delete={"Objects": [{"Key": k} for k in old], "Quiet": True})
+        status.update({"last_backup_at": _now_iso(), "last_backup_key": key, "last_backup_bytes": len(data), "kept": min(len(keys), BACKUP_KEEP), "error": None})
+    except Exception as e:
+        logger.exception("Automatic backup failed")
+        status["error"] = str(e)[:200]
+    await db.app_settings.update_one({"_id": "backup_status"}, {"$set": status}, upsert=True)
+    return status
+
+
+@api_router.post("/admin/backup/run")
+async def admin_run_backup(user: User = Depends(require_role("admin"))):
+    if not object_storage_enabled():
+        raise HTTPException(status_code=400, detail="Automatic backups need object storage (S3_BUCKET etc.). You can still download a backup.")
+    return await backup_to_storage()
+
+
+async def storage_watch():
+    """Daily: warn admins before the database fills up."""
+    rep_ = await storage_report()
+    pct = rep_["pct"] or 0
+    level = 95 if pct >= 95 else 80 if pct >= 80 else 0
+    if not level:
+        return
+    today = datetime.now(APP_TZ).date().isoformat()
+    mark = await db.app_settings.find_one({"_id": "storage_alert"}) or {}
+    if mark.get("date") == today and mark.get("level") == level:
+        return
+    await db.app_settings.update_one({"_id": "storage_alert"}, {"$set": {"date": today, "level": level}}, upsert=True)
+    tip = "Move files to object storage in Insights" if rep_["files_in_db"] else "Upgrade your MongoDB plan"
+    async for admin in db.users.find({"role": "admin"}, {"_id": 0, "user_id": 1}):
+        await push_notification(admin["user_id"], f"Database {pct:.0f}% full", f"{tip} before uploads start failing.", "/admin/insights")
+
+
 @api_router.get("/admin/email/status")
 async def admin_email_status(user: User = Depends(require_role("admin"))):
     return {
@@ -4164,6 +4364,8 @@ def _start_scheduler():
         _scheduler.add_job(send_session_alerts, "interval", minutes=1, id="session_alerts", replace_existing=True)
         _scheduler.add_job(send_membership_reminders, "interval", minutes=30, id="membership_reminders", replace_existing=True)
         _scheduler.add_job(purge_old_leads, "interval", hours=24, id="purge_leads", replace_existing=True)
+        _scheduler.add_job(backup_to_storage, "cron", hour=21, minute=30, id="nightly_backup", replace_existing=True)  # 03:00 IST
+        _scheduler.add_job(storage_watch, "interval", hours=12, id="storage_watch", replace_existing=True)
         _scheduler.start()
         logger.info("Reminder scheduler started (email_configured=%s)", email_configured())
     except Exception:
