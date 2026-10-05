@@ -4,6 +4,7 @@ import * as Icons from "lucide-react";
 import { api } from "@/lib/api";
 import useCall from "@/lib/useCall";
 import { initials } from "@/lib/focus";
+import { NOISE_LABEL } from "@/lib/noise";
 
 function Video({ stream, muted, mirror, className, testid }) {
   const ref = useRef(null);
@@ -16,6 +17,15 @@ function Timer({ since }) {
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
   const s = Math.max(0, Math.floor((now - since) / 1000));
   return <span style={{ fontVariantNumeric: "tabular-nums" }}>{String(Math.floor(s / 60)).padStart(2, "0")}:{String(s % 60).padStart(2, "0")}</span>;
+}
+
+function QualityBars({ level }) {
+  const n = { good: 3, fair: 2, poor: 1 }[level] || 0;
+  return (
+    <span aria-hidden="true" style={{ display: "inline-flex", alignItems: "flex-end", gap: 2, height: 12 }}>
+      {[5, 8, 12].map((h, i) => <span key={h} style={{ width: 3, height: h, borderRadius: 1, background: "currentColor", opacity: i < n ? 1 : 0.3 }} />)}
+    </span>
+  );
 }
 
 function CtrlBtn({ on = true, danger, label, onClick, children, testid }) {
@@ -74,7 +84,14 @@ function CallRoom({ callId }) {
               </div>
             </div>
           </div>
-          {c.noiseCancel && <span className="call-chip"><Icons.AudioLines size={13} /> Noise cancellation on</span>}
+          <div className="row" style={{ gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            {c.phase === "connected" && c.quality && (
+              <span className={`call-chip q-${c.quality}`} data-testid="call-quality" title={c.viaRelay ? "Connected through a relay server" : "Direct connection"}>
+                <QualityBars level={c.quality} /> {{ good: "Good connection", fair: "Fair connection", poor: "Weak connection" }[c.quality]}
+              </span>
+            )}
+            <span className="call-chip" data-testid="noise-chip"><Icons.AudioLines size={13} /> {NOISE_LABEL[c.noiseMode]}</span>
+          </div>
         </div>
 
         {c.localStream && !done && (
@@ -85,6 +102,12 @@ function CallRoom({ callId }) {
           </div>
         )}
 
+        {c.phase === "connected" && c.quality === "poor" && c.cam && !done && (
+          <div className="call-note" data-testid="weak-hint">
+            <Icons.WifiOff size={14} /> Weak connection. Turning your camera off keeps the voice clear.
+            <button className="btn btn-ghost" onClick={c.toggleCam} style={{ padding: "4px 10px", fontSize: 12, marginLeft: 8, color: "inherit", borderColor: "currentColor" }}>Camera off</button>
+          </div>
+        )}
         {c.deviceNotes.length > 0 && !done && (
           <div className="call-note">
             <Icons.TriangleAlert size={14} /> We couldn't use your {c.deviceNotes.join(" or ")}. Check your browser's permissions — {c.deviceNotes.includes("microphone") ? "they won't hear you" : "you're on audio only"}.
@@ -96,7 +119,7 @@ function CallRoom({ callId }) {
         <div className="call-bar">
           <CtrlBtn on={c.mic} label={c.mic ? "Mute" : "Unmute"} onClick={c.toggleMic} testid="call-mic">{c.mic ? <Icons.Mic size={20} /> : <Icons.MicOff size={20} />}</CtrlBtn>
           <CtrlBtn on={c.cam} label={c.cam ? "Camera off" : "Camera on"} onClick={c.toggleCam} testid="call-cam">{c.cam ? <Icons.Video size={20} /> : <Icons.VideoOff size={20} />}</CtrlBtn>
-          <CtrlBtn on={c.noiseCancel} label={c.noiseCancel ? "Noise cancel on" : "Noise cancel off"} onClick={c.toggleNoiseCancel} testid="call-nc"><Icons.AudioLines size={20} /></CtrlBtn>
+          <CtrlBtn on={c.noiseMode !== "off"} label={{ ai: "AI noise: on", standard: "Noise: basic", off: "Noise: off" }[c.noiseMode]} onClick={c.cycleNoise} testid="call-nc"><Icons.AudioLines size={20} /></CtrlBtn>
           {isMobile && <CtrlBtn label="Flip" onClick={c.flipCamera} testid="call-flip"><Icons.SwitchCamera size={20} /></CtrlBtn>}
           <CtrlBtn danger label="End" onClick={leave} testid="call-end"><Icons.PhoneOff size={20} /></CtrlBtn>
         </div>

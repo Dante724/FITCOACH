@@ -1,21 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, API, authHeaders } from "@/lib/api";
+import { aiNoiseSupported, getMic, NOISE_MODES } from "@/lib/noise";
+import { rateQuality } from "@/lib/callQuality";
 
-// In-app 1:1 video calls over WebRTC. Media goes browser-to-browser; our API only relays
-// offer/answer/ICE messages and presence. The coach always makes the offer, so the two sides
-// never race; every offer carries an `attempt` id so late messages from an old attempt are ignored.
+// In-app 1:1 video calls over WebRTC. Media goes browser-to-browser (or through a TURN relay on networks that
+// block direct connections); our API only relays offer/answer/ICE messages and presence. The coach always makes
+// the offer, so the two sides never race; every offer carries an `attempt` id so late messages from an old
+// attempt are ignored. Dropped connections are repaired with an ICE restart, and the microphone is cleaned by
+// on-device AI noise removal (see lib/noise.js).
 
 const POLL_MS = 1000;
 // Leaving is deferred briefly so a quick remount of the same call (React dev mode, route refresh) doesn't end it.
 const pendingLeave = {};
 const RING_TIMEOUT_MS = 45000;
+const RESTART_AFTER_MS = 4000; // a "disconnected" link that doesn't recover by itself gets an ICE restart
 
-export const audioConstraints = (noiseCancel) => ({
-  echoCancellation: true,
-  noiseSuppression: noiseCancel,
-  autoGainControl: true,
-  channelCount: 1,
-});
 const videoConstraints = (facingMode) => ({ facingMode, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } });
 
 // A "camera unavailable" card so the other side still sees who they're talking to.
@@ -36,50 +35,64 @@ function placeholderTrack(name) {
   return track;
 }
 
-async function getMedia(noiseCancel, facingMode, name) {
+async function getMedia(noiseMode, facingMode, name) {
   const notes = [];
-  let stream;
+  const stream = new MediaStream();
+  let mic = null;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints(noiseCancel), video: videoConstraints(facingMode) });
+    mic = await getMic(noiseMode);
+    stream.addTrack(mic.track);
   } catch {
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints(noiseCancel) });
-      notes.push("camera");
-    } catch {
-      stream = new MediaStream();
-      notes.push("camera", "microphone");
-    }
+    notes.push("microphone");
   }
-  if (!stream.getVideoTracks().length) stream.addTrack(placeholderTrack(name));
-  return { stream, notes };
+  try {
+    const v = await navigator.mediaDevices.getUserMedia({ video: videoConstraints(facingMode) });
+    stream.addTrack(v.getVideoTracks()[0]);
+  } catch {
+    notes.push("camera");
+    stream.addTrack(placeholderTrack(name));
+  }
+  return { stream, notes, mic };
 }
 
 export default function useCall(callId) {
   const [call, setCall] = useState(null);
-  const [phase, setPhase] = useState("init"); // init | ringing | waiting | connecting | connected | reconnecting | declined | noanswer | ended | error
+  const [phase, setPhase] = useState("init"); // init | ringing | waiting | connecting | connected | reconnecting | left | declined | noanswer | ended | error
   const [error, setError] = useState("");
   const [deviceNotes, setDeviceNotes] = useState([]);
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
   const [mic, setMic] = useState(true);
   const [cam, setCam] = useState(true);
-  const [noiseCancel, setNoiseCancel] = useState(true);
+  const [noiseMode, setNoiseModeState] = useState(aiNoiseSupported() ? "ai" : "standard");
   const [facing, setFacing] = useState("user");
   const [connectedAt, setConnectedAt] = useState(null);
   const [relay, setRelay] = useState(false);
+  const [quality, setQuality] = useState(null); // good | fair | poor
+  const [viaRelay, setViaRelay] = useState(false);
 
-  const r = useRef({ pc: null, attempt: null, queued: {}, ice: [], local: null, remote: null, role: null, polling: false, run: null, peerPresent: false, lastOfferAt: 0, startedAt: Date.now() });
+  const r = useRef({ pc: null, attempt: null, queued: {}, ice: [], local: null, remote: null, role: null, polling: false, run: null,
+    peerPresent: false, lastOfferAt: 0, startedAt: Date.now(), mic: null, restartTimer: null, lastLoss: null });
 
   const offerRef = useRef(null);
   const signal = useCallback((type, payload) => api.post(`/calls/${callId}/signal`, { type, payload }).catch(() => {}), [callId]);
 
   const closePc = useCallback(() => {
     const st = r.current;
+    clearTimeout(st.restartTimer);
     if (st.pc) { st.pc.ontrack = st.pc.onicecandidate = st.pc.onconnectionstatechange = null; st.pc.close(); }
     st.pc = null;
     st.remote = null;
     setRemoteStream(null);
   }, []);
+
+  // Ask for a fresh connection: the coach restarts ICE; the client asks the coach to.
+  const repair = useCallback(() => {
+    const st = r.current;
+    if (!st.run) return;
+    if (st.role === "offerer") offerRef.current?.(true);
+    else signal("ready", { repair: true });
+  }, [signal]);
 
   const createPc = useCallback((attempt) => {
     const st = r.current;
@@ -89,6 +102,14 @@ export default function useCall(callId) {
     st.pc = pc;
     st.local.getTracks().forEach((t) => pc.addTrack(t, st.local));
     if (!st.local.getAudioTracks().length) pc.addTransceiver("audio", { direction: "recvonly" });
+    // Voice matters more than picture: ask the network to prioritise audio packets.
+    pc.getSenders().forEach((s) => {
+      if (s.track?.kind !== "audio" || !s.getParameters) return;
+      try {
+        const p = s.getParameters();
+        if (p.encodings?.length) { p.encodings.forEach((e) => { e.priority = "high"; e.networkPriority = "high"; }); s.setParameters(p).catch(() => {}); }
+      } catch { /* not supported */ }
+    });
     pc.ontrack = (e) => {
       if (!st.remote) st.remote = new MediaStream();
       if (!st.remote.getTracks().includes(e.track)) st.remote.addTrack(e.track);
@@ -98,15 +119,18 @@ export default function useCall(callId) {
     pc.onconnectionstatechange = () => {
       if (st.pc !== pc) return;
       const s = pc.connectionState;
+      clearTimeout(st.restartTimer);
       if (s === "connected") { setPhase("connected"); setConnectedAt((t) => t || Date.now()); }
-      else if (s === "disconnected") setPhase("reconnecting");
-      else if (s === "failed") {
+      else if (s === "disconnected") {
         setPhase("reconnecting");
-        if (st.role === "offerer") offerRef.current?.(true);
+        st.restartTimer = setTimeout(() => { if (st.pc === pc && pc.connectionState !== "connected") repair(); }, RESTART_AFTER_MS);
+      } else if (s === "failed") {
+        setPhase("reconnecting");
+        repair();
       }
     };
     return pc;
-  }, [closePc, signal]);
+  }, [closePc, signal, repair]);
 
   const drainIce = useCallback(async (pc) => {
     const list = r.current.queued[pc.attempt] || [];
@@ -131,7 +155,7 @@ export default function useCall(callId) {
     const p = msg.payload || {};
     if (msg.type === "offer" && st.role === "answerer") {
       const pc = createPc(p.attempt);
-      setPhase("connecting");
+      setPhase((ph) => (ph === "connected" ? "reconnecting" : "connecting"));
       await pc.setRemoteDescription({ type: "offer", sdp: p.sdp });
       await drainIce(pc);
       const answer = await pc.createAnswer();
@@ -151,10 +175,11 @@ export default function useCall(callId) {
         (st.queued[p.attempt] = st.queued[p.attempt] || []).push(p.candidate);
       }
     } else if (msg.type === "ready" && st.role === "offerer") {
-      await makeOffer();
+      await makeOffer(Boolean(p.repair));
     } else if (msg.type === "bye") {
       closePc();
       setConnectedAt(null);
+      setQuality(null);
       setPhase(p.reason === "declined" ? "declined" : "left");
     }
   }, [createPc, drainIce, makeOffer, signal, closePc]);
@@ -168,6 +193,7 @@ export default function useCall(callId) {
     const alive = () => st.run === run;
     clearTimeout(pendingLeave[callId]);
     let timer;
+    let statsTimer;
     (async () => {
       try {
         const [{ data: info }, { data: ice }] = await Promise.all([api.get(`/calls/${callId}`), api.get("/calls/ice")]);
@@ -175,9 +201,11 @@ export default function useCall(callId) {
         st.role = info.role;
         setRelay(ice.relay);
         setCall(info);
-        const { stream, notes } = await getMedia(true, "user", info.me === info.coach_id ? info.coach_name : info.client_name);
-        if (!alive()) { stream.getTracks().forEach((t) => t.stop()); return; }
+        const { stream, notes, mic: micInfo } = await getMedia(aiNoiseSupported() ? "ai" : "standard", "user", info.me === info.coach_id ? info.coach_name : info.client_name);
+        if (!alive()) { stream.getTracks().forEach((t) => t.stop()); micInfo?.raw?.stop(); micInfo?.suppressor?.stop(); return; }
         st.local = stream;
+        st.mic = micInfo;
+        if (micInfo) setNoiseModeState(micInfo.mode);
         setLocalStream(stream);
         setDeviceNotes(notes);
         if (notes.includes("camera")) setCam(false);
@@ -210,22 +238,53 @@ export default function useCall(callId) {
         };
         timer = setInterval(poll, POLL_MS);
         poll();
+
+        // Connection quality, every 2 s.
+        statsTimer = setInterval(async () => {
+          const pc = st.pc;
+          if (!pc || pc.connectionState !== "connected") return;
+          try {
+            const stats = await pc.getStats();
+            let rtt = null; let localId = null; let lost = 0; let received = 0;
+            stats.forEach((s) => {
+              if (s.type === "candidate-pair" && s.state === "succeeded" && (s.nominated || s.selected)) {
+                if (s.currentRoundTripTime != null) rtt = s.currentRoundTripTime;
+                localId = s.localCandidateId;
+              }
+              if (s.type === "inbound-rtp" && !s.isRemote) { lost += s.packetsLost || 0; received += s.packetsReceived || 0; }
+            });
+            const prev = st.lastLoss;
+            st.lastLoss = { lost, received };
+            const dl = prev ? lost - prev.lost : 0;
+            const dr = prev ? received - prev.received : 0;
+            const lossRate = prev && dl + dr > 0 ? Math.max(0, dl) / (dl + dr) : null;
+            setQuality(rateQuality(rtt, lossRate));
+            setViaRelay(localId ? stats.get(localId)?.candidateType === "relay" : false);
+          } catch { /* stats unavailable */ }
+        }, 2000);
       } catch (e) {
         setError(e?.response?.data?.detail || "Couldn't start the call.");
         setPhase("error");
       }
     })();
 
+    // Phone switched from Wi-Fi to mobile data (or back): repair the connection straight away.
+    const onOnline = () => { if (st.pc) repair(); };
+    window.addEventListener("online", onOnline);
     const leaveBeacon = () => {
-      fetch(`${API}/calls/${callId}/leave`, { method: "POST", credentials: "include", keepalive: true, headers: authHeaders() }).catch(() => {});
+      fetch(`${API}/calls/${callId}/leave`, { method: "POST", keepalive: true, headers: authHeaders() }).catch(() => {});
     };
     window.addEventListener("pagehide", leaveBeacon);
     return () => {
       if (st.run === run) st.run = null;
       clearInterval(timer);
+      clearInterval(statsTimer);
+      window.removeEventListener("online", onOnline);
       window.removeEventListener("pagehide", leaveBeacon);
       closePc();
       st.local?.getTracks().forEach((t) => t.stop());
+      st.mic?.raw?.stop();
+      st.mic?.suppressor?.stop();
       pendingLeave[callId] = setTimeout(leaveBeacon, 600);
     };
   }, [callId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -233,7 +292,7 @@ export default function useCall(callId) {
   const replaceTrack = async (kind, track) => {
     const st = r.current;
     const old = st.local.getTracks().find((t) => t.kind === kind);
-    const sender = st.pc?.getSenders().find((s) => s.track?.kind === kind);
+    const sender = st.pc?.getSenders().find((s) => s.track?.kind === kind) || st.pc?.getSenders().find((s) => !s.track);
     if (sender) await sender.replaceTrack(track);
     if (old) { st.local.removeTrack(old); old.stop(); }
     st.local.addTrack(track);
@@ -241,9 +300,11 @@ export default function useCall(callId) {
   };
 
   const toggleMic = () => {
-    const t = r.current.local?.getAudioTracks()[0];
+    const st = r.current;
+    const t = st.local?.getAudioTracks()[0];
     if (!t) return;
     t.enabled = !t.enabled;
+    if (st.mic?.raw && st.mic.raw !== t) st.mic.raw.enabled = t.enabled;
     setMic(t.enabled);
   };
 
@@ -254,16 +315,25 @@ export default function useCall(callId) {
     setCam(t.enabled);
   };
 
-  // Re-acquire the microphone with noise suppression on/off and hot-swap it into the call.
-  const toggleNoiseCancel = async () => {
-    const next = !noiseCancel;
+  // Switch noise handling (AI → basic → off) and hot-swap the microphone into the call without reconnecting.
+  const setNoiseMode = async (mode) => {
+    const st = r.current;
+    if (!st.local) return;
     try {
-      const s = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints(next) });
-      const track = s.getAudioTracks()[0];
-      track.enabled = mic;
-      await replaceTrack("audio", track);
-      setNoiseCancel(next);
-    } catch { /* keep current track */ }
+      const next = await getMic(mode);
+      next.track.enabled = mic;
+      if (next.raw !== next.track) next.raw.enabled = mic;
+      const prev = st.mic;
+      await replaceTrack("audio", next.track);
+      prev?.raw?.stop();
+      prev?.suppressor?.stop();
+      st.mic = next;
+      setNoiseModeState(next.mode);
+    } catch { /* keep the current microphone */ }
+  };
+  const cycleNoise = () => {
+    const modes = aiNoiseSupported() ? NOISE_MODES : NOISE_MODES.filter((m) => m !== "ai");
+    setNoiseMode(modes[(modes.indexOf(noiseMode) + 1) % modes.length]);
   };
 
   const flipCamera = async () => {
@@ -282,10 +352,12 @@ export default function useCall(callId) {
     st.run = null;
     closePc();
     st.local?.getTracks().forEach((t) => t.stop());
+    st.mic?.raw?.stop();
+    st.mic?.suppressor?.stop();
     await api.post(`/calls/${callId}/leave`).catch(() => {});
     setPhase("ended");
   };
 
-  return { call, phase, error, deviceNotes, localStream, remoteStream, mic, cam, noiseCancel, facing, connectedAt, relay,
-    toggleMic, toggleCam, toggleNoiseCancel, flipCamera, hangUp };
+  return { call, phase, error, deviceNotes, localStream, remoteStream, mic, cam, noiseMode, noiseCancel: noiseMode !== "off", facing,
+    connectedAt, relay, quality, viaRelay, toggleMic, toggleCam, setNoiseMode, cycleNoise, flipCamera, hangUp };
 }

@@ -29,6 +29,26 @@ reminders and calls. `REACT_APP_BACKEND_URL` is baked in at build time — redep
 3. Put the client ID (`…apps.googleusercontent.com`) in the API's `GOOGLE_CLIENT_ID`. The "Continue with Google"
    button appears automatically. Existing accounts with the same email are linked, not duplicated.
 
+## Video calls
+
+- Calls run inside the app (WebRTC): booked sessions and instant "Call now". The microphone is cleaned by
+  **on-device AI noise removal** (RNNoise) — fans, traffic and kitchen noise are removed before audio leaves the
+  phone; people can switch to the basic filter or off during a call. Dropped connections repair themselves, and
+  both sides see connection quality, with a hint to turn the camera off on weak networks.
+- **Set up a relay (TURN)** — without one, some mobile and office networks can't connect calls at all. Easiest is a
+  managed relay with a free tier: set `METERED_DOMAIN` + `METERED_API_KEY` (metered.ca) or
+  `CLOUDFLARE_TURN_KEY_ID` + `CLOUDFLARE_TURN_API_TOKEN` on the API service. `TURN_URLS`/`TURN_USERNAME`/
+  `TURN_CREDENTIAL` work for your own server. Credentials are fetched server-side and cached.
+- **Test call setup** (`/call-check`, linked from Booking, the dashboard and the coach menu) checks camera,
+  microphone, AI noise removal and the network before a session.
+- Free-trial intro sessions wait for the coach to confirm them (switch off in Admin → Billing & payouts).
+
+## Security note
+
+Set `CORS_ORIGINS` to your website's address. The app signs requests with a header, never a cookie, and the
+server only honours the login cookie for requests from your own site — so other websites can't act as a signed-in
+user even if `CORS_ORIGINS` is missing.
+
 ## Passwords
 
 - **Forgot password:** "Forgot password?" on the sign-in page emails a one-time link (valid 1 hour) to choose a new

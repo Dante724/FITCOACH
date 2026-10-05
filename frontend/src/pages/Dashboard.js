@@ -9,6 +9,7 @@ import { startCall } from "@/lib/calls";
 import { useMembership, membershipNotice } from "@/lib/membership";
 import { useToast } from "@/context/ToastContext";
 import TodayCard from "@/components/TodayCard";
+import InstallPrompt from "@/components/InstallPrompt";
 
 function StatCard({ icon: Icon, label, value, unit, accent, delay }) {
   return (
@@ -136,6 +137,7 @@ export default function Dashboard() {
 
   return (
     <div>
+      <InstallPrompt />
       <div className="hero-band fade-up" data-testid="client-hero">
         <div className="min0">
           <div className="eyebrow">{new Date().toLocaleDateString("en-IN", { weekday: "long", month: "long", day: "numeric" })}</div>
@@ -154,7 +156,10 @@ export default function Dashboard() {
             <>
               <div style={{ fontFamily: "var(--serif)", fontSize: 21 }}>{nextLabel}</div>
               <div style={{ fontSize: 13, color: "var(--text-2)", marginBottom: 12 }}>Video call with {next.trainer_name}</div>
-              <button className="btn btn-primary" onClick={() => navigate(`/call/${next.id}`)} style={{ width: "100%" }} data-testid="hero-join"><Icons.Video size={16} /> Join</button>
+              {next.status === "requested"
+                ? <span className="chip chip-amber" style={{ width: "100%", justifyContent: "center" }}><Icons.Hourglass size={13} /> Waiting for your coach to confirm</span>
+                : <button className="btn btn-primary" onClick={() => navigate(`/call/${next.id}`)} style={{ width: "100%" }} data-testid="hero-join"><Icons.Video size={16} /> Join</button>}
+              <button className="btn btn-ghost" onClick={() => navigate("/call-check")} style={{ width: "100%", marginTop: 8, padding: "8px 12px", fontSize: 12.5 }}><Icons.MonitorCheck size={14} /> Test camera &amp; mic</button>
             </>
           ) : hasCoach ? (
             <>

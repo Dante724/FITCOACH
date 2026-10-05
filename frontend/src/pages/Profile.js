@@ -8,6 +8,7 @@ import { api, fileSrc } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { getFocus } from "@/lib/focus";
+import { compressImage } from "@/lib/image";
 
 export default function Profile() {
   const { user, setUser } = useAuth();
@@ -39,10 +40,11 @@ export default function Profile() {
   const onPickPhoto = () => fileRef.current?.click();
 
   const onPhoto = async (e) => {
-    const file = e.target.files?.[0];
+    const picked = e.target.files?.[0];
     e.target.value = "";
-    if (!file) return;
-    if (!/\.(jpe?g|png|webp|gif)$/i.test(file.name)) { push("Choose a JPG, PNG, WEBP or GIF.", "error"); return; }
+    if (!picked) return;
+    if (!/\.(jpe?g|png|webp|gif)$/i.test(picked.name)) { push("Choose a JPG, PNG, WEBP or GIF.", "error"); return; }
+    const file = await compressImage(picked, { maxSide: 512 }); // profile pictures are shown small
     if (file.size > 5 * 1024 * 1024) { push("Image must be 5MB or smaller.", "error"); return; }
     setUploading(true);
     try {

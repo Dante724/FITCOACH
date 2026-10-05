@@ -52,13 +52,18 @@ function AssignModal({ client, coaches, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const need = getFocus(client.focus)?.coaches || [];
 
-  const save = async () => {
+  const save = async (force = false) => {
     setSaving(true);
     try {
-      await api.put(`/admin/users/${client.user_id}/coaches`, { fitness_coach_id: form.fitness_coach_id || null, yoga_coach_id: form.yoga_coach_id || null });
+      await api.put(`/admin/users/${client.user_id}/coaches`, { fitness_coach_id: form.fitness_coach_id || null, yoga_coach_id: form.yoga_coach_id || null, force });
       push(`Coaches updated for ${client.name}.`, "success");
       onSaved();
-    } catch (e) { push(e?.response?.data?.detail || "Could not assign coach.", "error"); } finally { setSaving(false); }
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      // The coach is at their client limit: let the admin decide.
+      if (e?.response?.status === 409 && !force && window.confirm(`${detail}\n\nAssign anyway?`)) { setSaving(false); return save(true); }
+      push(detail || "Could not assign coach.", "error");
+    } finally { setSaving(false); }
   };
 
   return (
@@ -80,7 +85,7 @@ function AssignModal({ client, coaches, onClose, onSaved }) {
             </select>
           </div>
         ))}
-        <button className="btn btn-primary" data-testid="assign-save" disabled={saving} onClick={save} style={{ width: "100%", padding: 13 }}>{saving ? "Saving..." : "Save"}</button>
+        <button className="btn btn-primary" data-testid="assign-save" disabled={saving} onClick={() => save()} style={{ width: "100%", padding: 13 }}>{saving ? "Saving..." : "Save"}</button>
       </div>
     </div>
   );

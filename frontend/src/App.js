@@ -30,6 +30,7 @@ import { ForgotPassword, ResetPassword } from "@/pages/PasswordReset";
 import { ConsentScreen } from "@/components/Privacy";
 
 const AdminLeads = lazy(() => import("@/pages/AdminLeads"));
+const CallCheck = lazy(() => import("@/pages/CallCheck"));
 const AdminInsights = lazy(() => import("@/pages/AdminInsights"));
 
 // Pose tracking pulls in MediaPipe, so only load it when a client opens Pose Check.
@@ -126,6 +127,7 @@ function AppRouter() {
 
       <Route element={<RequireAuth><Layout /></RequireAuth>}>
         <Route path="/profile" element={<Profile />} />
+        <Route path="/call-check" element={<Suspense fallback={<div className="spinner" style={{ margin: "80px auto" }} />}><CallCheck /></Suspense>} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

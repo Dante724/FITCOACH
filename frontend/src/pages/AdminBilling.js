@@ -144,6 +144,10 @@ function SettingsTab() {
         <div className="grid-stats" style={{ gap: 14 }}>
           <Num label="Free intro video sessions" value={s.trial_session_credits} onChange={set("trial_session_credits")} suffix="sessions" />
         </div>
+        <label className="row consent-row" style={{ marginTop: 14 }}>
+          <input type="checkbox" checked={s.trial_intro_approval !== false} onChange={(e) => setS((x) => ({ ...x, trial_intro_approval: e.target.checked }))} data-testid="trial-intro-approval" />
+          <span>Coach confirms each free intro session first <span style={{ color: "var(--text-3)" }}>(stops people signing up again and again for free sessions)</span></span>
+        </label>
       </div>
       <div className="clay" style={{ padding: 22 }}>
         <div className="eyebrow" style={{ marginBottom: 14 }}>Referrals</div>
@@ -188,7 +192,7 @@ function PayoutsTab() {
   useEffect(() => { setRep(null); api.get("/admin/payouts", { params: { month } }).then((r) => setRep(r.data)).catch(() => setRep({ coaches: [] })); }, [month]);
   const download = async () => {
     try {
-      const res = await fetch(`${API}/admin/payouts.csv?month=${month}`, { headers: authHeaders(), credentials: "include" });
+      const res = await fetch(`${API}/admin/payouts.csv?month=${month}`, { headers: authHeaders() });
       if (!res.ok) throw new Error();
       const url = URL.createObjectURL(await res.blob());
       Object.assign(document.createElement("a"), { href: url, download: `fitcoach-payouts-${month}.csv` }).click();

@@ -48,8 +48,8 @@ export default function Booking() {
     if (!trainerId || !date || !time) { push("Pick a trainer, date and time.", "error"); return; }
     setSaving(true);
     try {
-      await api.post("/bookings", { trainer_id: trainerId, date, time });
-      push("Session booked.", "success");
+      const { data: made } = await api.post("/bookings", { trainer_id: trainerId, date, time });
+      push(made.status === "requested" ? "Intro session requested — your coach will confirm it shortly." : "Session booked.", "success");
       reloadMembership();
       setTime("");
       load();
@@ -76,7 +76,8 @@ export default function Booking() {
 
   return (
     <div>
-      <PageHeader eyebrow="Schedule" title="Book a Session" subtitle="Reserve a live video session with your coach." />
+      <PageHeader eyebrow="Schedule" title="Book a Session" subtitle="Reserve a live video session with your coach."
+        action={<button className="btn btn-ghost" onClick={() => navigate("/call-check")} data-testid="open-call-check"><Icons.MonitorCheck size={16} /> Test camera &amp; mic</button>} />
 
       {membership && (
         <div className={`clay-inset row-wrap fade-up`} style={{ padding: "12px 14px", marginBottom: 16, gap: 10 }} data-testid="booking-balance">
@@ -155,9 +156,13 @@ export default function Booking() {
                     <div style={{ fontSize: 14, fontWeight: 600 }}>{b.trainer_name} · {b.time}</div>
                     <div style={{ fontSize: 12, color: "var(--text-3)" }}>{b.specialty}</div>
                   </div>
-                  <button data-testid={`join-${b.id}`} className="btn btn-ghost" onClick={() => navigate(`/call/${b.id}`)} style={{ padding: "8px 13px", fontSize: 12.5, color: "var(--teal)" }}>
-                    <Icons.Video size={15} /> Join
-                  </button>
+                  {b.status === "requested" ? (
+                    <span className="chip chip-amber" data-testid={`requested-${b.id}`}><Icons.Hourglass size={12} /> Waiting for coach to confirm</span>
+                  ) : (
+                    <button data-testid={`join-${b.id}`} className="btn btn-ghost" onClick={() => navigate(`/call/${b.id}`)} style={{ padding: "8px 13px", fontSize: 12.5, color: "var(--teal)" }}>
+                      <Icons.Video size={15} /> Join
+                    </button>
+                  )}
                   {b.paid ? (
                     <span className="chip chip-teal" data-testid={`paid-${b.id}`}><Icons.Check size={13} /> Paid</span>
                   ) : pay.enabled ? (

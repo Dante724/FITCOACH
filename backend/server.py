@@ -74,6 +74,11 @@ VAPID_SUBJECT = os.environ.get('VAPID_SUBJECT', '').strip()
 TURN_URLS = [u.strip() for u in os.environ.get('TURN_URLS', '').split(',') if u.strip()]
 TURN_USERNAME = os.environ.get('TURN_USERNAME', '')
 TURN_CREDENTIAL = os.environ.get('TURN_CREDENTIAL', '')
+# Or a managed relay that issues short-lived credentials (both have free tiers):
+METERED_DOMAIN = os.environ.get('METERED_DOMAIN', '').strip()            # e.g. yourapp.metered.live
+METERED_API_KEY = os.environ.get('METERED_API_KEY', '').strip()
+CLOUDFLARE_TURN_KEY_ID = os.environ.get('CLOUDFLARE_TURN_KEY_ID', '').strip()
+CLOUDFLARE_TURN_API_TOKEN = os.environ.get('CLOUDFLARE_TURN_API_TOKEN', '').strip()
 
 
 def booking_dt(date: str, time: str) -> datetime:
@@ -302,6 +307,7 @@ class CoachTypeUpdate(BaseModel):
 class CoachAssignment(BaseModel):
     fitness_coach_id: Optional[str] = None
     yoga_coach_id: Optional[str] = None
+    force: bool = False  # assign even if the coach is at their client limit
 
 
 class Booking(BaseModel):
@@ -320,6 +326,7 @@ class Booking(BaseModel):
     paid: bool = False
     reminder_at: str = ""
     reminder_email_sent: bool = False
+    status: str = "confirmed"   # "requested" = a trial client's intro session waiting for the coach
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -432,6 +439,14 @@ async def _user_from_jwt(token: str) -> Optional[User]:
     return User(**user_doc)
 
 
+def _cookie_ok(request: Request) -> bool:
+    """Only trust the login cookie on requests from our own site (blocks cross-site request forgery)."""
+    origin = (request.headers.get("origin") or "").rstrip("/")
+    if origin:
+        return origin in CORS_ORIGINS or origin == str(request.base_url).rstrip("/")
+    return request.headers.get("sec-fetch-site", "same-origin") in ("same-origin", "same-site", "none")
+
+
 async def get_current_user(
     request: Request,
     access_token: Optional[str] = Cookie(None),
@@ -441,8 +456,8 @@ async def get_current_user(
     if authorization and authorization.startswith("Bearer "):
         bearer = authorization.split(" ", 1)[1]
     # The app sends a Bearer token (works across separate frontend/backend domains);
-    # the httpOnly cookie is a fallback for same-site deployments.
-    for candidate in (bearer, access_token):
+    # the httpOnly cookie is a fallback for same-site use only, so another website can't act as a signed-in user.
+    for candidate in (bearer, access_token if _cookie_ok(request) else None):
         if candidate:
             user = await _user_from_jwt(candidate)
             if user:
@@ -478,7 +493,7 @@ DEFAULT_BILLING = {
     "session_price_inr": 1000, "trial_days": 7, "grace_days": 3,
     "referral_reward_days": 7, "referee_bonus_days": 7,
     "payout_per_client_inr": 0, "payout_per_session_inr": 0,
-    "trial_features": ["workouts", "messages", "food"], "trial_session_credits": 1,
+    "trial_features": ["workouts", "messages", "food"], "trial_session_credits": 1, "trial_intro_approval": True,
     "packs": [
         {"id": "pack5", "name": "5 sessions", "sessions": 5, "price_inr": 4500, "active": True},
         {"id": "pack10", "name": "10 sessions", "sessions": 10, "price_inr": 8500, "active": True},
@@ -774,7 +789,7 @@ async def send_due_reminders():
     if not email_configured():
         return
     now_iso = datetime.now(timezone.utc).isoformat()
-    cursor = db.bookings.find({"reminder_email_sent": {"$ne": True}, "reminder_at": {"$lte": now_iso, "$ne": ""}})
+    cursor = db.bookings.find({"reminder_email_sent": {"$ne": True}, "reminder_at": {"$lte": now_iso, "$ne": ""}, "status": {"$ne": "requested"}})
     async for b in cursor:
         try:
             session_dt = booking_dt(b["date"], b["time"])
@@ -1191,7 +1206,14 @@ async def trainer_slots(trainer_id: str, date: str, user: User = Depends(get_cur
         return {"slots": []}
     booked = await db.bookings.find({"trainer_id": trainer_id, "date": date}, {"_id": 0, "time": 1}).to_list(200)
     taken = {b["time"] for b in booked}
-    return {"slots": [t for t in times if t not in taken]}
+    soon = datetime.now(timezone.utc) + timedelta(minutes=15)  # don't offer times that have passed or start in a moment
+
+    def upcoming(t: str) -> bool:
+        try:
+            return booking_dt(date, t) > soon
+        except ValueError:
+            return False
+    return {"slots": [t for t in times if t not in taken and upcoming(t)]}
 
 
 @api_router.get("/bookings")
@@ -1233,8 +1255,15 @@ async def _create_booking(client_doc: dict, trainer: dict, date: str, time: str,
     if paid_via:
         doc.update({"paid": True, "paid_via": paid_via})
         booking.paid = True
+    settings = await billing_settings()
+    needs_ok = (not scheduled_by and fresh_client.get("membership_plan") == "trial" and settings.get("trial_intro_approval", True))
+    doc["status"] = booking.status = "requested" if needs_ok else "confirmed"
     await db.bookings.insert_one(doc)
     when = f"{date} at {time}"
+    if needs_ok:
+        await push_notification(client_doc["user_id"], "Intro session requested", f"{trainer.get('name')} will confirm {when} shortly.", "/booking")
+        await push_notification(trainer["user_id"], "Intro session request", f"{client_doc.get('name')} (free trial) asked for {when}. Confirm or decline.", "/trainer")
+        return booking
     if scheduled_by:
         await push_notification(client_doc["user_id"], "Session scheduled", f"{trainer.get('name')} scheduled a video session on {when}.", "/booking")
     else:
@@ -1290,6 +1319,31 @@ async def delete_booking(booking_id: str, user: User = Depends(get_current_user)
     if refunded:
         await db.users.update_one({"user_id": user.user_id}, {"$inc": {"session_credits": 1}})
     return {"ok": True, "credit_refunded": bool(refunded)}
+
+
+class BookingDecision(BaseModel):
+    approve: bool
+    note: Optional[str] = None
+
+
+@api_router.post("/bookings/{booking_id}/decision")
+async def decide_booking(booking_id: str, payload: BookingDecision, user: User = Depends(require_role("trainer", "admin"))):
+    """Coach confirms or declines a trial client's intro session. Declining returns their free session credit."""
+    booking = await db.bookings.find_one({"id": booking_id, "status": "requested"}, {"_id": 0})
+    if not booking or (user.role == "trainer" and booking["trainer_id"] != user.user_id):
+        raise HTTPException(status_code=404, detail="No pending request found")
+    note = _txt(payload.note, 200)
+    when = f"{booking['date']} at {booking['time']}"
+    if payload.approve:
+        await db.bookings.update_one({"id": booking_id}, {"$set": {"status": "confirmed", "confirmed_at": _now_iso()}})
+        await push_notification(booking["user_id"], "Intro session confirmed", f"{booking['trainer_name']} will see you on {when}." + (f" “{note}”" if note else ""), "/booking")
+        return {"ok": True, "status": "confirmed"}
+    await db.bookings.delete_one({"id": booking_id})
+    if booking.get("paid_via") == "credit":
+        await db.users.update_one({"user_id": booking["user_id"]}, {"$inc": {"session_credits": 1}})
+    await push_notification(booking["user_id"], "Please pick another time", f"{booking['trainer_name']} can't do {when}. Your free session is back — book another slot."
+                            + (f" “{note}”" if note else ""), "/booking")
+    return {"ok": True, "status": "declined"}
 
 
 @api_router.get("/sessions/{booking_id}")
@@ -1395,7 +1449,7 @@ async def admin_assign_coaches(target_id: str, payload: CoachAssignment, user: U
     client_doc = await db.users.find_one({"user_id": target_id, "role": "client"}, {"_id": 0})
     if not client_doc:
         raise HTTPException(status_code=404, detail="Client not found")
-    update = {}
+    update, notices = {}, []
     for field, ctype in (("fitness_coach_id", "fitness"), ("yoga_coach_id", "yoga")):
         if field not in payload.model_fields_set:
             continue
@@ -1405,11 +1459,16 @@ async def admin_assign_coaches(target_id: str, payload: CoachAssignment, user: U
             if not coach or (coach.get("coach_type") or "fitness") != ctype:
                 raise HTTPException(status_code=400, detail=f"Pick a {ctype} coach")
             if client_doc.get(field) != coach_id:
-                await push_notification(coach_id, "New client assigned",
-                                        f"{client_doc.get('name')} is now your client.", f"/trainer/clients/{target_id}")
-                await push_notification(target_id, "Your coach is here",
-                                        f"{coach.get('name')} is now your {ctype} coach.", "/dashboard")
+                limit = int(coach.get("max_clients") or 30)
+                load = await db.users.count_documents({"role": "client", "$or": [{"fitness_coach_id": coach_id}, {"yoga_coach_id": coach_id}]})
+                if load >= limit and not payload.force:
+                    raise HTTPException(status_code=409, detail=f"{coach.get('name')} already has {load} of {limit} clients. "
+                                                                f"Assign anyway, raise their limit, or pick another coach.")
+                notices.append((coach, ctype))
         update[field] = coach_id
+    for coach, ctype in notices:  # only notify once everything checked out
+        await push_notification(coach["user_id"], "New client assigned", f"{client_doc.get('name')} is now your client.", f"/trainer/clients/{target_id}")
+        await push_notification(target_id, "Your coach is here", f"{coach.get('name')} is now your {ctype} coach.", "/dashboard")
     if update:
         await db.users.update_one({"user_id": target_id}, {"$set": update})
     doc = await db.users.find_one({"user_id": target_id}, {"_id": 0, "password_hash": 0})
@@ -2284,7 +2343,11 @@ async def coach_attention(user: User = Depends(require_role("trainer", "admin"))
                 item["plan_type"] = "meal"
                 item["adjust_reason"] = f["text"]
             items.append(item)
-    sessions = await db.bookings.find({"trainer_id": user.user_id, "date": today}, {"_id": 0}).to_list(50)
+    requests_ = await db.bookings.find({"trainer_id": user.user_id, "status": "requested"}, {"_id": 0}).to_list(50)
+    for b in requests_:
+        items.append({"id": f"request-{b['id']}", "kind": "session_request", "priority": 0, "client_id": b.get("user_id"),
+                      "client_name": b.get("client_name"), "text": f"Intro session request · {b['date']} at {b['time']}", "booking_id": b["id"]})
+    sessions = await db.bookings.find({"trainer_id": user.user_id, "date": today, "status": {"$ne": "requested"}}, {"_id": 0}).to_list(50)
     for b in sessions:
         items.append({"id": f"session-{b['id']}", "kind": "session", "priority": 0, "client_id": b.get("user_id"),
                       "client_name": b.get("client_name"), "text": f"Session today at {b['time']}", "booking_id": b["id"]})
@@ -2971,12 +3034,50 @@ def _new_call(client_doc: dict, coach_doc: dict, kind: str, created_by: str, boo
     }
 
 
+_relay_cache: dict = {"at": None, "servers": []}
+
+
+def _as_list(v) -> list:
+    return v if isinstance(v, list) else [v] if isinstance(v, dict) else []
+
+
+async def _relay_servers() -> List[dict]:
+    """TURN relays let calls connect on networks that block direct connections (many mobile and office
+    networks). Credentials from Metered/Cloudflare are short-lived, so they're cached for 30 minutes."""
+    out: List[dict] = []
+    if TURN_URLS:
+        out.append({"urls": TURN_URLS, "username": TURN_USERNAME, "credential": TURN_CREDENTIAL})
+    now = datetime.now(timezone.utc)
+    if (METERED_API_KEY and METERED_DOMAIN) or (CLOUDFLARE_TURN_KEY_ID and CLOUDFLARE_TURN_API_TOKEN):
+        if _relay_cache["at"] and now - _relay_cache["at"] < timedelta(minutes=30):
+            return out + _relay_cache["servers"]
+        fetched: List[dict] = []
+        try:
+            async with httpx.AsyncClient(timeout=8) as http:
+                if METERED_API_KEY and METERED_DOMAIN:
+                    r = await http.get(f"https://{METERED_DOMAIN}/api/v1/turn/credentials", params={"apiKey": METERED_API_KEY})
+                    if r.status_code == 200:
+                        fetched += [x for x in _as_list(r.json()) if isinstance(x, dict) and x.get("urls")]
+                if CLOUDFLARE_TURN_KEY_ID and CLOUDFLARE_TURN_API_TOKEN:
+                    r = await http.post(f"https://rtc.live.cloudflare.com/v1/turn/keys/{CLOUDFLARE_TURN_KEY_ID}/credentials/generate-ice-servers",
+                                        headers={"Authorization": f"Bearer {CLOUDFLARE_TURN_API_TOKEN}"}, json={"ttl": 86400})
+                    if r.status_code in (200, 201):
+                        fetched += [x for x in _as_list(r.json().get("iceServers")) if isinstance(x, dict) and x.get("urls")]
+        except (httpx.HTTPError, ValueError):
+            logger.warning("Could not fetch TURN relay credentials", exc_info=True)
+        if fetched:
+            _relay_cache.update(at=now, servers=fetched)
+        else:
+            fetched = _relay_cache["servers"]  # keep using the last good credentials
+        out += fetched
+    return out
+
+
 @api_router.get("/calls/ice")
 async def call_ice_servers(user: User = Depends(get_current_user)):
     servers = [{"urls": ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"]}]
-    if TURN_URLS:
-        servers.append({"urls": TURN_URLS, "username": TURN_USERNAME, "credential": TURN_CREDENTIAL})
-    return {"iceServers": servers, "relay": bool(TURN_URLS)}
+    relay = await _relay_servers()
+    return {"iceServers": servers + relay, "relay": bool(relay)}
 
 
 @api_router.post("/calls/instant")
@@ -2999,6 +3100,8 @@ async def call_for_booking(booking_id: str, user: User = Depends(get_current_use
     booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
     if not booking or user.user_id not in (booking.get("user_id"), booking.get("trainer_id")):
         raise HTTPException(status_code=404, detail="Session not found")
+    if booking.get("status") == "requested":
+        raise HTTPException(status_code=409, detail="This intro session is waiting for the coach to confirm it.")
     call = await db.calls.find_one({"booking_id": booking_id}, {"_id": 0})
     if not call:
         client_doc = await db.users.find_one({"user_id": booking["user_id"]}, {"_id": 0}) or {"user_id": booking["user_id"], "name": booking.get("client_name")}
@@ -3127,7 +3230,7 @@ async def send_session_alerts():
     now = datetime.now(timezone.utc)
     soon = (now + timedelta(minutes=10)).isoformat()
     hour = (now + timedelta(minutes=60)).isoformat()
-    async for b in db.bookings.find({"starts_at": {"$gt": now.isoformat(), "$lte": hour}}, {"_id": 0}):
+    async for b in db.bookings.find({"starts_at": {"$gt": now.isoformat(), "$lte": hour}, "status": {"$ne": "requested"}}, {"_id": 0}):
         if b["starts_at"] <= soon and not b.get("alert_10_sent"):
             label, flags = "in 10 minutes", {"alert_10_sent": True, "alert_60_sent": True}
         elif not b.get("alert_60_sent"):
@@ -3413,6 +3516,7 @@ class BillingSettingsIn(BaseModel):
     packs: List[PackIn] = []
     trial_features: Optional[List[str]] = None
     trial_session_credits: Optional[int] = None
+    trial_intro_approval: Optional[bool] = None
 
 
 class CreditsIn(BaseModel):
@@ -3994,9 +4098,11 @@ async def health():
 app.include_router(api_router)
 
 
+# The app authenticates with a Bearer header, so cross-site requests never need cookies. Credentialed CORS is only
+# allowed for the sites listed in CORS_ORIGINS; if that's unset, any site may call the API but without cookies.
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
+    allow_credentials=bool(CORS_ORIGINS),
     **({"allow_origins": CORS_ORIGINS} if CORS_ORIGINS else {"allow_origin_regex": ".*"}),
     allow_methods=["*"],
     allow_headers=["*"],

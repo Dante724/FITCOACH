@@ -9,6 +9,7 @@ import { GOAL_LABEL, PLAN_LABEL } from "@/lib/focus";
 
 const KIND = {
   session: { icon: "Video", color: "var(--text-2)" },
+  session_request: { icon: "CalendarClock", color: "var(--amber)" },
   approve: { icon: "BadgeCheck", color: "var(--text-2)" },
   message: { icon: "MessageCircle", color: "var(--text-2)" },
   pose_review: { icon: "ScanEye", color: "var(--text-2)" },
@@ -23,7 +24,8 @@ function AttentionItem({ item, onAction, busy }) {
   const meta = KIND[item.kind] || { icon: "Circle", color: "var(--text-3)" };
   const Icon = Icons[meta.icon] || Icons.Circle;
   let action;
-  if (item.kind === "session") action = ["Join", "Video", () => onAction("join", item)];
+  if (item.kind === "session_request") action = ["Confirm", "Check", () => onAction("confirm", item)];
+  else if (item.kind === "session") action = ["Join", "Video", () => onAction("join", item)];
   else if (item.kind === "approve") action = ["Review", "ArrowRight", () => onAction("plans", item)];
   else if (item.kind === "message") action = ["Reply", "Reply", () => onAction("chat", item)];
   else if (item.kind === "pose_review") action = ["Review", "ScanEye", () => onAction("pose", item)];
@@ -41,8 +43,13 @@ function AttentionItem({ item, onAction, busy }) {
         <div style={{ fontSize: 14, fontWeight: 600 }}>{item.client_name}</div>
         <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>{item.text}</div>
       </div>
-      <button className={item.kind === "approve" || item.kind === "session" ? "btn btn-primary" : "btn btn-ghost"} disabled={busy === item.id}
-        onClick={action[2]} style={{ padding: "8px 14px", fontSize: 12.5, marginLeft: "auto" }}>
+      {item.kind === "session_request" && (
+        <button className="btn btn-ghost" disabled={busy === item.id} onClick={() => onAction("decline", item)} style={{ padding: "8px 14px", fontSize: 12.5, marginLeft: "auto" }} data-testid="decline-request">
+          <Icons.X size={15} /> Decline
+        </button>
+      )}
+      <button className={["approve", "session", "session_request"].includes(item.kind) ? "btn btn-primary" : "btn btn-ghost"} disabled={busy === item.id}
+        onClick={action[2]} style={{ padding: "8px 14px", fontSize: 12.5, marginLeft: item.kind === "session_request" ? 0 : "auto" }}>
         <ActionIcon size={15} /> {busy === item.id ? "Working..." : action[0]}
       </button>
     </div>
@@ -91,6 +98,17 @@ export default function TrainerDashboard() {
   const onAction = async (kind, item) => {
     const base = `/trainer/clients/${item.client_id}`;
     if (kind === "join") return navigate(`/call/${item.booking_id}`);
+    if (kind === "confirm" || kind === "decline") {
+      const note = kind === "decline" ? window.prompt("Optional message to the client (e.g. a better time):", "") : null;
+      if (note === null && kind === "decline") return;
+      setBusy(item.id);
+      try {
+        await api.post(`/bookings/${item.booking_id}/decision`, { approve: kind === "confirm", note: note || undefined });
+        push(kind === "confirm" ? `Confirmed — ${item.client_name.split(" ")[0]} has been notified.` : "Declined — their free session was returned.", "success");
+        load();
+      } catch (e) { push(e?.response?.data?.detail || "Could not update the request.", "error"); } finally { setBusy(""); }
+      return;
+    }
     if (kind === "open") return navigate(base);
     if (kind === "plans") return navigate(`${base}?tab=plans`);
     if (kind === "chat") return navigate(`${base}?tab=chat`);

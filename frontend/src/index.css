@@ -315,6 +315,7 @@ select.field { appearance: none; background-image: url("data:image/svg+xml,%3Csv
   .call-bar { gap: 10px; }
   .call-note { right: 12px; left: 12px; bottom: auto; top: 76px; max-width: none; }
   .call-chip { display: none; }
+  .call-chip[data-testid="call-quality"] { display: inline-flex; font-size: 11px; padding: 4px 8px; }
 }
 
 /* Incoming call + session banner */
@@ -467,3 +468,6 @@ button.clay:hover { transform: translateY(-2px); border-color: rgba(184,146,74,0
 .meter { height: 6px; border-radius: 6px; background: var(--surface-2); overflow: hidden; margin-top: 6px; }
 .meter > span { display: block; height: 100%; border-radius: 6px; background: var(--ink); transition: width .3s ease; }
 .meter.over > span { background: var(--accent); }
+.call-chip.q-good { color: #8fd6a8; }
+.call-chip.q-fair { color: #e3c88f; }
+.call-chip.q-poor { color: #f3b9a5; }

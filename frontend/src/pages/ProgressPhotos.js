@@ -3,6 +3,7 @@ import * as Icons from "lucide-react";
 import { api, fileSrc } from "@/lib/api";
 import { useToast } from "@/context/ToastContext";
 import { localDate } from "@/lib/focus";
+import { compressImage } from "@/lib/image";
 import { useAuth } from "@/context/AuthContext";
 import { PhotoConsentCard } from "@/components/Privacy";
 
@@ -53,11 +54,12 @@ export default function ProgressPhotos() {
   const load = useCallback(() => api.get("/progress/photos").then((r) => setPhotos(r.data)).catch(() => {}), []);
   useEffect(() => { load(); }, [load]);
 
-  const pickFile = (e) => {
-    const f = e.target.files?.[0];
+  const pickFile = async (e) => {
+    const picked = e.target.files?.[0];
     e.target.value = "";
-    if (!f) return;
-    if (!/\.(jpe?g|png|webp|gif)$/i.test(f.name)) { push("Choose a JPG, PNG, WEBP or GIF.", "error"); return; }
+    if (!picked) return;
+    if (!/\.(jpe?g|png|webp|gif)$/i.test(picked.name)) { push("Choose a JPG, PNG, WEBP or GIF.", "error"); return; }
+    const f = await compressImage(picked, { maxSide: 1600 });
     if (f.size > 5 * 1024 * 1024) { push("Image must be 5MB or smaller.", "error"); return; }
     setFile(f);
     if (previewUrl) URL.revokeObjectURL(previewUrl);

@@ -120,7 +120,7 @@ export function PrivacyCard() {
   const download = async () => {
     setBusy("export");
     try {
-      const r = await fetch(`${API}/me/export`, { headers: authHeaders(), credentials: "include" });
+      const r = await fetch(`${API}/me/export`, { headers: authHeaders() });
       if (!r.ok) throw new Error();
       const url = URL.createObjectURL(await r.blob());
       const a = Object.assign(document.createElement("a"), { href: url, download: `fitcoach-my-data.json` });

@@ -11,7 +11,8 @@ export const getToken = () => { try { return localStorage.getItem(TOKEN_KEY); } 
 export const setToken = (t) => { try { if (t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY); } catch { /* private mode */ } };
 export const authHeaders = () => { const t = getToken(); return t ? { Authorization: `Bearer ${t}` } : {}; };
 
-export const api = axios.create({ baseURL: API, withCredentials: true, timeout: 25000 });
+// The login travels in the Authorization header, never as a cookie, so other websites can't act as a signed-in user.
+export const api = axios.create({ baseURL: API, withCredentials: false, timeout: 25000 });
 api.interceptors.request.use((config) => {
   const t = getToken();
   if (t) config.headers.Authorization = `Bearer ${t}`;
