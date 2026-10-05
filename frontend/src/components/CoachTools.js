@@ -6,7 +6,7 @@ import { useToast } from "@/context/ToastContext";
 import { PLAN_LABEL, timeAgo, localDate } from "@/lib/focus";
 import { CHECKIN_SCALES } from "@/components/TodayCard";
 
-// ── AI weekly summary ──────────────────────────────────────────
+// ── Weekly summary (AI when a key is set, otherwise built from the numbers) ──────────────────────────────────────────
 export function WeeklySummary({ clientId, brief, canMessage, onUseMessage }) {
   const { push } = useToast();
   const [s, setS] = useState(null);
@@ -64,7 +64,7 @@ export function WeeklySummary({ clientId, brief, canMessage, onUseMessage }) {
               {canMessage && <button className="btn btn-ghost" onClick={() => onUseMessage(s.message)} style={{ marginTop: 10, padding: "7px 12px", fontSize: 12.5 }} data-testid="use-suggested-message"><Icons.MessageCircle size={14} /> Edit &amp; send in chat</button>}
             </div>
           )}
-          <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>Written {timeAgo(s.generated_at)}{s.ai ? " · AI can be wrong — check before acting" : " · add GEMINI_API_KEY for AI summaries"}</div>
+          <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>Written {timeAgo(s.generated_at)}{s.ai ? " · AI can be wrong — check before acting" : " · built from this week's numbers"}</div>
         </div>
       )}
     </div>

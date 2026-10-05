@@ -65,7 +65,7 @@ export default function Login() {
         <Link to="/" style={{ color: "inherit", textDecoration: "none" }}><Logo /></Link>
         <div className="fade-up" style={{ maxWidth: 420 }}>
           <h1 style={{ fontSize: 46, fontWeight: 400, marginBottom: 16 }}>Your own coach.<br /><span className="serif-italic">Plans they approve.</span></h1>
-          <p style={{ fontSize: 15, color: "var(--text-2)", lineHeight: 1.65 }}>Training, nutrition and yoga plans drafted by AI and checked by a certified coach, with progress tracking and chat in one place.</p>
+          <p style={{ fontSize: 15, color: "var(--text-2)", lineHeight: 1.65 }}>Training, nutrition and yoga plans built around you and checked by a certified coach, with progress tracking and chat in one place.</p>
         </div>
         <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>{credentials || "Certified fitness & nutrition coaching · Yoga"}</div>
       </div>

@@ -22,11 +22,11 @@ const PROGRAMS = [
 const STEPS = [
   { n: "01", title: "Tell us your goal", desc: "A two-minute questionnaire about your body, diet, schedule and injuries." },
   { n: "02", title: "Meet your coach", desc: "We match you with a certified coach for your goal. They're one message away, in the app." },
-  { n: "03", title: "Follow an approved plan", desc: "AI drafts it in minutes. Your coach checks and approves every plan, then adjusts it as you progress." },
+  { n: "03", title: "Follow an approved plan", desc: "It's drafted in minutes from your goal, food habits and schedule. Your coach checks and approves every plan, then adjusts it as you progress." },
 ];
 
 const FALLBACK_PLANS = [
-  { name: "Monthly", price: "15,000", period: "per month", features: ["Your own assigned coach", "AI food tracking", "1 video session a week", "Progress tracking"] },
+  { name: "Monthly", price: "15,000", period: "per month", features: ["Your own assigned coach", "Food tracking", "1 video session a week", "Progress tracking"] },
   { name: "Quarterly", price: "30,000", period: "per 3 months", featured: true, features: ["Everything in Monthly", "Coach-approved nutrition plan", "2 video sessions a week", "Priority booking"] },
   { name: "Annual", price: "85,000", period: "per year", features: ["Everything in Quarterly", "Quarterly assessments", "Unlimited video sessions", "Best value"] },
 ];
@@ -80,7 +80,7 @@ export default function Landing() {
       <section className="site-wrap site-hero fade-up">
         <div className="eyebrow" style={{ marginBottom: 22 }}>Online coaching · Fitness, nutrition & yoga</div>
         <h1>Your own coach.<br /><span className="serif-italic">Plans they actually approve.</span></h1>
-        <p className="site-lead">AI drafts your training and meal plans in minutes. A certified coach checks every one, tracks your progress and is a message away.</p>
+        <p className="site-lead">Training and Indian meal plans built around your goal in minutes. A certified coach checks every one, tracks your progress and is a message away.</p>
         <div className="row-wrap" style={{ marginTop: 32, gap: 10 }}>
           <button className="btn btn-primary" data-testid="hero-signup-btn" onClick={go} style={{ padding: "12px 20px" }}>Start training <Icons.ArrowRight size={16} /></button>
           <a href="#consult" className="btn btn-ghost" data-testid="hero-consult-btn" style={{ padding: "12px 20px" }}><Icons.PhoneCall size={16} /> Book a free consultation</a>

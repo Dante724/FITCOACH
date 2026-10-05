@@ -133,7 +133,9 @@ export default function PlanEditor({ plan, onChanged }) {
     <div data-testid={`plan-editor-${plan.type}`}>
       <div className="row-wrap" style={{ marginBottom: 12 }}>
         <span className="chip chip-amber"><Icons.PencilLine size={13} /> Draft</span>
-        {plan.ai_generated ? <span className="chip chip-violet"><Icons.Sparkles size={13} /> AI draft</span> : <span className="chip chip-neutral">Manual</span>}
+        {plan.ai_generated ? <span className="chip chip-violet"><Icons.Sparkles size={13} /> AI draft</span>
+          : plan.source === "engine" ? <span className="chip chip-violet"><Icons.Sparkles size={13} /> Auto draft</span>
+          : <span className="chip chip-neutral">Manual</span>}
         {plan.revises && <span className="chip chip-neutral">Replaces current plan</span>}
       </div>
       {plan.ai_note && <div className="clay-inset" style={{ padding: "10px 14px", fontSize: 12.5, color: "var(--text-2)", marginBottom: 12 }}><Icons.Info size={13} /> {plan.ai_note}</div>}

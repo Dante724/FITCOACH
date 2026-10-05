@@ -34,7 +34,7 @@ function Terms({ info }) {
 
       <h2>1. What FitCoach is</h2>
       <p>An online coaching service for fitness, nutrition and yoga. We assign you a coach, who works with you inside the app through plans,
-        chat and video sessions. Software (including AI) drafts plans and summaries; a coach reviews and approves every plan before you see it.
+        chat and video sessions. {info.ai_enabled ? "Software, including AI," : "Our software"} drafts plans and summaries; a coach reviews and approves every plan before you see it.
         Coaches are engaged by us to deliver the service. Any qualifications a coach lists are in their own profile.</p>
 
       <h2>2. Not medical advice — please read</h2>
@@ -118,7 +118,9 @@ function Privacy({ info }) {
       <h2>Why we use it</h2>
       <ul>
         <li>To coach you: your assigned coaches use it to write, approve and adjust your plans and track your progress — with your consent, which you give when you sign up.</li>
-        <li>To draft plans, food estimates and weekly summaries with AI (Google's Gemini). We send only what the task needs, without your name or email. A coach checks plans before you see them.</li>
+        {info.ai_enabled
+          ? <li>To draft plans, food estimates and weekly summaries with AI (Google's Gemini). We send only what the task needs, without your name or email. A coach checks plans before you see them.</li>
+          : <li>To draft plans, food estimates and weekly summaries with our own software, on our own server — no outside AI service receives your data. A coach checks plans before you see them.</li>}
         <li>To run your membership, bookings, reminders and notifications, and to keep the service secure.</li>
         <li>To call you back about a consultation you asked for.</li>
         <li>To send tips and offers — only if you opted in.</li>
@@ -128,7 +130,7 @@ function Privacy({ info }) {
 
       <h2>Who can see it</h2>
       <p>You; the coaches assigned to you (a yoga-only coach sees what's needed for yoga); and our admin team. These service providers process
-        data on our behalf: MongoDB Atlas (database), Render (hosting), Razorpay (payments), Google (sign-in and AI) and your browser's push
+        data on our behalf: MongoDB Atlas (database), Render (hosting), Razorpay (payments), Google (sign-in{info.ai_enabled ? " and AI" : ""}) and your browser's push
         service (notifications). Our website also loads fonts from Google Fonts and images from Unsplash, which see your IP address as any
         website would. Some providers may store data outside India, which the law permits. We may disclose data if the law requires it.</p>
 

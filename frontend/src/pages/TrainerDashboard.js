@@ -27,7 +27,7 @@ function AttentionItem({ item, onAction, busy }) {
   else if (item.kind === "approve") action = ["Review", "ArrowRight", () => onAction("plans", item)];
   else if (item.kind === "message") action = ["Reply", "Reply", () => onAction("chat", item)];
   else if (item.kind === "pose_review") action = ["Review", "ScanEye", () => onAction("pose", item)];
-  else if (item.kind === "needs_plan") action = ["Draft with AI", "Sparkles", () => onAction("draft", item)];
+  else if (item.kind === "needs_plan") action = ["Auto-draft", "Sparkles", () => onAction("draft", item)];
   else if (item.plan_type) action = ["Draft adjustment", "Sparkles", () => onAction("adjust", item)];
   else action = ["Message", "MessageCircle", () => onAction("chat", item)];
   const ActionIcon = Icons[action[1]] || Icons.ArrowRight;

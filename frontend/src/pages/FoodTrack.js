@@ -36,7 +36,7 @@ export default function FoodTrack() {
       setDesc("");
       load();
     } catch (e) {
-      push(e?.response?.data?.detail || "AI analysis failed.", "error");
+      push(e?.response?.data?.detail || "Couldn't estimate that meal.", "error");
     } finally { setAnalyzing(false); }
   };
 
@@ -49,13 +49,13 @@ export default function FoodTrack() {
 
   return (
     <div>
-      <PageHeader eyebrow="Nutrition" title="Food Log" subtitle="Describe your meal in plain language. AI estimates the calories and macros, and your coach can see your log." />
+      <PageHeader eyebrow="Nutrition" title="Food Log" subtitle="Describe your meal in plain language — like “2 roti, 1 katori dal, paneer sabzi”. We estimate calories and macros, and your coach can see your log." />
 
       <div className="grid-main-side">
         <div className="clay fade-up min0" style={{ padding: 22 }}>
           <label className="label">What did you eat?</label>
           <textarea data-testid="food-input" className="field" rows={4} value={desc} onChange={(e) => setDesc(e.target.value)}
-            placeholder="e.g. Grilled chicken breast with a cup of brown rice, steamed broccoli and a tablespoon of olive oil"
+            placeholder="e.g. 2 roti, 1 katori dal, paneer sabzi and a glass of chaas"
             style={{ resize: "vertical", marginBottom: 16, lineHeight: 1.6 }} />
           <button data-testid="analyze-food-btn" className="btn btn-primary" disabled={analyzing} onClick={analyze} style={{ padding: "13px 26px" }}>
             {analyzing ? <><span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> Analyzing...</> : <><Icons.Sparkles size={18} /> Analyze & log meal</>}
@@ -116,7 +116,7 @@ export default function FoodTrack() {
           </div>
           <div className="glass fade-up" style={{ padding: 20, animationDelay: "140ms" }}>
             <Icons.Info size={18} color="var(--text)" style={{ marginBottom: 8 }} />
-            <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.7 }}>Estimates are AI-generated for guidance. Be specific with portions for more accurate results.</div>
+            <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.7 }}>Estimates use typical Indian home-style portions. Add amounts (2 roti, 1 bowl, 150 g) for better accuracy; your coach can correct anything.</div>
           </div>
         </div>
       </div>

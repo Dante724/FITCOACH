@@ -60,10 +60,10 @@ function PlanSection({ type, plans, clientId, onChanged }) {
             </div>
           ) : (
             <div className="clay-inset" style={{ padding: 14, fontSize: 13.5, color: "var(--text-2)", marginBottom: 14 }}>
-              No {PLAN_LABEL[type].toLowerCase()} yet. Draft one with AI from the client's intake, then review and approve it.
+              No {PLAN_LABEL[type].toLowerCase()} yet. Auto-draft one from the client's intake, then review and approve it.
             </div>
           )}
-          <label className="label">{active ? "What should change? (shown to the client as the reason)" : "Instructions for the AI draft (optional)"}</label>
+          <label className="label">{active ? "What should change? (shown to the client as the reason)" : "Instructions for the draft (optional) — e.g. 4 days, home workouts, drop 150 kcal"}</label>
           <input className="field" data-testid={`draft-notes-${type}`} value={notes} onChange={(e) => setNotes(e.target.value)}
             placeholder={active ? "e.g. Weight flat for 3 weeks — drop 150 kcal" : "e.g. Keep it knee-friendly"} />
           <div className="row-wrap" style={{ marginTop: 12, justifyContent: "flex-end" }}>
@@ -71,7 +71,7 @@ function PlanSection({ type, plans, clientId, onChanged }) {
             <button className="btn btn-ghost" onClick={() => setPicking(true)} disabled={!!busy} data-testid={`from-template-${type}`}><Icons.Copy size={16} /> Template / copy</button>
             {active && <button className="btn btn-ghost" onClick={revise} disabled={!!busy}><Icons.PencilLine size={16} /> {busy === "revise" ? "Opening..." : "Edit by hand"}</button>}
             <button className="btn btn-primary" data-testid={`draft-ai-${type}`} onClick={draftAI} disabled={!!busy}>
-              <Icons.Sparkles size={16} /> {busy === "ai" ? "Drafting..." : active ? "Draft adjustment with AI" : "Draft with AI"}
+              <Icons.Sparkles size={16} /> {busy === "ai" ? "Drafting..." : active ? "Auto-draft adjustment" : "Auto-draft"}
             </button>
           </div>
         </>

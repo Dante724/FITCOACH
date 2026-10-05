@@ -79,10 +79,21 @@ and plan updates arrive even when it's closed — no app store needed.
 - **Insights:** Admin → Insights shows sign-ups, trial conversion, renewals, drop-offs, revenue, leads and
   coach reply times.
 
-## AI (optional)
+## Plan drafts & food estimates (no AI key needed)
 
-Set `GEMINI_API_KEY` (Google AI Studio). Without it, coaches start plans from a built-in template, the weekly
-client summary is built from the numbers instead of written by AI, and food analysis shows "try again later". `GEMINI_MODEL` defaults to `gemini-2.5-flash`.
+FitCoach drafts plans with its own built-in engine (`backend/engine.py`) — free, no API key, nothing sent to an
+outside AI service:
+- **Nutrition:** calorie and protein targets (Mifflin–St Jeor × activity, adjusted for the goal) and a one-day
+  Indian meal plan from a food table, respecting veg / egg / non-veg / vegan / Jain, allergies and dislikes.
+- **Training:** a weekly split from goal, days per week, equipment and experience, skipping exercises that load
+  listed injuries (knee, back, shoulder, wrist…). "Auto-draft adjustment" with no note progresses the plan.
+- **Yoga:** a weekly practice sequenced warm-up → standing → balance → floor → rest, avoiding poses that clash
+  with injuries, blood pressure or pregnancy.
+- **Coach notes** steer drafts: "drop 150 kcal", "more protein", "4 days", "home workouts", "knee pain", "no rice".
+- **Food log:** "2 roti, 1 katori dal, 100 g paneer" → calories and macros from the same food table.
+
+The coach reviews and approves every plan. Optionally set `GEMINI_API_KEY` (use a billing-enabled key) to use
+Gemini instead; the engine stays as the fallback. The privacy policy switches its wording automatically.
 
 ## Local development
 

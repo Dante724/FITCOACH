@@ -4,7 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useMembership } from "@/lib/membership";
 
 const FEATURE_LABEL = {
-  workouts: "Training & yoga plans", messages: "Chat with your coach", food: "AI food tracking",
+  workouts: "Training & yoga plans", messages: "Chat with your coach", food: "Food tracking",
   meal_plans: "Your nutrition plan", pose_check: "Yoga pose checks", calls: "Instant video calls",
 };
 

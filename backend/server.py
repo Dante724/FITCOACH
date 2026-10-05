@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo
 import bcrypt
 import jwt
 import httpx
+import engine
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 
 ROOT_DIR = Path(__file__).parent
@@ -469,7 +470,7 @@ MEMBERSHIP_REQUIRED = "Your membership has ended — renew to keep working with 
 TRIAL_LOCKED = "This isn't part of the free trial — choose a plan to unlock it."
 # What a free-trial client can use; the admin picks which of these the trial includes.
 TRIAL_FEATURES = {
-    "workouts": "Training & yoga plans", "messages": "Chat with your coach", "food": "AI food tracking",
+    "workouts": "Training & yoga plans", "messages": "Chat with your coach", "food": "Food tracking",
     "meal_plans": "Nutrition plans", "pose_check": "Yoga pose checks", "calls": "Instant video calls",
 }
 
@@ -797,7 +798,7 @@ LEGAL_REQUIRED = ("business_name", "business_address", "grievance_officer", "jur
 @api_router.get("/legal")
 async def legal_info():
     contact = PRIVACY_CONTACT_EMAIL or ADMIN_EMAIL or ""
-    return {**LEGAL_INFO, "contact_email": contact,
+    return {**LEGAL_INFO, "contact_email": contact, "ai_enabled": bool(GEMINI_API_KEY),
             "missing": [k for k in LEGAL_REQUIRED if not LEGAL_INFO[k]] + ([] if contact else ["contact_email"])}
 
 
@@ -1536,17 +1537,23 @@ async def analyze_food(payload: FoodAnalyzeRequest, user: User = Depends(require
     description = payload.description.strip()
     if not (2 <= len(description) <= 1000):
         raise HTTPException(status_code=400, detail="Describe your meal in a few words (up to 1000 characters)")
-    system = (
-        "You are a nutrition analysis engine. Given a meal description, estimate nutrition. "
-        "Respond ONLY with strict JSON, no prose, using this schema: "
-        '{"meal_name": string, "items": [string], "calories": number, "protein_g": number, '
-        '"carbs_g": number, "fat_g": number, "health_score": number (0-100), "notes": string}'
-    )
-    try:
-        result = await _ai_json(system, f"Meal: {description}", f"food-{user.user_id}")
-    except Exception:
-        logger.exception("food analyze failed")
-        raise HTTPException(status_code=503, detail="We couldn't analyse that meal right now. Please try again in a moment.")
+    result = None
+    if GEMINI_API_KEY:  # optional AI estimate; the food table below needs no key
+        system = (
+            "You are a nutrition analysis engine. Given a meal description, estimate nutrition. "
+            "Respond ONLY with strict JSON, no prose, using this schema: "
+            '{"meal_name": string, "items": [string], "calories": number, "protein_g": number, '
+            '"carbs_g": number, "fat_g": number, "health_score": number (0-100), "notes": string}'
+        )
+        try:
+            result = await _ai_json(system, f"Meal: {description}", f"food-{user.user_id}")
+        except Exception:
+            logger.warning("AI food estimate failed; using the food table", exc_info=True)
+    if result is None:
+        result = engine.analyze_meal(description)
+        if not result:
+            raise HTTPException(status_code=400, detail="We couldn't recognise those foods. Try simple names with amounts, "
+                                                        "like “2 roti, 1 katori dal, 1 bowl sabzi”.")
 
     doc = {
         "id": str(uuid.uuid4()),
@@ -1816,49 +1823,6 @@ async def _ai_json(system: str, prompt: str, tag: str) -> dict:
     return _extract_json("".join(p.get("text", "") for p in parts))
 
 
-def _ex(name, sets, reps, rest="60s", notes=""):
-    return {"name": name, "sets": sets, "reps": reps, "rest": rest, "notes": notes}
-
-
-def _template_plan(ptype: str, client: dict) -> dict:
-    """Starting point used when the AI is unavailable; the coach edits it before approving."""
-    it = client.get("intake") or {}
-    if ptype == "meal":
-        diet = it.get("diet") or "veg"
-        protein = {"non_veg": "Grilled chicken (150 g)", "eggetarian": "3-egg bhurji", "vegan": "Tofu bhurji (150 g)"}.get(diet, "Paneer bhurji (100 g)")
-        return {"title": "Balanced day of eating", "summary": "Starter template — adjust portions to the client's target.", "meals": [
-            {"meal": "Breakfast", "name": "Oats & protein", "items": ["Oats (50 g) with milk", "1 banana", "10 almonds"], "calories": 420, "protein_g": 18, "carbs_g": 62, "fat_g": 12},
-            {"meal": "Lunch", "name": "Dal, roti, sabzi", "items": ["2 rotis", "1 bowl dal", "1 bowl seasonal sabzi", "Salad"], "calories": 560, "protein_g": 22, "carbs_g": 80, "fat_g": 14},
-            {"meal": "Snack", "name": "Curd & fruit", "items": ["Curd (200 g)", "1 apple"], "calories": 220, "protein_g": 10, "carbs_g": 32, "fat_g": 6},
-            {"meal": "Dinner", "name": "Protein & greens", "items": [protein, "1 roti", "Stir-fried vegetables"], "calories": 480, "protein_g": 32, "carbs_g": 36, "fat_g": 20},
-        ]}
-    if ptype == "yoga":
-        return {"title": "Foundations flow", "summary": "Starter template — 3 sessions a week.", "days": [
-            {"name": "Day 1", "focus": "Mobility", "exercises": [_ex("Sun Salutation A (Surya Namaskar A)", 5, "1 breath per move", "—", "Move with the breath"),
-                                                                    _ex("Warrior II (Virabhadrasana II)", 2, "30s each side", "15s", "Front knee over ankle"),
-                                                                    _ex("Triangle (Trikonasana)", 2, "30s each side", "15s", "Lengthen both sides of the waist")]},
-            {"name": "Day 2", "focus": "Balance", "exercises": [_ex("Tree (Vrikshasana)", 2, "30s each side", "15s", "Press foot and leg together"),
-                                                                   _ex("Chair (Utkatasana)", 3, "20s", "15s", "Weight in the heels"),
-                                                                   _ex("Bridge (Setu Bandhasana)", 3, "30s", "15s", "Knees hip-width")]},
-            {"name": "Day 3", "focus": "Recovery", "exercises": [_ex("Downward Dog (Adho Mukha Svanasana)", 3, "5 breaths", "—", "Hips high, heels reaching down"),
-                                                                    _ex("Cobra (Bhujangasana)", 3, "20s", "15s", "Shoulders away from ears"),
-                                                                    _ex("Child's Pose (Balasana)", 1, "2 min", "—", "Relax the jaw")]},
-        ]}
-    days = max(2, min(6, int(it.get("days_per_week") or 3)))
-    home = it.get("equipment") in ("home", "bodyweight")
-    lower = [_ex("Goblet Squat" if home else "Back Squat", 4, "8-10", "90s", "Chest up, knees track toes"),
-             _ex("Romanian Deadlift", 3, "10", "90s", "Hinge at the hips, flat back"),
-             _ex("Walking Lunge", 3, "10 each leg", "60s"), _ex("Plank", 3, "40s", "45s")]
-    upper = [_ex("Push-ups" if home else "Bench Press", 4, "8-12", "90s"), _ex("Dumbbell Row", 3, "10 each side", "60s"),
-             _ex("Shoulder Press", 3, "10", "60s"), _ex("Dead Bug", 3, "10 each side", "45s")]
-    cardio = [_ex("Brisk walk or cycle", 1, "25 min", "—", "Conversational pace"), _ex("Mountain Climbers", 3, "30s", "30s")]
-    rotation = [("Lower body", lower), ("Upper body", upper), ("Conditioning", cardio)]
-    if client.get("focus") == "muscle_gain":
-        rotation = [("Lower body", lower), ("Upper body", upper)]
-    return {"title": f"{days}-day starter programme", "summary": "Starter template — adjust load and volume after the first week.",
-            "days": [{"name": f"Day {i + 1}", "focus": rotation[i % len(rotation)][0], "exercises": rotation[i % len(rotation)][1]} for i in range(days)]}
-
-
 def _num(v, cap=100000):
     try:
         return max(0, min(cap, round(float(v), 1)))
@@ -1915,23 +1879,29 @@ async def draft_plan(client_id: str, payload: PlanDraftRequest, user: User = Dep
     active = await db.plans.find_one({"client_id": client_id, "type": payload.type, "status": "active"}, {"_id": 0})
     notes = _txt(payload.notes, 500)
 
-    prompt = f"Client profile:\n{_profile_text(client_doc, latest)}\n"
-    if active:
-        prompt += f"\nCurrent approved plan (revise it rather than starting over):\n{json.dumps(active['content'])[:4000]}\n"
-    if notes:
-        prompt += f"\nCoach instructions: {notes}\n"
-    ai_generated, ai_note = True, ""
-    try:
-        content = await _ai_json(_ai_system(payload.type), prompt, f"plan-{payload.type}")
-    except Exception as e:
-        logger.warning("AI draft unavailable, using template: %s", e)
-        content = active["content"] if active else _template_plan(payload.type, client_doc)
-        ai_generated, ai_note = False, "AI was unavailable, so this draft starts from " + ("the current plan." if active else "a template.")
+    content, ai_generated, source = None, False, "engine"
+    if GEMINI_API_KEY:  # optional: only used when you've added a key
+        prompt = f"Client profile:\n{_profile_text(client_doc, latest)}\n"
+        if active:
+            prompt += f"\nCurrent approved plan (revise it rather than starting over):\n{json.dumps(active['content'])[:4000]}\n"
+        if notes:
+            prompt += f"\nCoach instructions: {notes}\n"
+        try:
+            content, ai_generated, source = await _ai_json(_ai_system(payload.type), prompt, f"plan-{payload.type}"), True, "ai"
+        except Exception as e:
+            logger.warning("AI draft unavailable, using the built-in plan engine: %s", e)
+    if content is None:
+        # built-in engine: free, no API key; a fresh variation each time the coach re-drafts
+        seed = int(hashlib.sha256(client_id.encode()).hexdigest()[:8], 16) + await db.plans.count_documents({"client_id": client_id, "type": payload.type})
+        content = engine.build_plan(payload.type, client_doc, latest.get("weight"), notes, seed, active["content"] if active else None)
+    ai_note = ("Drafted by the built-in plan builder from the client's intake" + (" and your note" if notes else "")
+               + (" — progressed from the current plan" if active and payload.type != "meal" and not notes else "")
+               + ". Check it fits them, then approve.") if source == "engine" else ""
 
     doc = {
         "id": str(uuid.uuid4()), "client_id": client_id, "client_name": client_doc.get("name"),
         "coach_id": user.user_id, "coach_name": user.name, "type": payload.type, "status": "draft",
-        "content": _clean_plan(payload.type, content), "reason": notes or None, "ai_generated": ai_generated,
+        "content": _clean_plan(payload.type, content), "reason": notes or None, "ai_generated": ai_generated, "source": source,
         "ai_note": ai_note or None, "coach_note": None, "revises": active["id"] if active else None,
         "created_at": datetime.now(timezone.utc).isoformat(), "approved_at": None,
     }
@@ -3877,7 +3847,7 @@ async def create_indexes():
     except Exception:
         logger.exception("Web Push disabled: could not load VAPID keys")
     _start_scheduler()
-    logger.info("AI %s, Google sign-in %s", "on" if GEMINI_API_KEY else "off (set GEMINI_API_KEY)",
+    logger.info("Plans & food estimates: %s, Google sign-in %s", "Gemini AI (built-in engine as fallback)" if GEMINI_API_KEY else "built-in engine (no AI key needed)",
                 "on" if GOOGLE_CLIENT_ID else "off (set GOOGLE_CLIENT_ID)")
 
 
