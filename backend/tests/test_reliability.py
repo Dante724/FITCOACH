@@ -62,10 +62,13 @@ def test_cookie_is_ignored_on_requests_from_other_websites(api):
     assert api.get("/api/auth/me", headers={**h, "Origin": "https://evil.example"}).status_code == 200  # the app's Bearer header is unaffected
 
 
-def test_cors_never_allows_credentials_for_unknown_sites(api):
-    r = api.options("/api/auth/me", headers={"Origin": "https://evil.example", "Access-Control-Request-Method": "GET"})
-    assert r.headers.get("access-control-allow-credentials") != "true"
-
+def test_older_app_builds_can_still_sign_in_across_sites(api):
+    """Builds that send requests "with credentials" need this header, or the browser discards the sign-in reply."""
+    r = api.options("/api/auth/login", headers={"Origin": "https://thefitcoach.in", "Access-Control-Request-Method": "POST",
+                                               "Access-Control-Request-Headers": "content-type"})
+    assert r.headers.get("access-control-allow-credentials") == "true"
+    assert r.headers.get("access-control-allow-origin") == "https://thefitcoach.in"
+    # …and the cookie still can't be used by another site (see test_cookie_is_ignored_on_requests_from_other_websites)
 
 # ── calls: relay servers ─────────────────────────────
 class FakeResp:

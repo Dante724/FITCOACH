@@ -4410,11 +4410,12 @@ async def health():
 app.include_router(api_router)
 
 
-# The app authenticates with a Bearer header, so cross-site requests never need cookies. Credentialed CORS is only
-# allowed for the sites listed in CORS_ORIGINS; if that's unset, any site may call the API but without cookies.
+# The app authenticates with a Bearer header. Browsers may still attach the login cookie, but get_current_user only
+# trusts that cookie for requests from our own site (_cookie_ok), so allowing credentialed CORS can't let another
+# website act as a signed-in user. (Older app builds send requests "with credentials"; they keep working.)
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=bool(CORS_ORIGINS),
+    allow_credentials=True,
     **({"allow_origins": CORS_ORIGINS} if CORS_ORIGINS else {"allow_origin_regex": ".*"}),
     allow_methods=["*"],
     allow_headers=["*"],
