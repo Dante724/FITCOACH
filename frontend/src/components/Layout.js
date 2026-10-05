@@ -8,6 +8,7 @@ import NotificationBell from "@/components/NotificationBell";
 import Logo from "@/components/Logo";
 import Avatar from "@/components/Avatar";
 import CallCenter from "@/components/CallCenter";
+import OfflineBar from "@/components/OfflineBar";
 import { canPromptInstall, promptInstall, onInstallAvailability } from "@/lib/push";
 
 export default function Layout() {
@@ -99,6 +100,7 @@ export default function Layout() {
       </aside>
 
       <main className="app-main">
+        <OfflineBar />
         <div className="desktop-bell" style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
           <NotificationBell />
         </div>

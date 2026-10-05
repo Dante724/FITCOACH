@@ -65,8 +65,9 @@
     "start": "craco start",
     "build": "craco build",
     "test": "craco test",
-    "prestart": "node scripts/mediapipe-assets.js",
-    "prebuild": "node scripts/mediapipe-assets.js"
+    "prestart": "node scripts/mediapipe-assets.js && node scripts/sync-foods.js",
+    "prebuild": "node scripts/mediapipe-assets.js && node scripts/sync-foods.js",
+    "sync-foods": "node scripts/sync-foods.js"
   },
   "browserslist": {
     "production": [

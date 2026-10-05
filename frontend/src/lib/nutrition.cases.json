@@ -1,0 +1,1142 @@
+{
+ "my_foods": [
+  {
+   "id": "t1",
+   "name": "Thepla",
+   "aliases": [
+    "thepla",
+    "methi thepla"
+   ],
+   "unit": "piece",
+   "grams": 50,
+   "kcal": 120,
+   "protein_g": 3,
+   "carbs_g": 17,
+   "fat_g": 4.5
+  },
+  {
+   "id": "t2",
+   "name": "Mom's rajma",
+   "aliases": [
+    "moms rajma",
+    "home rajma"
+   ],
+   "unit": "katori",
+   "kcal": 230,
+   "protein_g": 12,
+   "carbs_g": 31,
+   "fat_g": 7
+  }
+ ],
+ "meals": [
+  {
+   "text": "2 roti, 1 katori dal and 100g paneer",
+   "expected": {
+    "meal_name": "Roti, Dal & Paneer",
+    "items": [
+     "Roti / chapati × 2 (roti) — 220 kcal",
+     "Dal (toor / masoor) × 1 (katori (150 g)) — 150 kcal",
+     "Paneer × 1 (100 g) — 265 kcal"
+    ],
+    "calories": 635,
+    "protein_g": 34,
+    "carbs_g": 63,
+    "fat_g": 29,
+    "health_score": 67,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "3 idli sambar",
+   "expected": {
+    "meal_name": "Idli & Sambar",
+    "items": [
+     "Idli × 3 (idli) — 174 kcal",
+     "Sambar × 1 (katori (150 g)) — 130 kcal"
+    ],
+    "calories": 304,
+    "protein_g": 12,
+    "carbs_g": 54,
+    "fat_g": 5,
+    "health_score": 69,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "pizza 2 slices",
+   "expected": {
+    "meal_name": "Pizza",
+    "items": [
+     "Pizza × 2 (slice) — 570 kcal"
+    ],
+    "calories": 570,
+    "protein_g": 24,
+    "carbs_g": 72,
+    "fat_g": 20,
+    "health_score": 55,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "200 ml milk with 2 banana",
+   "expected": {
+    "meal_name": "Milk & Banana",
+    "items": [
+     "Milk (toned) × 0.8 (glass (250 ml)) — 120 kcal",
+     "Banana × 2 (banana) — 210 kcal"
+    ],
+    "calories": 330,
+    "protein_g": 9,
+    "carbs_g": 64,
+    "fat_g": 7,
+    "health_score": 66,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "2 ande ka omelette",
+   "expected": {
+    "meal_name": "Omelette",
+    "items": [
+     "Omelette (2 eggs) × 1 (omelette) — 190 kcal"
+    ],
+    "calories": 190,
+    "protein_g": 13,
+    "carbs_g": 2,
+    "fat_g": 14,
+    "health_score": 45,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "1 small bowl poha",
+   "expected": {
+    "meal_name": "Poha",
+    "items": [
+     "Poha × 0.75 (plate (150 g)) — 188 kcal"
+    ],
+    "calories": 188,
+    "protein_g": 4,
+    "carbs_g": 34,
+    "fat_g": 4,
+    "health_score": 65,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "dal chawal",
+   "expected": {
+    "meal_name": "Dal & Steamed rice",
+    "items": [
+     "Dal (toor / masoor) × 1 (katori (150 g)) — 150 kcal",
+     "Steamed rice × 1 (cup (150 g)) — 195 kcal"
+    ],
+    "calories": 345,
+    "protein_g": 13,
+    "carbs_g": 63,
+    "fat_g": 4,
+    "health_score": 69,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "masala dosa and filter coffee",
+   "expected": {
+    "meal_name": "Masala dosa & Coffee with milk",
+    "items": [
+     "Masala dosa × 1 (dosa) — 300 kcal",
+     "Coffee with milk × 1 (cup) — 80 kcal"
+    ],
+    "calories": 380,
+    "protein_g": 9,
+    "carbs_g": 55,
+    "fat_g": 14,
+    "health_score": 50,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "mystery stew, 2 eggs",
+   "expected": {
+    "meal_name": "Boiled egg",
+    "items": [
+     "Boiled egg × 2 (egg) — 156 kcal"
+    ],
+    "calories": 156,
+    "protein_g": 12,
+    "carbs_g": 1,
+    "fat_g": 10,
+    "health_score": 56,
+    "notes": "Estimated from typical home-style portions. Couldn't recognise: mystery stew — not counted. Try simpler names or add grams.",
+    "estimated_by": "food-table",
+    "unrecognised": [
+     "mystery stew"
+    ]
+   }
+  },
+  {
+   "text": "qwerty asdf",
+   "expected": {}
+  },
+  {
+   "text": "1/2 bowl rice and 100gms paneer",
+   "expected": {
+    "meal_name": "Steamed rice & Paneer",
+    "items": [
+     "Steamed rice × 0.5 (cup (150 g)) — 98 kcal",
+     "Paneer × 1 (100 g) — 265 kcal"
+    ],
+    "calories": 362,
+    "protein_g": 20,
+    "carbs_g": 24,
+    "fat_g": 20,
+    "health_score": 58,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "a tablespoon of olive oil",
+   "expected": {
+    "meal_name": "Cooking oil",
+    "items": [
+     "Cooking oil × 3 (tsp) — 135 kcal"
+    ],
+    "calories": 135,
+    "protein_g": 0,
+    "carbs_g": 0,
+    "fat_g": 15,
+    "health_score": 10,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "1 tbsp peanut butter",
+   "expected": {
+    "meal_name": "Peanut butter",
+    "items": [
+     "Peanut butter × 1 (tbsp) — 95 kcal"
+    ],
+    "calories": 95,
+    "protein_g": 4,
+    "carbs_g": 3,
+    "fat_g": 8,
+    "health_score": 29,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "grilled chicken breast with a cup of brown rice and steamed broccoli",
+   "expected": {
+    "meal_name": "Grilled chicken breast, Brown rice & Sautéed vegetables",
+    "items": [
+     "Grilled chicken breast × 1 (100 g) — 165 kcal",
+     "Brown rice × 1 (cup (150 g)) — 165 kcal",
+     "Sautéed vegetables × 1 (bowl (150 g)) — 90 kcal"
+    ],
+    "calories": 420,
+    "protein_g": 38,
+    "carbs_g": 44,
+    "fat_g": 9,
+    "health_score": 88,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "2 chapathi with paner bhurji",
+   "expected": {
+    "meal_name": "Roti & Paneer bhurji",
+    "items": [
+     "Roti / chapati × 2 (roti) — 220 kcal",
+     "Paneer bhurji × 1 (katori (120 g)) — 300 kcal"
+    ],
+    "calories": 520,
+    "protein_g": 25,
+    "carbs_g": 47,
+    "fat_g": 27,
+    "health_score": 60,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "dall and chawal",
+   "expected": {
+    "meal_name": "Dal & Steamed rice",
+    "items": [
+     "Dal (toor / masoor) × 1 (katori (150 g)) — 150 kcal",
+     "Steamed rice × 1 (cup (150 g)) — 195 kcal"
+    ],
+    "calories": 345,
+    "protein_g": 13,
+    "carbs_g": 63,
+    "fat_g": 4,
+    "health_score": 69,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "1 large plate chicken biryani + coke",
+   "expected": {
+    "meal_name": "Chicken biryani & Soft drink",
+    "items": [
+     "Chicken biryani × 1.3 (plate (300 g)) — 650 kcal",
+     "Soft drink × 1 (glass (300 ml)) — 130 kcal"
+    ],
+    "calories": 780,
+    "protein_g": 32,
+    "carbs_g": 104,
+    "fat_g": 23,
+    "health_score": 40,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "half glass milk",
+   "expected": {
+    "meal_name": "Milk",
+    "items": [
+     "Milk (toned) × 0.5 (glass (250 ml)) — 75 kcal"
+    ],
+    "calories": 75,
+    "protein_g": 4,
+    "carbs_g": 6,
+    "fat_g": 4,
+    "health_score": 63,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "two boiled eggs and toast",
+   "expected": {
+    "meal_name": "Boiled egg & Whole-wheat bread",
+    "items": [
+     "Boiled egg × 2 (egg) — 156 kcal",
+     "Whole-wheat bread × 1 (slice) — 70 kcal"
+    ],
+    "calories": 226,
+    "protein_g": 15,
+    "carbs_g": 13,
+    "fat_g": 11,
+    "health_score": 67,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "chole bhature",
+   "expected": {
+    "meal_name": "Chole",
+    "items": [
+     "Chole × 1 (katori (150 g)) — 240 kcal"
+    ],
+    "calories": 240,
+    "protein_g": 11,
+    "carbs_g": 32,
+    "fat_g": 8,
+    "health_score": 71,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "3 egg omelette and 2 toast",
+   "expected": {
+    "meal_name": "Omelette & Whole-wheat bread",
+    "items": [
+     "Omelette (2 eggs) × 1.5 (omelette) — 285 kcal",
+     "Whole-wheat bread × 2 (slice) — 140 kcal"
+    ],
+    "calories": 425,
+    "protein_g": 26,
+    "carbs_g": 27,
+    "fat_g": 23,
+    "health_score": 61,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "1.5 cup rice, rajma, salad",
+   "expected": {
+    "meal_name": "Steamed rice, Rajma & Cucumber–tomato salad",
+    "items": [
+     "Steamed rice × 1.5 (cup (150 g)) — 292 kcal",
+     "Rajma × 1 (katori (150 g)) — 210 kcal",
+     "Cucumber–tomato salad × 1 (bowl) — 40 kcal"
+    ],
+    "calories": 542,
+    "protein_g": 18,
+    "carbs_g": 102,
+    "fat_g": 6,
+    "health_score": 76,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "upma; chai",
+   "expected": {
+    "meal_name": "Upma & Tea with milk & sugar",
+    "items": [
+     "Upma × 1 (bowl (150 g)) — 220 kcal",
+     "Tea with milk & sugar × 1 (cup) — 70 kcal"
+    ],
+    "calories": 290,
+    "protein_g": 8,
+    "carbs_g": 44,
+    "fat_g": 9,
+    "health_score": 51,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "1 kg watermelon",
+   "expected": {
+    "meal_name": "Seasonal fruit",
+    "items": [
+     "Seasonal fruit × 6.66667 (bowl (150 g)) — 600 kcal"
+    ],
+    "calories": 600,
+    "protein_g": 7,
+    "carbs_g": 147,
+    "fat_g": 3,
+    "health_score": 70,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "250g curd",
+   "expected": {
+    "meal_name": "Curd",
+    "items": [
+     "Curd (dahi) × 1.25 (cup (200 g)) — 150 kcal"
+    ],
+    "calories": 150,
+    "protein_g": 9,
+    "carbs_g": 11,
+    "fat_g": 8,
+    "health_score": 64,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "do roti aur sabzi",
+   "expected": {
+    "meal_name": "Roti & Mixed vegetable sabzi",
+    "items": [
+     "Roti / chapati × 2 (roti) — 220 kcal",
+     "Mixed vegetable sabzi × 1 (katori (150 g)) — 120 kcal"
+    ],
+    "calories": 340,
+    "protein_g": 10,
+    "carbs_g": 52,
+    "fat_g": 12,
+    "health_score": 75,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "ek katori dal",
+   "expected": {
+    "meal_name": "Dal",
+    "items": [
+     "Dal (toor / masoor) × 1 (katori (150 g)) — 150 kcal"
+    ],
+    "calories": 150,
+    "protein_g": 9,
+    "carbs_g": 20,
+    "fat_g": 4,
+    "health_score": 75,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "palak paneer with 2 rotis",
+   "expected": {
+    "meal_name": "Palak paneer & Roti",
+    "items": [
+     "Palak paneer × 1 (katori (150 g)) — 280 kcal",
+     "Roti / chapati × 2 (roti) — 220 kcal"
+    ],
+    "calories": 500,
+    "protein_g": 21,
+    "carbs_g": 50,
+    "fat_g": 25,
+    "health_score": 60,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "sprouts salad",
+   "expected": {
+    "meal_name": "Sprouts salad",
+    "items": [
+     "Sprouts salad × 1 (bowl (100 g)) — 110 kcal"
+    ],
+    "calories": 110,
+    "protein_g": 8,
+    "carbs_g": 17,
+    "fat_g": 1,
+    "health_score": 86,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "whey protein shake with banana",
+   "expected": {
+    "meal_name": "Whey protein, Whey protein & Banana",
+    "items": [
+     "Whey protein × 1 (scoop (30 g)) — 120 kcal",
+     "Whey protein × 1 (scoop (30 g)) — 120 kcal",
+     "Banana × 1 (banana) — 105 kcal"
+    ],
+    "calories": 345,
+    "protein_g": 49,
+    "carbs_g": 33,
+    "fat_g": 3,
+    "health_score": 80,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "makhana",
+   "expected": {
+    "meal_name": "Roasted makhana",
+    "items": [
+     "Roasted makhana × 1 (bowl (30 g)) — 120 kcal"
+    ],
+    "calories": 120,
+    "protein_g": 3,
+    "carbs_g": 21,
+    "fat_g": 2,
+    "health_score": 66,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "2 samosa and coke",
+   "expected": {
+    "meal_name": "Samosa & Soft drink",
+    "items": [
+     "Samosa × 2 (samosa) — 520 kcal",
+     "Soft drink × 1 (glass (300 ml)) — 130 kcal"
+    ],
+    "calories": 650,
+    "protein_g": 8,
+    "carbs_g": 93,
+    "fat_g": 28,
+    "health_score": 29,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "grilled chicken 150g, salad, 1 roti",
+   "expected": {
+    "meal_name": "Grilled chicken breast, Cucumber–tomato salad & Roti",
+    "items": [
+     "Grilled chicken breast × 1.5 (100 g) — 248 kcal",
+     "Cucumber–tomato salad × 1 (bowl) — 40 kcal",
+     "Roti / chapati × 1 (roti) — 110 kcal"
+    ],
+    "calories": 398,
+    "protein_g": 52,
+    "carbs_g": 28,
+    "fat_g": 8,
+    "health_score": 88,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "khichdi with curd",
+   "expected": {
+    "meal_name": "Moong dal khichdi & Curd",
+    "items": [
+     "Moong dal khichdi × 1 (bowl (200 g)) — 230 kcal",
+     "Curd (dahi) × 1 (cup (200 g)) — 120 kcal"
+    ],
+    "calories": 350,
+    "protein_g": 16,
+    "carbs_g": 47,
+    "fat_g": 11,
+    "health_score": 71,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "bajra roti 2 and dal",
+   "expected": {
+    "meal_name": "Bajra & Dal",
+    "items": [
+     "Bajra / jowar roti × 2 (roti) — 230 kcal",
+     "Dal (toor / masoor) × 1 (katori (150 g)) — 150 kcal"
+    ],
+    "calories": 380,
+    "protein_g": 15,
+    "carbs_g": 62,
+    "fat_g": 9,
+    "health_score": 69,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "3 dhokla",
+   "expected": {
+    "meal_name": "Dhokla",
+    "items": [
+     "Dhokla × 3 (pieces (100 g)) — 480 kcal"
+    ],
+    "calories": 480,
+    "protein_g": 18,
+    "carbs_g": 66,
+    "fat_g": 15,
+    "health_score": 69,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "4 almonds",
+   "expected": {
+    "meal_name": "Almonds",
+    "items": [
+     "Almonds × 4 (10 almonds) — 280 kcal"
+    ],
+    "calories": 280,
+    "protein_g": 10,
+    "carbs_g": 10,
+    "fat_g": 24,
+    "health_score": 26,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "soya chunks 50g",
+   "expected": {
+    "meal_name": "Soya chunks",
+    "items": [
+     "Soya chunks × 1.66667 (bowl (30 g dry)) — 175 kcal"
+    ],
+    "calories": 175,
+    "protein_g": 27,
+    "carbs_g": 17,
+    "fat_g": 0,
+    "health_score": 80,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "tofu 200 g stir fry",
+   "expected": {
+    "meal_name": "Tofu & Sautéed vegetables",
+    "items": [
+     "Tofu × 2 (100 g) — 290 kcal",
+     "Sautéed vegetables × 1.33333 (bowl (150 g)) — 120 kcal"
+    ],
+    "calories": 410,
+    "protein_g": 34,
+    "carbs_g": 19,
+    "fat_g": 23,
+    "health_score": 71,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "fish curry rice",
+   "expected": {
+    "meal_name": "Fish curry & Steamed rice",
+    "items": [
+     "Fish curry × 1 (katori (150 g)) — 220 kcal",
+     "Steamed rice × 1 (cup (150 g)) — 195 kcal"
+    ],
+    "calories": 415,
+    "protein_g": 26,
+    "carbs_g": 48,
+    "fat_g": 12,
+    "health_score": 75,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "mutton curry and 3 roti",
+   "expected": {
+    "meal_name": "Mutton curry & Roti",
+    "items": [
+     "Mutton curry × 1 (katori (150 g)) — 330 kcal",
+     "Roti / chapati × 3 (roti) — 330 kcal"
+    ],
+    "calories": 660,
+    "protein_g": 36,
+    "carbs_g": 66,
+    "fat_g": 30,
+    "health_score": 66,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "1 vada pav",
+   "expected": {
+    "meal_name": "Vada pav",
+    "items": [
+     "Vada pav × 1 (vada pav) — 290 kcal"
+    ],
+    "calories": 290,
+    "protein_g": 6,
+    "carbs_g": 40,
+    "fat_g": 12,
+    "health_score": 47,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "gulab jamun 2 pieces",
+   "expected": {
+    "meal_name": "Gulab jamun",
+    "items": [
+     "Gulab jamun × 2 (piece) — 300 kcal"
+    ],
+    "calories": 300,
+    "protein_g": 4,
+    "carbs_g": 50,
+    "fat_g": 10,
+    "health_score": 48,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "oats with milk",
+   "expected": {
+    "meal_name": "Oats & Milk",
+    "items": [
+     "Oats × 1 (bowl (40 g dry)) — 150 kcal",
+     "Milk (toned) × 1 (glass (250 ml)) — 150 kcal"
+    ],
+    "calories": 300,
+    "protein_g": 13,
+    "carbs_g": 39,
+    "fat_g": 10,
+    "health_score": 70,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "dalia",
+   "expected": {
+    "meal_name": "Dalia",
+    "items": [
+     "Dalia (broken wheat) × 1 (bowl (150 g)) — 170 kcal"
+    ],
+    "calories": 170,
+    "protein_g": 6,
+    "carbs_g": 32,
+    "fat_g": 2,
+    "health_score": 68,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "aloo paratha with curd",
+   "expected": {
+    "meal_name": "Aloo paratha & Curd",
+    "items": [
+     "Aloo paratha × 1 (paratha) — 260 kcal",
+     "Curd (dahi) × 1 (cup (200 g)) — 120 kcal"
+    ],
+    "calories": 380,
+    "protein_g": 13,
+    "carbs_g": 45,
+    "fat_g": 16,
+    "health_score": 65,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "jeera rice and dal fry",
+   "expected": {
+    "meal_name": "Jeera rice & Dal",
+    "items": [
+     "Jeera rice × 1 (cup (150 g)) — 230 kcal",
+     "Dal (toor / masoor) × 1 (katori (150 g)) — 150 kcal"
+    ],
+    "calories": 380,
+    "protein_g": 13,
+    "carbs_g": 62,
+    "fat_g": 9,
+    "health_score": 68,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "paneer tikka",
+   "expected": {
+    "meal_name": "Paneer",
+    "items": [
+     "Paneer × 1 (100 g) — 265 kcal"
+    ],
+    "calories": 265,
+    "protein_g": 18,
+    "carbs_g": 3,
+    "fat_g": 20,
+    "health_score": 44,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "egg whites 6",
+   "expected": {
+    "meal_name": "Egg whites",
+    "items": [
+     "Egg whites × 6 (3 whites) — 306 kcal"
+    ],
+    "calories": 306,
+    "protein_g": 66,
+    "carbs_g": 4,
+    "fat_g": 1,
+    "health_score": 80,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "1 apple and 10 almonds",
+   "expected": {
+    "meal_name": "Apple & Almonds",
+    "items": [
+     "Apple × 1 (apple) — 95 kcal",
+     "Almonds × 10 (10 almonds) — 700 kcal"
+    ],
+    "calories": 795,
+    "protein_g": 26,
+    "carbs_g": 50,
+    "fat_g": 60,
+    "health_score": 34,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "2 thepla with curd",
+   "expected": {
+    "meal_name": "Thepla & Curd",
+    "items": [
+     "Thepla × 2 (piece) — 240 kcal",
+     "Curd (dahi) × 1 (cup (200 g)) — 120 kcal"
+    ],
+    "calories": 360,
+    "protein_g": 13,
+    "carbs_g": 43,
+    "fat_g": 15,
+    "health_score": 66,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "methi thepla 3",
+   "expected": {
+    "meal_name": "Thepla",
+    "items": [
+     "Thepla × 3 (piece) — 360 kcal"
+    ],
+    "calories": 360,
+    "protein_g": 9,
+    "carbs_g": 51,
+    "fat_g": 14,
+    "health_score": 66,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "moms rajma with rice",
+   "expected": {
+    "meal_name": "Mom's rajma & Steamed rice",
+    "items": [
+     "Mom's rajma × 1 (katori) — 230 kcal",
+     "Steamed rice × 1 (cup (150 g)) — 195 kcal"
+    ],
+    "calories": 425,
+    "protein_g": 16,
+    "carbs_g": 74,
+    "fat_g": 8,
+    "health_score": 69,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "home rajma",
+   "expected": {
+    "meal_name": "Mom's rajma",
+    "items": [
+     "Mom's rajma × 1 (katori) — 230 kcal"
+    ],
+    "calories": 230,
+    "protein_g": 12,
+    "carbs_g": 31,
+    "fat_g": 7,
+    "health_score": 73,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "big bowl of fruit",
+   "expected": {
+    "meal_name": "Seasonal fruit",
+    "items": [
+     "Seasonal fruit × 1.3 (bowl (150 g)) — 117 kcal"
+    ],
+    "calories": 117,
+    "protein_g": 1,
+    "carbs_g": 29,
+    "fat_g": 1,
+    "health_score": 70,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "small cup tea",
+   "expected": {
+    "meal_name": "Tea with milk & sugar",
+    "items": [
+     "Tea with milk & sugar × 0.75 (cup) — 52 kcal"
+    ],
+    "calories": 52,
+    "protein_g": 2,
+    "carbs_g": 8,
+    "fat_g": 2,
+    "health_score": 52,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "½ plate poha",
+   "expected": {
+    "meal_name": "Poha",
+    "items": [
+     "Poha × 0.5 (plate (150 g)) — 125 kcal"
+    ],
+    "calories": 125,
+    "protein_g": 2,
+    "carbs_g": 22,
+    "fat_g": 3,
+    "health_score": 65,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "chicken curry 300g",
+   "expected": {
+    "meal_name": "Chicken curry",
+    "items": [
+     "Chicken curry × 2 (katori (150 g)) — 500 kcal"
+    ],
+    "calories": 500,
+    "protein_g": 50,
+    "carbs_g": 12,
+    "fat_g": 28,
+    "health_score": 64,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "bhindi sabzi, 2 phulka",
+   "expected": {
+    "meal_name": "Bhindi sabzi & Roti",
+    "items": [
+     "Bhindi sabzi × 1 (katori (150 g)) — 130 kcal",
+     "Roti / chapati × 2 (roti) — 220 kcal"
+    ],
+    "calories": 350,
+    "protein_g": 10,
+    "carbs_g": 52,
+    "fat_g": 13,
+    "health_score": 75,
+    "notes": "Estimated from typical home-style portions.",
+    "estimated_by": "food-table",
+    "unrecognised": []
+   }
+  },
+  {
+   "text": "lassi",
+   "expected": {}
+  }
+ ],
+ "targets": [
+  {
+   "intake": {
+    "age": 30,
+    "sex": "male",
+    "height_cm": 175,
+    "days_per_week": 4
+   },
+   "weight": 80,
+   "focus": "fat_loss",
+   "expected": {
+    "calories": 2170,
+    "protein_g": 128,
+    "fat_g": 60,
+    "carbs_g": 280
+   }
+  },
+  {
+   "intake": {
+    "age": 45,
+    "sex": "female",
+    "height_cm": 152,
+    "days_per_week": 2
+   },
+   "weight": 58,
+   "focus": "fat_loss",
+   "expected": {
+    "calories": 1260,
+    "protein_g": 93,
+    "fat_g": 35,
+    "carbs_g": 143
+   }
+  },
+  {
+   "intake": {
+    "age": 24,
+    "sex": "male",
+    "height_cm": 180,
+    "days_per_week": 5
+   },
+   "weight": 70,
+   "focus": "muscle_gain",
+   "expected": {
+    "calories": 3240,
+    "protein_g": 126,
+    "fat_g": 90,
+    "carbs_g": 482
+   }
+  },
+  {
+   "intake": {
+    "age": 35,
+    "height_cm": 165,
+    "days_per_week": 3,
+    "target_weight_kg": 75
+   },
+   "weight": 102,
+   "focus": "yoga",
+   "expected": {
+    "calories": 2790,
+    "protein_g": 90,
+    "fat_g": 78,
+    "carbs_g": 432
+   }
+  },
+  {
+   "intake": {},
+   "weight": null,
+   "focus": "hybrid",
+   "expected": {
+    "calories": 2330,
+    "protein_g": 84,
+    "fat_g": 65,
+    "carbs_g": 352
+   }
+  }
+ ]
+}

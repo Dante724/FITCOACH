@@ -353,6 +353,20 @@ class ProgressCreate(BaseModel):
 
 class FoodAnalyzeRequest(BaseModel):
     description: str
+    client_ref: Optional[str] = None   # set by the app so a meal logged offline is only saved once when it syncs
+    logged_at: Optional[str] = None    # when it was eaten/logged on the device (offline logs sync later)
+
+
+class MyFoodIn(BaseModel):
+    id: Optional[str] = None           # the app may create the id offline
+    name: str
+    aliases: List[str] = []
+    unit: Optional[str] = None
+    grams: Optional[float] = None
+    kcal: float
+    protein_g: float = 0
+    carbs_g: float = 0
+    fat_g: float = 0
 
 
 class WorkoutSessionCreate(BaseModel):
@@ -1537,6 +1551,14 @@ async def analyze_food(payload: FoodAnalyzeRequest, user: User = Depends(require
     description = payload.description.strip()
     if not (2 <= len(description) <= 1000):
         raise HTTPException(status_code=400, detail="Describe your meal in a few words (up to 1000 characters)")
+    client_ref = _txt(payload.client_ref, 64) or None
+    if client_ref:
+        existing = await db.food_logs.find_one({"user_id": user.user_id, "client_ref": client_ref}, {"_id": 0})
+        if existing:
+            return existing  # already synced
+    now = datetime.now(timezone.utc)
+    logged = _parse_dt(payload.logged_at) if payload.logged_at else None
+    created = logged if logged and now - timedelta(days=14) <= logged <= now + timedelta(minutes=5) else now
     result = None
     if GEMINI_API_KEY:  # optional AI estimate; the food table below needs no key
         system = (
@@ -1550,7 +1572,8 @@ async def analyze_food(payload: FoodAnalyzeRequest, user: User = Depends(require
         except Exception:
             logger.warning("AI food estimate failed; using the food table", exc_info=True)
     if result is None:
-        result = engine.analyze_meal(description)
+        my_foods = await db.user_foods.find({"user_id": user.user_id}, {"_id": 0}).to_list(500)
+        result = engine.analyze_meal(description, my_foods)
         if not result:
             raise HTTPException(status_code=400, detail="We couldn't recognise those foods. Try simple names with amounts, "
                                                         "like “2 roti, 1 katori dal, 1 bowl sabzi”.")
@@ -1560,11 +1583,47 @@ async def analyze_food(payload: FoodAnalyzeRequest, user: User = Depends(require
         "user_id": user.user_id,
         "description": description,
         "result": result,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "client_ref": client_ref,
+        "created_at": created.isoformat(),
     }
     await db.food_logs.insert_one(dict(doc))
     doc.pop("_id", None)
     return doc
+
+
+@api_router.get("/me/foods")
+async def my_foods(user: User = Depends(get_current_user)):
+    return await db.user_foods.find({"user_id": user.user_id}, {"_id": 0, "user_id": 0}).sort("name", 1).to_list(500)
+
+
+@api_router.post("/me/foods")
+async def save_my_food(payload: MyFoodIn, user: User = Depends(get_current_user)):
+    """Teach the food estimator a dish it doesn't know (e.g. a family recipe). Used for this person only."""
+    name = _txt(payload.name, 60)
+    if len(name) < 2:
+        raise HTTPException(status_code=400, detail="Give the food a name")
+    if not (0 <= payload.kcal <= 3000) or any(not (0 <= v <= 300) for v in (payload.protein_g, payload.carbs_g, payload.fat_g)):
+        raise HTTPException(status_code=400, detail="Check the numbers — calories up to 3000, macros up to 300 g per serving")
+    food_id = re.sub(r"[^a-zA-Z0-9-]", "", payload.id or "")[:40] or str(uuid.uuid4())
+    existing = await db.user_foods.find_one({"id": food_id}, {"_id": 0, "user_id": 1})
+    if existing and existing["user_id"] != user.user_id:
+        raise HTTPException(status_code=409, detail="Try again")
+    if not existing and await db.user_foods.count_documents({"user_id": user.user_id}) >= 200:
+        raise HTTPException(status_code=400, detail="You can save up to 200 foods")
+    aliases = [a for a in (re.sub(r"[^a-z ]", "", _txt(x, 40).lower()).strip() for x in [name] + payload.aliases[:6]) if len(a) >= 2]
+    doc = {"id": food_id, "user_id": user.user_id, "name": name, "aliases": list(dict.fromkeys(aliases)),
+           "unit": _txt(payload.unit, 30) or "serving", "grams": _num(payload.grams, 2000) or None,
+           "kcal": round(payload.kcal), "protein_g": round(payload.protein_g, 1), "carbs_g": round(payload.carbs_g, 1),
+           "fat_g": round(payload.fat_g, 1), "updated_at": _now_iso()}
+    await db.user_foods.update_one({"id": food_id}, {"$set": doc, "$setOnInsert": {"created_at": _now_iso()}}, upsert=True)
+    doc.pop("user_id")
+    return doc
+
+
+@api_router.delete("/me/foods/{food_id}")
+async def delete_my_food(food_id: str, user: User = Depends(get_current_user)):
+    await db.user_foods.delete_one({"id": food_id, "user_id": user.user_id})
+    return {"ok": True}
 
 
 @api_router.get("/food/logs")
@@ -3449,7 +3508,7 @@ EXPORT_COLLECTIONS = [  # (collection, field that holds the person's id)
     ("progress", "user_id"), ("progress_photos", "user_id"), ("daily_logs", "user_id"), ("food_logs", "user_id"),
     ("workout_sessions", "user_id"), ("plans", "client_id"), ("pose_checks", "client_id"), ("messages", "client_id"),
     ("bookings", "user_id"), ("transactions", "user_id"), ("membership_events", "user_id"), ("notifications", "user_id"),
-    ("consent_log", "user_id"), ("referrals", "referee_id"),
+    ("consent_log", "user_id"), ("referrals", "referee_id"), ("user_foods", "user_id"),
 ]
 
 
@@ -3486,7 +3545,7 @@ async def erase_client(user_id: str, by: str):
                         ("workout_sessions", "user_id"), ("plans", "client_id"), ("pose_checks", "client_id"), ("messages", "client_id"),
                         ("bookings", "user_id"), ("calls", "client_id"), ("notifications", "user_id"), ("dismissed_reminders", "user_id"),
                         ("push_subscriptions", "user_id"), ("ai_summaries", "client_id"), ("membership_events", "user_id"),
-                        ("consent_log", "user_id"), ("subscriptions", "user_id"), ("referrals", "referee_id"), ("referrals", "referrer_id")]:
+                        ("consent_log", "user_id"), ("subscriptions", "user_id"), ("user_foods", "user_id"), ("referrals", "referee_id"), ("referrals", "referrer_id")]:
         await db[coll].delete_many({field: user_id})
     await db.leads.delete_many({"email": u.get("email")})
     await db.login_attempts.delete_many({"identifier": {"$regex": f":{re.escape(u.get('email') or '')}$"}})
@@ -3833,6 +3892,8 @@ async def create_indexes():
         await db.users.create_index("referral_code", unique=True, partialFilterExpression={"referral_code": {"$type": "string"}})
         await db.membership_plans.create_index("id", unique=True)
         await db.leads.create_index([("status", 1), ("created_at", -1)])
+        await db.food_logs.create_index([("user_id", 1), ("client_ref", 1)], unique=True, partialFilterExpression={"client_ref": {"$type": "string"}})
+        await db.user_foods.create_index("id", unique=True)
         await db.leads.create_index("id", unique=True)
         await db.daily_logs.create_index([("user_id", 1), ("date", 1)], unique=True)
         await db.plan_templates.create_index([("coach_id", 1), ("type", 1)])

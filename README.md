@@ -92,6 +92,18 @@ outside AI service:
 - **Coach notes** steer drafts: "drop 150 kcal", "more protein", "4 days", "home workouts", "knee pain", "no rice".
 - **Food log:** "2 roti, 1 katori dal, 100 g paneer" → calories and macros from the same food table.
 
+**Works offline.** The food engine also runs inside the app (`frontend/src/lib/nutrition.js`, an exact port checked
+against the Python engine by tests), so calories and macros are worked out instantly on the phone with no server
+or internet. Meals logged and foods taught while offline are saved on the device and sync automatically, once,
+with their original time. The app opens offline with the last-seen plans, targets and logs.
+
+**My foods.** Clients can teach FitCoach dishes it doesn't know (e.g. a family recipe); it then recognises them on
+the phone and on the server, for that person only.
+
+**Editing the food table:** change `backend/food_data.json`, then run `npm run sync-foods` in `frontend/` (also
+runs automatically before `npm start`/`npm run build`) and `python tests/test_engine.py` in `backend/` to refresh
+the parity fixture. Tests fail if the app copy or fixture is out of date.
+
 The coach reviews and approves every plan. Optionally set `GEMINI_API_KEY` (use a billing-enabled key) to use
 Gemini instead; the engine stays as the fallback. The privacy policy switches its wording automatically.
 

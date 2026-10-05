@@ -1,0 +1,1570 @@
+{
+ "_about": "FitCoach food table: typical per-serving values for home-style Indian food (rounded estimates). Edit here; the app copy at frontend/src/data/foods.json is refreshed by `npm run sync-foods` and checked by tests. tags: veg/egg/nonveg/vegan diet; jain or jain_adapt (fine without onion/garlic); allergens dairy, gluten, nuts, peanut, soy, egg_a, fish; count = counted in pieces; junk = for logging only, never in plans.",
+ "version": 1,
+ "foods": {
+  "roti": {
+   "name": "Roti / chapati",
+   "unit": "roti",
+   "grams": 40,
+   "kcal": 110,
+   "protein_g": 3.5,
+   "carbs_g": 20,
+   "fat_g": 2.5,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain",
+    "gluten",
+    "count"
+   ],
+   "aliases": [
+    "roti",
+    "chapati",
+    "chapatti",
+    "phulka",
+    "fulka",
+    "chapathi"
+   ]
+  },
+  "bajra_roti": {
+   "name": "Bajra / jowar roti",
+   "unit": "roti",
+   "grams": 45,
+   "kcal": 115,
+   "protein_g": 3,
+   "carbs_g": 21,
+   "fat_g": 2.5,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain",
+    "count"
+   ],
+   "aliases": [
+    "bajra roti",
+    "jowar roti",
+    "bhakri",
+    "millet roti",
+    "ragi roti"
+   ]
+  },
+  "paratha": {
+   "name": "Plain paratha",
+   "unit": "paratha",
+   "grams": 60,
+   "kcal": 200,
+   "protein_g": 4,
+   "carbs_g": 28,
+   "fat_g": 8,
+   "tags": [
+    "veg",
+    "jain",
+    "gluten",
+    "dairy",
+    "count"
+   ],
+   "aliases": [
+    "paratha",
+    "parantha",
+    "plain paratha"
+   ]
+  },
+  "aloo_paratha": {
+   "name": "Aloo paratha",
+   "unit": "paratha",
+   "grams": 100,
+   "kcal": 260,
+   "protein_g": 6,
+   "carbs_g": 36,
+   "fat_g": 10,
+   "tags": [
+    "veg",
+    "gluten",
+    "dairy",
+    "count"
+   ],
+   "aliases": [
+    "aloo paratha",
+    "alu paratha"
+   ]
+  },
+  "rice": {
+   "name": "Steamed rice",
+   "unit": "cup (150 g)",
+   "grams": 150,
+   "kcal": 195,
+   "protein_g": 4,
+   "carbs_g": 43,
+   "fat_g": 0.5,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain"
+   ],
+   "aliases": [
+    "rice",
+    "chawal",
+    "plain rice",
+    "white rice",
+    "steamed rice"
+   ]
+  },
+  "brown_rice": {
+   "name": "Brown rice",
+   "unit": "cup (150 g)",
+   "grams": 150,
+   "kcal": 165,
+   "protein_g": 3.5,
+   "carbs_g": 34,
+   "fat_g": 1.3,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain"
+   ],
+   "aliases": [
+    "brown rice"
+   ]
+  },
+  "jeera_rice": {
+   "name": "Jeera rice",
+   "unit": "cup (150 g)",
+   "grams": 150,
+   "kcal": 230,
+   "protein_g": 4,
+   "carbs_g": 42,
+   "fat_g": 5,
+   "tags": [
+    "veg",
+    "jain_adapt",
+    "dairy"
+   ],
+   "aliases": [
+    "jeera rice",
+    "pulao"
+   ]
+  },
+  "poha": {
+   "name": "Poha",
+   "unit": "plate (150 g)",
+   "grams": 150,
+   "kcal": 250,
+   "protein_g": 5,
+   "carbs_g": 45,
+   "fat_g": 6,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain_adapt",
+    "peanut"
+   ],
+   "aliases": [
+    "poha",
+    "pohe",
+    "aval"
+   ]
+  },
+  "upma": {
+   "name": "Upma",
+   "unit": "bowl (150 g)",
+   "grams": 150,
+   "kcal": 220,
+   "protein_g": 6,
+   "carbs_g": 34,
+   "fat_g": 7,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain_adapt",
+    "gluten"
+   ],
+   "aliases": [
+    "upma",
+    "uppit",
+    "rava upma"
+   ]
+  },
+  "idli": {
+   "name": "Idli",
+   "unit": "idli",
+   "grams": 40,
+   "kcal": 58,
+   "protein_g": 2,
+   "carbs_g": 12,
+   "fat_g": 0.2,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain",
+    "count"
+   ],
+   "aliases": [
+    "idli",
+    "idly"
+   ]
+  },
+  "dosa": {
+   "name": "Plain dosa",
+   "unit": "dosa",
+   "grams": 80,
+   "kcal": 170,
+   "protein_g": 4,
+   "carbs_g": 28,
+   "fat_g": 4.5,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain",
+    "count"
+   ],
+   "aliases": [
+    "dosa",
+    "dosai",
+    "plain dosa"
+   ]
+  },
+  "masala_dosa": {
+   "name": "Masala dosa",
+   "unit": "dosa",
+   "grams": 160,
+   "kcal": 300,
+   "protein_g": 6,
+   "carbs_g": 45,
+   "fat_g": 11,
+   "tags": [
+    "veg",
+    "vegan",
+    "count"
+   ],
+   "aliases": [
+    "masala dosa"
+   ]
+  },
+  "oats": {
+   "name": "Oats",
+   "unit": "bowl (40 g dry)",
+   "grams": 40,
+   "kcal": 150,
+   "protein_g": 5,
+   "carbs_g": 27,
+   "fat_g": 3,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain"
+   ],
+   "aliases": [
+    "oats",
+    "oatmeal",
+    "porridge"
+   ]
+  },
+  "dalia": {
+   "name": "Dalia (broken wheat)",
+   "unit": "bowl (150 g)",
+   "grams": 150,
+   "kcal": 170,
+   "protein_g": 6,
+   "carbs_g": 32,
+   "fat_g": 1.5,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain",
+    "gluten"
+   ],
+   "aliases": [
+    "dalia",
+    "daliya",
+    "broken wheat"
+   ]
+  },
+  "bread": {
+   "name": "Whole-wheat bread",
+   "unit": "slice",
+   "grams": 28,
+   "kcal": 70,
+   "protein_g": 3,
+   "carbs_g": 12,
+   "fat_g": 1,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain",
+    "gluten",
+    "count"
+   ],
+   "aliases": [
+    "bread",
+    "toast",
+    "brown bread",
+    "bread slice"
+   ]
+  },
+  "besan_chilla": {
+   "name": "Besan chilla",
+   "unit": "chilla",
+   "grams": 60,
+   "kcal": 150,
+   "protein_g": 8,
+   "carbs_g": 18,
+   "fat_g": 5,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain_adapt",
+    "count"
+   ],
+   "aliases": [
+    "besan chilla",
+    "chilla",
+    "cheela",
+    "pudla"
+   ]
+  },
+  "moong_chilla": {
+   "name": "Moong dal chilla",
+   "unit": "chilla",
+   "grams": 60,
+   "kcal": 130,
+   "protein_g": 8,
+   "carbs_g": 17,
+   "fat_g": 3.5,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain_adapt",
+    "count"
+   ],
+   "aliases": [
+    "moong chilla",
+    "moong dal chilla",
+    "pesarattu"
+   ]
+  },
+  "khichdi": {
+   "name": "Moong dal khichdi",
+   "unit": "bowl (200 g)",
+   "grams": 200,
+   "kcal": 230,
+   "protein_g": 9,
+   "carbs_g": 38,
+   "fat_g": 5,
+   "tags": [
+    "veg",
+    "jain",
+    "dairy"
+   ],
+   "aliases": [
+    "khichdi",
+    "khichri"
+   ]
+  },
+  "dhokla": {
+   "name": "Dhokla",
+   "unit": "pieces (100 g)",
+   "grams": 100,
+   "kcal": 160,
+   "protein_g": 6,
+   "carbs_g": 22,
+   "fat_g": 5,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain"
+   ],
+   "aliases": [
+    "dhokla",
+    "khaman"
+   ]
+  },
+  "dal": {
+   "name": "Dal (toor / masoor)",
+   "unit": "katori (150 g)",
+   "grams": 150,
+   "kcal": 150,
+   "protein_g": 9,
+   "carbs_g": 20,
+   "fat_g": 4,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain_adapt"
+   ],
+   "aliases": [
+    "dal",
+    "daal",
+    "toor dal",
+    "arhar dal",
+    "masoor dal",
+    "dal tadka",
+    "dal fry",
+    "yellow dal"
+   ]
+  },
+  "moong_dal": {
+   "name": "Moong dal",
+   "unit": "katori (150 g)",
+   "grams": 150,
+   "kcal": 140,
+   "protein_g": 10,
+   "carbs_g": 19,
+   "fat_g": 3,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain_adapt"
+   ],
+   "aliases": [
+    "moong dal",
+    "mung dal",
+    "green moong"
+   ]
+  },
+  "rajma": {
+   "name": "Rajma",
+   "unit": "katori (150 g)",
+   "grams": 150,
+   "kcal": 210,
+   "protein_g": 11,
+   "carbs_g": 30,
+   "fat_g": 5,
+   "tags": [
+    "veg",
+    "vegan"
+   ],
+   "aliases": [
+    "rajma",
+    "kidney beans",
+    "rajma chawal"
+   ]
+  },
+  "chole": {
+   "name": "Chole",
+   "unit": "katori (150 g)",
+   "grams": 150,
+   "kcal": 240,
+   "protein_g": 11,
+   "carbs_g": 32,
+   "fat_g": 8,
+   "tags": [
+    "veg",
+    "vegan"
+   ],
+   "aliases": [
+    "chole",
+    "chana masala",
+    "chickpeas",
+    "chhole",
+    "chole bhature"
+   ]
+  },
+  "sambar": {
+   "name": "Sambar",
+   "unit": "katori (150 g)",
+   "grams": 150,
+   "kcal": 130,
+   "protein_g": 6,
+   "carbs_g": 18,
+   "fat_g": 4,
+   "tags": [
+    "veg",
+    "vegan"
+   ],
+   "aliases": [
+    "sambar",
+    "sambhar"
+   ]
+  },
+  "sprouts": {
+   "name": "Sprouts salad",
+   "unit": "bowl (100 g)",
+   "grams": 100,
+   "kcal": 110,
+   "protein_g": 8,
+   "carbs_g": 17,
+   "fat_g": 1,
+   "tags": [
+    "veg",
+    "vegan"
+   ],
+   "aliases": [
+    "sprouts",
+    "sprout salad",
+    "moong sprouts"
+   ]
+  },
+  "soya": {
+   "name": "Soya chunks",
+   "unit": "bowl (30 g dry)",
+   "grams": 30,
+   "kcal": 105,
+   "protein_g": 16,
+   "carbs_g": 10,
+   "fat_g": 0.2,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain",
+    "soy"
+   ],
+   "aliases": [
+    "soya chunks",
+    "soy chunks",
+    "nutrela",
+    "soya"
+   ]
+  },
+  "tofu": {
+   "name": "Tofu",
+   "unit": "100 g",
+   "grams": 100,
+   "kcal": 145,
+   "protein_g": 15,
+   "carbs_g": 3,
+   "fat_g": 9,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain",
+    "soy"
+   ],
+   "aliases": [
+    "tofu"
+   ]
+  },
+  "chana_roasted": {
+   "name": "Roasted chana",
+   "unit": "handful (30 g)",
+   "grams": 30,
+   "kcal": 110,
+   "protein_g": 6,
+   "carbs_g": 18,
+   "fat_g": 1.8,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain"
+   ],
+   "aliases": [
+    "roasted chana",
+    "bhuna chana",
+    "chana"
+   ]
+  },
+  "curd": {
+   "name": "Curd (dahi)",
+   "unit": "cup (200 g)",
+   "grams": 200,
+   "kcal": 120,
+   "protein_g": 7,
+   "carbs_g": 9,
+   "fat_g": 6,
+   "tags": [
+    "veg",
+    "jain",
+    "dairy"
+   ],
+   "aliases": [
+    "curd",
+    "dahi",
+    "yogurt",
+    "yoghurt"
+   ]
+  },
+  "hung_curd": {
+   "name": "Hung curd / Greek yogurt",
+   "unit": "150 g",
+   "grams": 150,
+   "kcal": 130,
+   "protein_g": 15,
+   "carbs_g": 6,
+   "fat_g": 5,
+   "tags": [
+    "veg",
+    "jain",
+    "dairy"
+   ],
+   "aliases": [
+    "hung curd",
+    "greek yogurt",
+    "greek yoghurt"
+   ]
+  },
+  "milk": {
+   "name": "Milk (toned)",
+   "unit": "glass (250 ml)",
+   "grams": 250,
+   "kcal": 150,
+   "protein_g": 8,
+   "carbs_g": 12,
+   "fat_g": 7.5,
+   "tags": [
+    "veg",
+    "jain",
+    "dairy"
+   ],
+   "aliases": [
+    "milk",
+    "doodh"
+   ]
+  },
+  "buttermilk": {
+   "name": "Buttermilk (chaas)",
+   "unit": "glass (250 ml)",
+   "grams": 250,
+   "kcal": 40,
+   "protein_g": 3,
+   "carbs_g": 4,
+   "fat_g": 1,
+   "tags": [
+    "veg",
+    "jain",
+    "dairy"
+   ],
+   "aliases": [
+    "buttermilk",
+    "chaas",
+    "chhaas",
+    "mattha"
+   ]
+  },
+  "paneer": {
+   "name": "Paneer",
+   "unit": "100 g",
+   "grams": 100,
+   "kcal": 265,
+   "protein_g": 18,
+   "carbs_g": 3,
+   "fat_g": 20,
+   "tags": [
+    "veg",
+    "jain",
+    "dairy"
+   ],
+   "aliases": [
+    "paneer",
+    "cottage cheese"
+   ]
+  },
+  "palak_paneer": {
+   "name": "Palak paneer",
+   "unit": "katori (150 g)",
+   "grams": 150,
+   "kcal": 280,
+   "protein_g": 14,
+   "carbs_g": 10,
+   "fat_g": 20,
+   "tags": [
+    "veg",
+    "jain_adapt",
+    "dairy"
+   ],
+   "aliases": [
+    "palak paneer",
+    "saag paneer"
+   ]
+  },
+  "paneer_bhurji": {
+   "name": "Paneer bhurji",
+   "unit": "katori (120 g)",
+   "grams": 120,
+   "kcal": 300,
+   "protein_g": 18,
+   "carbs_g": 7,
+   "fat_g": 22,
+   "tags": [
+    "veg",
+    "jain_adapt",
+    "dairy"
+   ],
+   "aliases": [
+    "paneer bhurji"
+   ]
+  },
+  "raita": {
+   "name": "Raita",
+   "unit": "katori (150 g)",
+   "grams": 150,
+   "kcal": 90,
+   "protein_g": 5,
+   "carbs_g": 7,
+   "fat_g": 4,
+   "tags": [
+    "veg",
+    "jain",
+    "dairy"
+   ],
+   "aliases": [
+    "raita"
+   ]
+  },
+  "whey": {
+   "name": "Whey protein",
+   "unit": "scoop (30 g)",
+   "grams": 30,
+   "kcal": 120,
+   "protein_g": 24,
+   "carbs_g": 3,
+   "fat_g": 1.5,
+   "tags": [
+    "veg",
+    "jain",
+    "dairy",
+    "count"
+   ],
+   "aliases": [
+    "whey",
+    "whey protein",
+    "protein shake",
+    "protein powder"
+   ]
+  },
+  "egg": {
+   "name": "Boiled egg",
+   "unit": "egg",
+   "grams": 50,
+   "kcal": 78,
+   "protein_g": 6,
+   "carbs_g": 0.6,
+   "fat_g": 5,
+   "tags": [
+    "egg",
+    "egg_a",
+    "count"
+   ],
+   "aliases": [
+    "egg",
+    "eggs",
+    "boiled egg",
+    "boiled eggs",
+    "anda",
+    "ande"
+   ]
+  },
+  "egg_whites": {
+   "name": "Egg whites",
+   "unit": "3 whites",
+   "grams": 99,
+   "kcal": 51,
+   "protein_g": 11,
+   "carbs_g": 0.7,
+   "fat_g": 0.2,
+   "tags": [
+    "egg",
+    "egg_a"
+   ],
+   "aliases": [
+    "egg white",
+    "egg whites"
+   ]
+  },
+  "omelette": {
+   "name": "Omelette (2 eggs)",
+   "unit": "omelette",
+   "grams": 130,
+   "kcal": 190,
+   "protein_g": 13,
+   "carbs_g": 2,
+   "fat_g": 14,
+   "tags": [
+    "egg",
+    "egg_a",
+    "count"
+   ],
+   "aliases": [
+    "omelette",
+    "omelet",
+    "anda omelette"
+   ]
+  },
+  "egg_bhurji": {
+   "name": "Egg bhurji (2 eggs)",
+   "unit": "plate",
+   "grams": 130,
+   "kcal": 200,
+   "protein_g": 13,
+   "carbs_g": 4,
+   "fat_g": 15,
+   "tags": [
+    "egg",
+    "egg_a"
+   ],
+   "aliases": [
+    "egg bhurji",
+    "anda bhurji",
+    "scrambled eggs"
+   ]
+  },
+  "chicken": {
+   "name": "Grilled chicken breast",
+   "unit": "100 g",
+   "grams": 100,
+   "kcal": 165,
+   "protein_g": 31,
+   "carbs_g": 0,
+   "fat_g": 3.6,
+   "tags": [
+    "nonveg"
+   ],
+   "aliases": [
+    "grilled chicken",
+    "chicken breast",
+    "chicken"
+   ]
+  },
+  "chicken_curry": {
+   "name": "Chicken curry",
+   "unit": "katori (150 g)",
+   "grams": 150,
+   "kcal": 250,
+   "protein_g": 25,
+   "carbs_g": 6,
+   "fat_g": 14,
+   "tags": [
+    "nonveg"
+   ],
+   "aliases": [
+    "chicken curry",
+    "butter chicken",
+    "chicken masala"
+   ]
+  },
+  "tandoori_chicken": {
+   "name": "Tandoori chicken",
+   "unit": "2 pieces (150 g)",
+   "grams": 150,
+   "kcal": 260,
+   "protein_g": 35,
+   "carbs_g": 4,
+   "fat_g": 11,
+   "tags": [
+    "nonveg",
+    "dairy"
+   ],
+   "aliases": [
+    "tandoori chicken",
+    "chicken tikka"
+   ]
+  },
+  "fish_curry": {
+   "name": "Fish curry",
+   "unit": "katori (150 g)",
+   "grams": 150,
+   "kcal": 220,
+   "protein_g": 22,
+   "carbs_g": 5,
+   "fat_g": 12,
+   "tags": [
+    "nonveg",
+    "fish"
+   ],
+   "aliases": [
+    "fish curry",
+    "machli"
+   ]
+  },
+  "grilled_fish": {
+   "name": "Grilled fish",
+   "unit": "100 g",
+   "grams": 100,
+   "kcal": 140,
+   "protein_g": 24,
+   "carbs_g": 0,
+   "fat_g": 4,
+   "tags": [
+    "nonveg",
+    "fish"
+   ],
+   "aliases": [
+    "grilled fish",
+    "fish fry",
+    "fish tikka",
+    "fish"
+   ]
+  },
+  "mutton_curry": {
+   "name": "Mutton curry",
+   "unit": "katori (150 g)",
+   "grams": 150,
+   "kcal": 330,
+   "protein_g": 25,
+   "carbs_g": 6,
+   "fat_g": 23,
+   "tags": [
+    "nonveg"
+   ],
+   "aliases": [
+    "mutton curry",
+    "mutton",
+    "goat curry"
+   ]
+  },
+  "mixed_veg": {
+   "name": "Mixed vegetable sabzi",
+   "unit": "katori (150 g)",
+   "grams": 150,
+   "kcal": 120,
+   "protein_g": 3,
+   "carbs_g": 12,
+   "fat_g": 7,
+   "tags": [
+    "veg",
+    "vegan"
+   ],
+   "aliases": [
+    "mixed veg",
+    "sabzi",
+    "sabji",
+    "subzi",
+    "vegetable curry",
+    "veg curry",
+    "mix veg"
+   ]
+  },
+  "lauki": {
+   "name": "Lauki / tori sabzi",
+   "unit": "katori (150 g)",
+   "grams": 150,
+   "kcal": 90,
+   "protein_g": 2,
+   "carbs_g": 10,
+   "fat_g": 5,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain"
+   ],
+   "aliases": [
+    "lauki",
+    "ghiya",
+    "dudhi",
+    "bottle gourd",
+    "tori",
+    "turai"
+   ]
+  },
+  "cabbage": {
+   "name": "Cabbage / beans sabzi",
+   "unit": "katori (150 g)",
+   "grams": 150,
+   "kcal": 100,
+   "protein_g": 3,
+   "carbs_g": 10,
+   "fat_g": 6,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain_adapt"
+   ],
+   "aliases": [
+    "cabbage",
+    "patta gobhi",
+    "beans sabzi",
+    "cabbage sabzi"
+   ]
+  },
+  "palak": {
+   "name": "Palak / methi sabzi",
+   "unit": "katori (150 g)",
+   "grams": 150,
+   "kcal": 110,
+   "protein_g": 4,
+   "carbs_g": 8,
+   "fat_g": 7,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain_adapt"
+   ],
+   "aliases": [
+    "palak",
+    "spinach",
+    "methi",
+    "saag"
+   ]
+  },
+  "bhindi": {
+   "name": "Bhindi sabzi",
+   "unit": "katori (150 g)",
+   "grams": 150,
+   "kcal": 130,
+   "protein_g": 3,
+   "carbs_g": 12,
+   "fat_g": 8,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain_adapt"
+   ],
+   "aliases": [
+    "bhindi",
+    "okra",
+    "ladyfinger"
+   ]
+  },
+  "aloo_sabzi": {
+   "name": "Aloo sabzi",
+   "unit": "katori (150 g)",
+   "grams": 150,
+   "kcal": 180,
+   "protein_g": 3,
+   "carbs_g": 24,
+   "fat_g": 8,
+   "tags": [
+    "veg",
+    "vegan"
+   ],
+   "aliases": [
+    "aloo sabzi",
+    "potato",
+    "aloo",
+    "alu",
+    "jeera aloo"
+   ]
+  },
+  "salad": {
+   "name": "Cucumber–tomato salad",
+   "unit": "bowl",
+   "grams": 150,
+   "kcal": 40,
+   "protein_g": 1.5,
+   "carbs_g": 8,
+   "fat_g": 0.3,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain"
+   ],
+   "aliases": [
+    "salad",
+    "cucumber",
+    "kheera",
+    "tomato"
+   ]
+  },
+  "veg_soup": {
+   "name": "Vegetable soup",
+   "unit": "bowl (250 ml)",
+   "grams": 250,
+   "kcal": 80,
+   "protein_g": 3,
+   "carbs_g": 12,
+   "fat_g": 2,
+   "tags": [
+    "veg",
+    "vegan"
+   ],
+   "aliases": [
+    "soup",
+    "vegetable soup",
+    "veg soup"
+   ]
+  },
+  "sauteed_veg": {
+   "name": "Sautéed vegetables",
+   "unit": "bowl (150 g)",
+   "grams": 150,
+   "kcal": 90,
+   "protein_g": 3,
+   "carbs_g": 10,
+   "fat_g": 4,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain_adapt"
+   ],
+   "aliases": [
+    "sauteed vegetables",
+    "stir fry vegetables",
+    "stir fry",
+    "steamed vegetables",
+    "vegetables",
+    "veggies",
+    "broccoli",
+    "capsicum",
+    "mushroom",
+    "mushrooms",
+    "beans",
+    "gobi",
+    "cauliflower"
+   ]
+  },
+  "banana": {
+   "name": "Banana",
+   "unit": "banana",
+   "grams": 118,
+   "kcal": 105,
+   "protein_g": 1.3,
+   "carbs_g": 27,
+   "fat_g": 0.4,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain",
+    "count"
+   ],
+   "aliases": [
+    "banana",
+    "kela"
+   ]
+  },
+  "apple": {
+   "name": "Apple",
+   "unit": "apple",
+   "grams": 180,
+   "kcal": 95,
+   "protein_g": 0.5,
+   "carbs_g": 25,
+   "fat_g": 0.3,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain",
+    "count"
+   ],
+   "aliases": [
+    "apple",
+    "seb"
+   ]
+  },
+  "fruit": {
+   "name": "Seasonal fruit",
+   "unit": "bowl (150 g)",
+   "grams": 150,
+   "kcal": 90,
+   "protein_g": 1,
+   "carbs_g": 22,
+   "fat_g": 0.4,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain"
+   ],
+   "aliases": [
+    "fruit",
+    "fruits",
+    "papaya",
+    "guava",
+    "orange",
+    "watermelon",
+    "pomegranate",
+    "fruit bowl",
+    "mango"
+   ]
+  },
+  "almonds": {
+   "name": "Almonds",
+   "unit": "10 almonds",
+   "grams": 12,
+   "kcal": 70,
+   "protein_g": 2.5,
+   "carbs_g": 2.5,
+   "fat_g": 6,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain",
+    "nuts"
+   ],
+   "aliases": [
+    "almonds",
+    "almond",
+    "badam",
+    "nuts"
+   ]
+  },
+  "peanuts": {
+   "name": "Roasted peanuts",
+   "unit": "handful (30 g)",
+   "grams": 30,
+   "kcal": 170,
+   "protein_g": 7.5,
+   "carbs_g": 5,
+   "fat_g": 14,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain",
+    "peanut"
+   ],
+   "aliases": [
+    "peanuts",
+    "moongfali",
+    "groundnuts"
+   ]
+  },
+  "peanut_butter": {
+   "name": "Peanut butter",
+   "unit": "tbsp",
+   "grams": 16,
+   "kcal": 95,
+   "protein_g": 4,
+   "carbs_g": 3,
+   "fat_g": 8,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain",
+    "peanut",
+    "count"
+   ],
+   "aliases": [
+    "peanut butter"
+   ]
+  },
+  "makhana": {
+   "name": "Roasted makhana",
+   "unit": "bowl (30 g)",
+   "grams": 30,
+   "kcal": 120,
+   "protein_g": 3,
+   "carbs_g": 21,
+   "fat_g": 2.5,
+   "tags": [
+    "veg",
+    "jain",
+    "dairy"
+   ],
+   "aliases": [
+    "makhana",
+    "fox nuts",
+    "lotus seeds"
+   ]
+  },
+  "ghee": {
+   "name": "Ghee",
+   "unit": "tsp",
+   "grams": 5,
+   "kcal": 45,
+   "protein_g": 0,
+   "carbs_g": 0,
+   "fat_g": 5,
+   "tags": [
+    "veg",
+    "jain",
+    "dairy",
+    "count"
+   ],
+   "aliases": [
+    "ghee"
+   ]
+  },
+  "oil": {
+   "name": "Cooking oil",
+   "unit": "tsp",
+   "grams": 5,
+   "kcal": 45,
+   "protein_g": 0,
+   "carbs_g": 0,
+   "fat_g": 5,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain",
+    "count"
+   ],
+   "aliases": [
+    "oil",
+    "olive oil",
+    "cooking oil",
+    "mustard oil",
+    "butter"
+   ]
+  },
+  "tea": {
+   "name": "Tea with milk & sugar",
+   "unit": "cup",
+   "grams": 150,
+   "kcal": 70,
+   "protein_g": 2,
+   "carbs_g": 10,
+   "fat_g": 2,
+   "tags": [
+    "veg",
+    "jain",
+    "dairy",
+    "count",
+    "junk"
+   ],
+   "aliases": [
+    "tea",
+    "chai"
+   ]
+  },
+  "coffee": {
+   "name": "Coffee with milk",
+   "unit": "cup",
+   "grams": 150,
+   "kcal": 80,
+   "protein_g": 3,
+   "carbs_g": 10,
+   "fat_g": 3,
+   "tags": [
+    "veg",
+    "jain",
+    "dairy",
+    "count",
+    "junk"
+   ],
+   "aliases": [
+    "coffee"
+   ]
+  },
+  "samosa": {
+   "name": "Samosa",
+   "unit": "samosa",
+   "grams": 100,
+   "kcal": 260,
+   "protein_g": 4,
+   "carbs_g": 30,
+   "fat_g": 14,
+   "tags": [
+    "veg",
+    "vegan",
+    "gluten",
+    "count",
+    "junk"
+   ],
+   "aliases": [
+    "samosa"
+   ]
+  },
+  "veg_biryani": {
+   "name": "Veg biryani",
+   "unit": "plate (300 g)",
+   "grams": 300,
+   "kcal": 380,
+   "protein_g": 8,
+   "carbs_g": 60,
+   "fat_g": 12,
+   "tags": [
+    "veg",
+    "dairy",
+    "junk"
+   ],
+   "aliases": [
+    "veg biryani",
+    "biryani"
+   ]
+  },
+  "chicken_biryani": {
+   "name": "Chicken biryani",
+   "unit": "plate (300 g)",
+   "grams": 300,
+   "kcal": 500,
+   "protein_g": 25,
+   "carbs_g": 55,
+   "fat_g": 18,
+   "tags": [
+    "nonveg",
+    "dairy",
+    "junk"
+   ],
+   "aliases": [
+    "chicken biryani"
+   ]
+  },
+  "pav_bhaji": {
+   "name": "Pav bhaji",
+   "unit": "plate",
+   "grams": 300,
+   "kcal": 400,
+   "protein_g": 9,
+   "carbs_g": 55,
+   "fat_g": 16,
+   "tags": [
+    "veg",
+    "dairy",
+    "gluten",
+    "junk"
+   ],
+   "aliases": [
+    "pav bhaji"
+   ]
+  },
+  "vada_pav": {
+   "name": "Vada pav",
+   "unit": "vada pav",
+   "grams": 140,
+   "kcal": 290,
+   "protein_g": 6,
+   "carbs_g": 40,
+   "fat_g": 12,
+   "tags": [
+    "veg",
+    "vegan",
+    "gluten",
+    "count",
+    "junk"
+   ],
+   "aliases": [
+    "vada pav",
+    "wada pav"
+   ]
+  },
+  "pizza": {
+   "name": "Pizza",
+   "unit": "slice",
+   "grams": 107,
+   "kcal": 285,
+   "protein_g": 12,
+   "carbs_g": 36,
+   "fat_g": 10,
+   "tags": [
+    "veg",
+    "dairy",
+    "gluten",
+    "count",
+    "junk"
+   ],
+   "aliases": [
+    "pizza"
+   ]
+  },
+  "burger": {
+   "name": "Burger",
+   "unit": "burger",
+   "grams": 200,
+   "kcal": 350,
+   "protein_g": 15,
+   "carbs_g": 40,
+   "fat_g": 14,
+   "tags": [
+    "veg",
+    "dairy",
+    "gluten",
+    "count",
+    "junk"
+   ],
+   "aliases": [
+    "burger"
+   ]
+  },
+  "gulab_jamun": {
+   "name": "Gulab jamun",
+   "unit": "piece",
+   "grams": 50,
+   "kcal": 150,
+   "protein_g": 2,
+   "carbs_g": 25,
+   "fat_g": 5,
+   "tags": [
+    "veg",
+    "dairy",
+    "gluten",
+    "count",
+    "junk"
+   ],
+   "aliases": [
+    "gulab jamun"
+   ]
+  },
+  "soft_drink": {
+   "name": "Soft drink",
+   "unit": "glass (300 ml)",
+   "grams": 300,
+   "kcal": 130,
+   "protein_g": 0,
+   "carbs_g": 33,
+   "fat_g": 0,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain",
+    "junk"
+   ],
+   "aliases": [
+    "coke",
+    "pepsi",
+    "soft drink",
+    "cold drink",
+    "soda"
+   ]
+  },
+  "chips": {
+   "name": "Chips",
+   "unit": "small pack (30 g)",
+   "grams": 30,
+   "kcal": 160,
+   "protein_g": 2,
+   "carbs_g": 15,
+   "fat_g": 10,
+   "tags": [
+    "veg",
+    "vegan",
+    "junk"
+   ],
+   "aliases": [
+    "chips",
+    "crisps",
+    "wafers"
+   ]
+  }
+ },
+ "unit_words": {
+  "g": "g",
+  "gm": "g",
+  "gms": "g",
+  "gram": "g",
+  "grams": "g",
+  "ml": "ml",
+  "kg": "kg",
+  "l": "l",
+  "litre": "l",
+  "liter": "l",
+  "bowl": "serving",
+  "bowls": "serving",
+  "katori": "serving",
+  "katoris": "serving",
+  "cup": "serving",
+  "cups": "serving",
+  "plate": "serving",
+  "plates": "serving",
+  "glass": "serving",
+  "glasses": "serving",
+  "serving": "serving",
+  "servings": "serving",
+  "piece": "serving",
+  "pieces": "serving",
+  "pc": "serving",
+  "pcs": "serving",
+  "slice": "serving",
+  "slices": "serving",
+  "scoop": "serving",
+  "scoops": "serving",
+  "tbsp": "tbsp",
+  "tablespoon": "tbsp",
+  "tablespoons": "tbsp",
+  "tsp": "serving",
+  "teaspoon": "serving",
+  "teaspoons": "serving",
+  "spoon": "serving",
+  "spoons": "serving",
+  "handful": "serving",
+  "small": "small",
+  "medium": "serving",
+  "large": "large",
+  "big": "large",
+  "of": null
+ },
+ "word_numbers": {
+  "a": 1,
+  "an": 1,
+  "one": 1,
+  "two": 2,
+  "three": 3,
+  "four": 4,
+  "five": 5,
+  "six": 6,
+  "half": 0.5,
+  "quarter": 0.25,
+  "double": 2,
+  "couple": 2,
+  "few": 3,
+  "ek": 1,
+  "do": 2,
+  "teen": 3,
+  "aadha": 0.5
+ }
+}

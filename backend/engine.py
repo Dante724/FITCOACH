@@ -14,104 +14,19 @@ composition references), rounded. They're estimates — portions and recipes var
 every plan.
 """
 import difflib
+import json
 import random
 import re
+from pathlib import Path
 from fractions import Fraction
 from typing import List, Optional, Tuple
 
 # ───────────────────────────── Food table ─────────────────────────────
-# key: (name, serving label, grams per serving, kcal, protein g, carbs g, fat g, tags, aliases)
-#   aliases: '|'-separated names people type (Hindi and English)
-#   tags: diet → "veg" (no egg/meat; may contain dairy), "egg", "nonveg"; "vegan" if no dairy/animal products;
-#         jain → "jain" (fine as is), "jain_adapt" (fine when cooked without onion/garlic), none = not Jain-friendly;
-#         allergens → "dairy", "gluten", "nuts", "peanut", "soy", "egg_a", "fish"; "count" = counted in pieces;
-#         "junk" = not used in plans.
-F = {
-    # grains & breads
-    "roti": ("Roti / chapati", "roti", 40, 110, 3.5, 20, 2.5, "veg vegan jain gluten count", "roti|chapati|chapatti|phulka|fulka|chapathi"),
-    "bajra_roti": ("Bajra / jowar roti", "roti", 45, 115, 3, 21, 2.5, "veg vegan jain count", "bajra roti|jowar roti|bhakri|millet roti|ragi roti"),
-    "paratha": ("Plain paratha", "paratha", 60, 200, 4, 28, 8, "veg jain gluten dairy count", "paratha|parantha|plain paratha"),
-    "aloo_paratha": ("Aloo paratha", "paratha", 100, 260, 6, 36, 10, "veg gluten dairy count", "aloo paratha|alu paratha"),
-    "rice": ("Steamed rice", "cup (150 g)", 150, 195, 4, 43, 0.5, "veg vegan jain", "rice|chawal|plain rice|white rice|steamed rice"),
-    "brown_rice": ("Brown rice", "cup (150 g)", 150, 165, 3.5, 34, 1.3, "veg vegan jain", "brown rice"),
-    "jeera_rice": ("Jeera rice", "cup (150 g)", 150, 230, 4, 42, 5, "veg jain_adapt dairy", "jeera rice|pulao"),
-    "poha": ("Poha", "plate (150 g)", 150, 250, 5, 45, 6, "veg vegan jain_adapt peanut", "poha|pohe|aval"),
-    "upma": ("Upma", "bowl (150 g)", 150, 220, 6, 34, 7, "veg vegan jain_adapt gluten", "upma|uppit|rava upma"),
-    "idli": ("Idli", "idli", 40, 58, 2, 12, 0.2, "veg vegan jain count", "idli|idly"),
-    "dosa": ("Plain dosa", "dosa", 80, 170, 4, 28, 4.5, "veg vegan jain count", "dosa|dosai|plain dosa"),
-    "masala_dosa": ("Masala dosa", "dosa", 160, 300, 6, 45, 11, "veg vegan count", "masala dosa"),
-    "oats": ("Oats", "bowl (40 g dry)", 40, 150, 5, 27, 3, "veg vegan jain", "oats|oatmeal|porridge"),
-    "dalia": ("Dalia (broken wheat)", "bowl (150 g)", 150, 170, 6, 32, 1.5, "veg vegan jain gluten", "dalia|daliya|broken wheat"),
-    "bread": ("Whole-wheat bread", "slice", 28, 70, 3, 12, 1, "veg vegan jain gluten count", "bread|toast|brown bread|bread slice"),
-    "besan_chilla": ("Besan chilla", "chilla", 60, 150, 8, 18, 5, "veg vegan jain_adapt count", "besan chilla|chilla|cheela|pudla"),
-    "moong_chilla": ("Moong dal chilla", "chilla", 60, 130, 8, 17, 3.5, "veg vegan jain_adapt count", "moong chilla|moong dal chilla|pesarattu"),
-    "khichdi": ("Moong dal khichdi", "bowl (200 g)", 200, 230, 9, 38, 5, "veg jain dairy", "khichdi|khichri"),
-    "dhokla": ("Dhokla", "pieces (100 g)", 100, 160, 6, 22, 5, "veg vegan jain", "dhokla|khaman"),
-    # dals & legumes
-    "dal": ("Dal (toor / masoor)", "katori (150 g)", 150, 150, 9, 20, 4, "veg vegan jain_adapt", "dal|daal|toor dal|arhar dal|masoor dal|dal tadka|dal fry|yellow dal"),
-    "moong_dal": ("Moong dal", "katori (150 g)", 150, 140, 10, 19, 3, "veg vegan jain_adapt", "moong dal|mung dal|green moong"),
-    "rajma": ("Rajma", "katori (150 g)", 150, 210, 11, 30, 5, "veg vegan", "rajma|kidney beans|rajma chawal"),
-    "chole": ("Chole", "katori (150 g)", 150, 240, 11, 32, 8, "veg vegan", "chole|chana masala|chickpeas|chhole|chole bhature"),
-    "sambar": ("Sambar", "katori (150 g)", 150, 130, 6, 18, 4, "veg vegan", "sambar|sambhar"),
-    "sprouts": ("Sprouts salad", "bowl (100 g)", 100, 110, 8, 17, 1, "veg vegan", "sprouts|sprout salad|moong sprouts"),
-    "soya": ("Soya chunks", "bowl (30 g dry)", 30, 105, 16, 10, 0.2, "veg vegan jain soy", "soya chunks|soy chunks|nutrela|soya"),
-    "tofu": ("Tofu", "100 g", 100, 145, 15, 3, 9, "veg vegan jain soy", "tofu"),
-    "chana_roasted": ("Roasted chana", "handful (30 g)", 30, 110, 6, 18, 1.8, "veg vegan jain", "roasted chana|bhuna chana|chana"),
-    # dairy
-    "curd": ("Curd (dahi)", "cup (200 g)", 200, 120, 7, 9, 6, "veg jain dairy", "curd|dahi|yogurt|yoghurt"),
-    "hung_curd": ("Hung curd / Greek yogurt", "150 g", 150, 130, 15, 6, 5, "veg jain dairy", "hung curd|greek yogurt|greek yoghurt"),
-    "milk": ("Milk (toned)", "glass (250 ml)", 250, 150, 8, 12, 7.5, "veg jain dairy", "milk|doodh"),
-    "buttermilk": ("Buttermilk (chaas)", "glass (250 ml)", 250, 40, 3, 4, 1, "veg jain dairy", "buttermilk|chaas|chhaas|mattha"),
-    "paneer": ("Paneer", "100 g", 100, 265, 18, 3, 20, "veg jain dairy", "paneer|cottage cheese"),
-    "palak_paneer": ("Palak paneer", "katori (150 g)", 150, 280, 14, 10, 20, "veg jain_adapt dairy", "palak paneer|saag paneer"),
-    "paneer_bhurji": ("Paneer bhurji", "katori (120 g)", 120, 300, 18, 7, 22, "veg jain_adapt dairy", "paneer bhurji"),
-    "raita": ("Raita", "katori (150 g)", 150, 90, 5, 7, 4, "veg jain dairy", "raita"),
-    "whey": ("Whey protein", "scoop (30 g)", 30, 120, 24, 3, 1.5, "veg jain dairy count", "whey|whey protein|protein shake|protein powder"),
-    # eggs, meat & fish
-    "egg": ("Boiled egg", "egg", 50, 78, 6, 0.6, 5, "egg egg_a count", "egg|eggs|boiled egg|boiled eggs|anda|ande"),
-    "egg_whites": ("Egg whites", "3 whites", 99, 51, 11, 0.7, 0.2, "egg egg_a", "egg white|egg whites"),
-    "omelette": ("Omelette (2 eggs)", "omelette", 130, 190, 13, 2, 14, "egg egg_a count", "omelette|omelet|anda omelette"),
-    "egg_bhurji": ("Egg bhurji (2 eggs)", "plate", 130, 200, 13, 4, 15, "egg egg_a", "egg bhurji|anda bhurji|scrambled eggs"),
-    "chicken": ("Grilled chicken breast", "100 g", 100, 165, 31, 0, 3.6, "nonveg", "grilled chicken|chicken breast|chicken"),
-    "chicken_curry": ("Chicken curry", "katori (150 g)", 150, 250, 25, 6, 14, "nonveg", "chicken curry|butter chicken|chicken masala"),
-    "tandoori_chicken": ("Tandoori chicken", "2 pieces (150 g)", 150, 260, 35, 4, 11, "nonveg dairy", "tandoori chicken|chicken tikka"),
-    "fish_curry": ("Fish curry", "katori (150 g)", 150, 220, 22, 5, 12, "nonveg fish", "fish curry|machli"),
-    "grilled_fish": ("Grilled fish", "100 g", 100, 140, 24, 0, 4, "nonveg fish", "grilled fish|fish fry|fish tikka|fish"),
-    "mutton_curry": ("Mutton curry", "katori (150 g)", 150, 330, 25, 6, 23, "nonveg", "mutton curry|mutton|goat curry"),
-    # vegetables
-    "mixed_veg": ("Mixed vegetable sabzi", "katori (150 g)", 150, 120, 3, 12, 7, "veg vegan", "mixed veg|sabzi|sabji|subzi|vegetable curry|veg curry|mix veg"),
-    "lauki": ("Lauki / tori sabzi", "katori (150 g)", 150, 90, 2, 10, 5, "veg vegan jain", "lauki|ghiya|dudhi|bottle gourd|tori|turai"),
-    "cabbage": ("Cabbage / beans sabzi", "katori (150 g)", 150, 100, 3, 10, 6, "veg vegan jain_adapt", "cabbage|patta gobhi|beans sabzi|cabbage sabzi"),
-    "palak": ("Palak / methi sabzi", "katori (150 g)", 150, 110, 4, 8, 7, "veg vegan jain_adapt", "palak|spinach|methi|saag"),
-    "bhindi": ("Bhindi sabzi", "katori (150 g)", 150, 130, 3, 12, 8, "veg vegan jain_adapt", "bhindi|okra|ladyfinger"),
-    "aloo_sabzi": ("Aloo sabzi", "katori (150 g)", 150, 180, 3, 24, 8, "veg vegan", "aloo sabzi|potato|aloo|alu|jeera aloo"),
-    "salad": ("Cucumber–tomato salad", "bowl", 150, 40, 1.5, 8, 0.3, "veg vegan jain", "salad|cucumber|kheera|tomato"),
-    "veg_soup": ("Vegetable soup", "bowl (250 ml)", 250, 80, 3, 12, 2, "veg vegan", "soup|vegetable soup|veg soup"),
-    "sauteed_veg": ("Sautéed vegetables", "bowl (150 g)", 150, 90, 3, 10, 4, "veg vegan jain_adapt", "sauteed vegetables|stir fry vegetables|stir fry|steamed vegetables|vegetables|veggies|broccoli|capsicum|mushroom|mushrooms|beans|gobi|cauliflower"),
-    # fruit, nuts & snacks
-    "banana": ("Banana", "banana", 118, 105, 1.3, 27, 0.4, "veg vegan jain count", "banana|kela"),
-    "apple": ("Apple", "apple", 180, 95, 0.5, 25, 0.3, "veg vegan jain count", "apple|seb"),
-    "fruit": ("Seasonal fruit", "bowl (150 g)", 150, 90, 1, 22, 0.4, "veg vegan jain", "fruit|fruits|papaya|guava|orange|watermelon|pomegranate|fruit bowl|mango"),
-    "almonds": ("Almonds", "10 almonds", 12, 70, 2.5, 2.5, 6, "veg vegan jain nuts", "almonds|almond|badam|nuts"),
-    "peanuts": ("Roasted peanuts", "handful (30 g)", 30, 170, 7.5, 5, 14, "veg vegan jain peanut", "peanuts|moongfali|groundnuts"),
-    "peanut_butter": ("Peanut butter", "tbsp", 16, 95, 4, 3, 8, "veg vegan jain peanut count", "peanut butter"),
-    "makhana": ("Roasted makhana", "bowl (30 g)", 30, 120, 3, 21, 2.5, "veg jain dairy", "makhana|fox nuts|lotus seeds"),
-    "ghee": ("Ghee", "tsp", 5, 45, 0, 0, 5, "veg jain dairy count", "ghee"),
-    "oil": ("Cooking oil", "tsp", 5, 45, 0, 0, 5, "veg vegan jain count", "oil|olive oil|cooking oil|mustard oil|butter"),
-    "tea": ("Tea with milk & sugar", "cup", 150, 70, 2, 10, 2, "veg jain dairy count junk", "tea|chai"),
-    "coffee": ("Coffee with milk", "cup", 150, 80, 3, 10, 3, "veg jain dairy count junk", "coffee"),
-    # common foods for logging only
-    "samosa": ("Samosa", "samosa", 100, 260, 4, 30, 14, "veg vegan gluten count junk", "samosa"),
-    "veg_biryani": ("Veg biryani", "plate (300 g)", 300, 380, 8, 60, 12, "veg dairy junk", "veg biryani|biryani"),
-    "chicken_biryani": ("Chicken biryani", "plate (300 g)", 300, 500, 25, 55, 18, "nonveg dairy junk", "chicken biryani"),
-    "pav_bhaji": ("Pav bhaji", "plate", 300, 400, 9, 55, 16, "veg dairy gluten junk", "pav bhaji"),
-    "vada_pav": ("Vada pav", "vada pav", 140, 290, 6, 40, 12, "veg vegan gluten count junk", "vada pav|wada pav"),
-    "pizza": ("Pizza", "slice", 107, 285, 12, 36, 10, "veg dairy gluten count junk", "pizza"),
-    "burger": ("Burger", "burger", 200, 350, 15, 40, 14, "veg dairy gluten count junk", "burger"),
-    "gulab_jamun": ("Gulab jamun", "piece", 50, 150, 2, 25, 5, "veg dairy gluten count junk", "gulab jamun"),
-    "soft_drink": ("Soft drink", "glass (300 ml)", 300, 130, 0, 33, 0, "veg vegan jain junk", "coke|pepsi|soft drink|cold drink|soda"),
-    "chips": ("Chips", "small pack (30 g)", 30, 160, 2, 15, 10, "veg vegan junk", "chips|crisps|wafers"),
-}
+# The table lives in food_data.json so the app can use the exact same data offline (frontend/src/data/foods.json).
+# F[key] = (name, serving label, grams per serving, kcal, protein g, carbs g, fat g, "tags", "alias|alias")
+_DATA = json.loads((Path(__file__).parent / "food_data.json").read_text(encoding="utf-8"))
+F = {k: (v["name"], v["unit"], v["grams"], v["kcal"], v["protein_g"], v["carbs_g"], v["fat_g"], " ".join(v["tags"]), "|".join(v["aliases"]))
+     for k, v in _DATA["foods"].items()}
 
 ALLERGEN_WORDS = {
     "dairy": ["dairy", "milk", "lactose", "paneer", "curd"], "gluten": ["gluten", "wheat", "celiac", "coeliac"],
@@ -710,26 +625,31 @@ def build_plan(ptype: str, client: dict, weight: Optional[float], notes: str = "
 
 
 # ───────────────────────────── Food logging ─────────────────────────────
-WORD_NUM = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "half": 0.5, "quarter": 0.25,
-            "double": 2, "couple": 2, "few": 3, "ek": 1, "do": 2, "teen": 3, "aadha": 0.5}
-UNIT_WORDS = {"g": "g", "gm": "g", "gms": "g", "gram": "g", "grams": "g", "ml": "ml", "kg": "kg", "l": "l", "litre": "l", "liter": "l",
-              "bowl": "serving", "bowls": "serving", "katori": "serving", "katoris": "serving", "cup": "serving", "cups": "serving",
-              "plate": "serving", "plates": "serving", "glass": "serving", "glasses": "serving", "serving": "serving", "servings": "serving",
-              "piece": "serving", "pieces": "serving", "pc": "serving", "pcs": "serving", "slice": "serving", "slices": "serving",
-              "scoop": "serving", "scoops": "serving", "tbsp": "tbsp", "tablespoon": "tbsp", "tablespoons": "tbsp", "tsp": "serving",
-              "teaspoon": "serving", "teaspoons": "serving", "spoon": "serving", "spoons": "serving",
-              "handful": "serving", "small": "small", "medium": "serving", "large": "large", "big": "large", "of": None}
+WORD_NUM = _DATA["word_numbers"]
+UNIT_WORDS = _DATA["unit_words"]
 
 
-def _alias_table() -> List[Tuple[str, str]]:
-    table = [(row[0].lower(), key) for key, row in F.items()]
-    table += [(alias, key) for key, row in F.items() for alias in row[8].split("|")]
-    table.sort(key=lambda a: -len(a[0]))  # longest phrase wins: "masala dosa" before "dosa"
-    return table
+def _alias_table(table: dict) -> List[Tuple[str, str]]:
+    out = [(row[0].lower(), key) for key, row in table.items()]
+    out += [(alias, key) for key, row in table.items() for alias in row[8].split("|") if alias]
+    out.sort(key=lambda a: -len(a[0]))  # longest phrase wins: "masala dosa" before "dosa" (stable for ties)
+    return out
 
 
-ALIASES = _alias_table()
-ALIAS_KEYS = {a: k for a, k in ALIASES}
+ALIASES = _alias_table(F)
+TOKEN_RE = re.compile(r"\d+/\d+|[a-z]+|\d+(?:\.\d+)?(?:grams|gms|gm|g|ml|kg)?|[½¼¾]")
+SPLIT_RE = re.compile(r",|;|\n|\+|&|\band\b|\bwith\b|\baur\b")
+QTY_UNIT_RE = re.compile(r"(\d+(?:\.\d+)?)(grams|gms|gm|g|ml|kg)")
+
+
+def custom_table(foods: List[dict]) -> dict:
+    """A person's own foods ("My foods") in the same shape as F. Serving = what they described."""
+    out = {}
+    for f in foods or []:
+        aliases = "|".join(a.strip().lower() for a in (f.get("aliases") or []) if a and a.strip())
+        out[f"u_{f['id']}"] = (f["name"], f.get("unit") or "serving", f.get("grams") or 100, f["kcal"], f.get("protein_g") or 0,
+                               f.get("carbs_g") or 0, f.get("fat_g") or 0, "veg custom", aliases)
+    return out
 
 
 def _qty(tokens: List[str]) -> Tuple[Optional[float], Optional[str], List[str]]:
@@ -739,12 +659,12 @@ def _qty(tokens: List[str]) -> Tuple[Optional[float], Optional[str], List[str]]:
         if qty is None and re.fullmatch(r"\d+(\.\d+)?", t):
             qty = float(t)
         elif qty is None and re.fullmatch(r"\d+/\d+", t):
-            qty = float(Fraction(t))
+            qty = float(Fraction(t)) if not t.endswith("/0") else None
         elif qty is None and t in ("½", "¼", "¾"):
             qty = {"½": 0.5, "¼": 0.25, "¾": 0.75}[t]
         elif qty is None and t in WORD_NUM:
             qty = WORD_NUM[t]
-        elif m := re.fullmatch(r"(\d+(?:\.\d+)?)(g|gm|gms|grams|ml|kg)", t):
+        elif m := QTY_UNIT_RE.fullmatch(t):
             qty, unit = float(m.group(1)), UNIT_WORDS[m.group(2)]
         elif t in UNIT_WORDS and unit is None:
             unit = UNIT_WORDS[t]
@@ -753,31 +673,43 @@ def _qty(tokens: List[str]) -> Tuple[Optional[float], Optional[str], List[str]]:
     return qty, unit, rest
 
 
-def _match(text: str) -> Optional[str]:
+def _match(text: str, aliases: List[Tuple[str, str]]) -> Optional[str]:
+    keys = {}
+    for a, k in aliases:
+        keys[a] = k
     padded = f" {text} "
-    for alias, key in ALIASES:
+    for alias, key in aliases:
         if f" {alias} " in padded:
             return key
-    close = difflib.get_close_matches(text, list(ALIAS_KEYS), n=1, cutoff=0.78)
+    close = difflib.get_close_matches(text, list(keys), n=1, cutoff=0.78)
     if close:
-        return ALIAS_KEYS[close[0]]
+        return keys[close[0]]
     for word in text.split():  # last try: any single word close to a known food
-        close = difflib.get_close_matches(word, [a for a in ALIAS_KEYS if " " not in a], n=1, cutoff=0.85)
+        close = difflib.get_close_matches(word, [a for a in keys if " " not in a], n=1, cutoff=0.85)
         if close:
-            return ALIAS_KEYS[close[0]]
+            return keys[close[0]]
     return None
 
 
-def analyze_meal(description: str) -> dict:
-    """Estimate a meal's calories and macros from plain text. Returns the same shape as the AI analysis."""
+def analyze_meal(description: str, my_foods: Optional[List[dict]] = None) -> dict:
+    """Estimate a meal's calories and macros from plain text. Returns the same shape as the AI analysis.
+    The app runs an exact JavaScript copy of this (frontend/src/lib/nutrition.js) so it also works offline."""
+    extra = custom_table(my_foods)
+    table = {**F, **extra}
+    aliases = sorted(_alias_table(extra) + ALIASES, key=lambda a: -len(a[0])) if extra else ALIASES
+
+    def macros(key, servings):
+        _, _, _, kcal, p, c, f, *_ = table[key]
+        return kcal * servings, p * servings, c * servings, f * servings
+
     text = description.lower().replace("½", " ½ ").replace("¼", " ¼ ").replace("¾", " ¾ ")
-    parts = [p.strip() for p in re.split(r",|;|\n|\+|&|\band\b|\bwith\b|\baur\b", text) if p.strip()]
+    parts = [p.strip() for p in SPLIT_RE.split(text) if p.strip()]
     found, unknown = [], []
     for part in parts:
-        words = re.findall(r"[a-z]+|\d+(?:\.\d+)?(?:g|gm|gms|grams|ml|kg)?|\d+/\d+|[½¼¾]", part)
+        words = TOKEN_RE.findall(part)
         # find every known food in the phrase, longest names first ("3 idli sambar" → idli and sambar)
         taken, hits = [False] * len(words), []
-        for alias, key in ALIASES:
+        for alias, key in aliases:
             a = alias.split()
             for i in range(len(words) - len(a) + 1):
                 if words[i:i + len(a)] == a and not any(taken[i:i + len(a)]):
@@ -785,7 +717,7 @@ def analyze_meal(description: str) -> dict:
                     taken[i:i + len(a)] = [True] * len(a)
         if not hits:
             qty, unit, rest = _qty(words)
-            key = _match(" ".join(rest)) if rest else None
+            key = _match(" ".join(rest), aliases) if rest else None
             if key:
                 hits_q = [(key, qty, unit)]
             else:
@@ -808,30 +740,30 @@ def analyze_meal(description: str) -> dict:
             hits_q = [(k, eggs / 2 if k == dish else q, u) for k, q, u in hits_q if k != "egg"]
         for key, qty, unit in hits_q:
             qty = 1.0 if qty is None else qty
-            grams = F[key][2]
+            grams = table[key][2]
             if unit in ("g", "ml"):
                 servings = qty / grams
             elif unit in ("kg", "l"):
                 servings = qty * 1000 / grams
             else:
-                servings = qty * (0.75 if unit == "small" else 1.3 if unit == "large" else 3 if unit == "tbsp" and F[key][1] == "tsp" else 1)
+                servings = qty * (0.75 if unit == "small" else 1.3 if unit == "large" else 3 if unit == "tbsp" and table[key][1] == "tsp" else 1)
             found.append((key, max(0.1, min(servings, 20))))
     if not found:
         return {}
     tot = [0.0, 0.0, 0.0, 0.0]
     items = []
     for key, s in found:
-        vals = _macros(key, s)
+        vals = macros(key, s)
         tot = [a + b for a, b in zip(tot, vals)]
         q = f"{s:g}" if s >= 1 else f"{s:.2g}"
-        items.append(f"{F[key][0]} × {q} ({F[key][1]}) — {round(vals[0])} kcal")
+        items.append(f"{table[key][0]} × {q} ({table[key][1]}) — {round(vals[0])} kcal")
     kcal, prot, carbs, fat = tot
     score = 60
     score += min(20, prot / max(kcal, 1) * 1000 * 0.25)          # protein density
     score -= max(0, (fat * 9 / max(kcal, 1)) - 0.35) * 100        # very fatty
-    score -= 15 * sum(1 for k, _ in found if "junk" in _tags(k))
-    score += 8 if any(k in ("salad", "mixed_veg", "lauki", "cabbage", "palak", "bhindi", "sauteed_veg", "veg_soup", "sprouts", "fruit") for k, _ in found) else 0
-    names = [F[k][0].split(" (")[0].split(" /")[0] for k, _ in found]
+    score -= 15 * sum(1 for k, _ in found if "junk" in table[k][7].split())
+    score += 8 if any(k in VEG_SIDES for k, _ in found) else 0
+    names = [table[k][0].split(" (")[0].split(" /")[0] for k, _ in found]
     meal_name = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " & " + names[-1]
     notes = "Estimated from typical home-style portions."
     if unknown:
@@ -839,3 +771,6 @@ def analyze_meal(description: str) -> dict:
     return {"meal_name": meal_name[:80], "items": items, "calories": round(kcal), "protein_g": round(prot), "carbs_g": round(carbs),
             "fat_g": round(fat), "health_score": int(max(10, min(95, score))), "notes": notes, "estimated_by": "food-table",
             "unrecognised": unknown}
+
+
+VEG_SIDES = ("salad", "mixed_veg", "lauki", "cabbage", "palak", "bhindi", "sauteed_veg", "veg_soup", "sprouts", "fruit")

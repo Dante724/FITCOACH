@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
-import { api, setToken } from "@/lib/api";
+import { api, setToken, setUid, clearOfflineCache, rememberResponse } from "@/lib/api";
 import { syncPushForSignedInUser, detachPushOnLogout } from "@/lib/push";
 
 const AuthContext = createContext(null);
@@ -10,11 +10,12 @@ export function AuthProvider({ children }) {
 
   const checkAuth = useCallback(async () => {
     try {
-      const res = await api.get("/auth/me");
+      const res = await api.get("/auth/me", { timeout: 8000 });  // offline: the last copy is served from this device
       setUser(res.data);
+      setUid(res.data.user_id);
       syncPushForSignedInUser();
     } catch (e) {
-      if (e?.response?.status === 401) setToken(null);
+      if (e?.response?.status === 401) { setToken(null); setUid(null); clearOfflineCache(); }
       setUser(null);
     } finally {
       setLoading(false);
@@ -22,10 +23,13 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => { checkAuth(); }, [checkAuth]);
+  // keep the offline copy of the profile current (consent, goal, name changes made in the app)
+  useEffect(() => { if (user?.user_id) rememberResponse("/auth/me", user); }, [user]);
 
   const signedIn = useCallback((data) => {
     const { access_token: token, ...profile } = data;
     setToken(token);
+    if (profile.user_id !== undefined) setUid(profile.user_id);
     setUser(profile);
     syncPushForSignedInUser();
     return profile;
@@ -40,6 +44,8 @@ export function AuthProvider({ children }) {
     await detachPushOnLogout();
     try { await api.post("/auth/logout"); } catch { /* offline: still sign out locally */ }
     setToken(null);
+    setUid(null);
+    clearOfflineCache();
     setUser(null);
     window.location.href = "/login";
   }, []);
