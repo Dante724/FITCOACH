@@ -55,7 +55,7 @@ export default function CallCheck() {
   useEffect(() => {
     let cur = null;
     let cancelled = false;
-    getMic().then((m) => {
+    getMic({ onModel: (model) => !cancelled && setMicInfo((cur) => (cur ? { ...cur, model } : cur)) }).then((m) => {
       if (cancelled) { m.raw.stop(); m.suppressor?.stop(); return; }
       cur = m; setMicInfo(m); setMicErr("");
     }).catch(() => setMicErr("We couldn't open your microphone. Allow microphone access in your browser settings."));

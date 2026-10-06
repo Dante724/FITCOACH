@@ -35,12 +35,12 @@ function placeholderTrack(name) {
   return track;
 }
 
-async function getMedia(facingMode, name) {
+async function getMedia(facingMode, name, onModel) {
   const notes = [];
   const stream = new MediaStream();
   let mic = null;
   try {
-    mic = await getMic();
+    mic = await getMic({ onModel });
     stream.addTrack(mic.track);
   } catch {
     notes.push("microphone");
@@ -212,7 +212,7 @@ export default function useCall(callId) {
         st.role = info.role;
         setRelay(ice.relay);
         setCall(info);
-        const { stream, notes, mic: micInfo } = await getMedia("user", info.me === info.coach_id ? info.coach_name : info.client_name);
+        const { stream, notes, mic: micInfo } = await getMedia("user", info.me === info.coach_id ? info.coach_name : info.client_name, (m) => { if (alive()) setNoiseModel(m); });
         if (!alive()) { stream.getTracks().forEach((t) => t.stop()); micInfo?.raw?.stop(); micInfo?.suppressor?.stop(); return; }
         st.local = stream;
         st.mic = micInfo;

@@ -19,7 +19,8 @@ self.addEventListener("install", (event) => {
 });
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
-    for (const key of await caches.keys()) if (![SHELL_CACHE, ASSET_CACHE].includes(key)) await caches.delete(key);
+    // Old app caches go; the call noise-model download (fc-dfn3-*, managed by lib/noise.js) is kept across updates.
+    for (const key of await caches.keys()) if (![SHELL_CACHE, ASSET_CACHE].includes(key) && !key.startsWith("fc-dfn3-")) await caches.delete(key);
     await self.clients.claim();
   })());
 });

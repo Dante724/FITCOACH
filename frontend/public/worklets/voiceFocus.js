@@ -79,6 +79,14 @@ if (typeof registerProcessor === "function") {
     constructor(options) {
       super();
       this.vf = new VoiceFocus(sampleRate, options?.processorOptions || {});
+      // the page sends new settings when the AI model in front of us changes
+      this.port.onmessage = (e) => {
+        const d = e.data || {};
+        if (d.type !== "settings") return;
+        if (d.range != null) this.vf.range = d.range;
+        if (d.ratio != null) this.vf.ratio = d.ratio;
+        if (d.hold != null) this.vf.holdFrames = d.hold;
+      };
     }
 
     process(inputs, outputs) {
