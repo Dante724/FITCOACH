@@ -8,6 +8,7 @@ import { useToast } from "@/context/ToastContext";
 import { payWithRazorpay } from "@/lib/payments";
 import { useMembership } from "@/lib/membership";
 import { localDate } from "@/lib/focus";
+import { browserTz, fmtSessionTime, money, onIndiaTime, sessionStart, tzCity } from "@/lib/locale";
 
 function todayISO() { return localDate(); }
 
@@ -19,10 +20,11 @@ export default function Booking() {
   const [bookings, setBookings] = useState([]);
   const [trainerId, setTrainerId] = useState("");
   const [date, setDate] = useState(todayISO());
-  const [slots, setSlots] = useState([]);
-  const [time, setTime] = useState("");
+  const [slots, setSlots] = useState([]); // [{ key, date, time, label }] — date/time in India time, label in theirs
+  const [time, setTime] = useState("");     // the chosen slot's key
   const [saving, setSaving] = useState(false);
-  const [pay, setPay] = useState({ enabled: false, price: 0 });
+  const [pay, setPay] = useState({ enabled: false, price: null });
+  const local = !onIndiaTime();
   const [membership, reloadMembership] = useMembership();
   const [payingId, setPayingId] = useState(null);
 
@@ -33,22 +35,26 @@ export default function Booking() {
       setTrainers(r.data.trainers);
       setTrainerId(r.data.trainers[0]?.trainer_id || "");
     }).catch(() => {});
-    api.get("/payments/config").then((r) => setPay({ enabled: r.data.enabled, price: r.data.session_price_inr })).catch(() => {});
+    api.get("/payments/config").then((r) => setPay({ enabled: r.data.enabled, price: r.data.session_price || { amount: r.data.session_price_inr, currency: "INR" } })).catch(() => {});
     load();
   }, [load]);
 
   useEffect(() => {
     if (!trainerId || !date) { setSlots([]); return; }
     setTime("");
-    api.get(`/trainers/${trainerId}/slots`, { params: { date } })
-      .then((r) => setSlots(r.data.slots)).catch(() => setSlots([]));
-  }, [trainerId, date, bookings]);
+    api.get(`/trainers/${trainerId}/slots`, { params: local ? { date, tz: browserTz() } : { date } })
+      .then((r) => setSlots(r.data.options
+        ? r.data.options.map((o) => ({ key: `${o.date} ${o.time}`, date: o.date, time: o.time, label: o.label }))
+        : r.data.slots.map((t) => ({ key: `${date} ${t}`, date, time: t, label: t }))))
+      .catch(() => setSlots([]));
+  }, [trainerId, date, bookings, local]);
 
   const book = async () => {
-    if (!trainerId || !date || !time) { push("Pick a trainer, date and time.", "error"); return; }
+    const slot = slots.find((x) => x.key === time);
+    if (!trainerId || !slot) { push("Pick a trainer, date and time.", "error"); return; }
     setSaving(true);
     try {
-      const { data: made } = await api.post("/bookings", { trainer_id: trainerId, date, time });
+      const { data: made } = await api.post("/bookings", { trainer_id: trainerId, date: slot.date, time: slot.time });
       push(made.status === "requested" ? "Intro session requested — your coach will confirm it shortly." : "Session booked.", "success");
       reloadMembership();
       setTime("");
@@ -85,7 +91,7 @@ export default function Booking() {
           <span style={{ flex: 1, fontSize: 13.5 }}>
             {membership.unlimited_sessions ? "Your membership includes unlimited sessions."
               : membership.credits > 0 ? `${membership.credits} session credit${membership.credits === 1 ? "" : "s"} — your next booking is covered.`
-              : membership.has_access ? `No session credits left — new bookings are ₹${pay.price || "…"} each, or get a pack.`
+              : membership.has_access ? `No session credits left — new bookings are ${pay.price ? money(pay.price) : "…"} each, or get a pack.`
               : "Your membership has ended. Get a session pack or renew to book."}
           </span>
           {!membership.unlimited_sessions && membership.credits === 0 && <button className="btn btn-ghost" onClick={() => navigate("/membership")} style={{ padding: "8px 12px", fontSize: 13 }}>Get sessions</button>}
@@ -113,17 +119,17 @@ export default function Booking() {
           <label className="label">Date</label>
           <input type="date" className="field" data-testid="booking-date" value={date} min={todayISO()} onChange={(e) => setDate(e.target.value)} style={{ marginBottom: 18 }} />
 
-          <label className="label">Available slots {selectedTrainer ? `with ${selectedTrainer.name}` : ""}</label>
+          <label className="label">Available slots {selectedTrainer ? `with ${selectedTrainer.name}` : ""}{local ? ` · your time (${tzCity()})` : ""}</label>
           {slots.length === 0 ? (
             <div className="clay-inset" style={{ padding: "16px", textAlign: "center", fontSize: 13, color: "var(--text-3)" }}>No open slots on this day. Try another date.</div>
           ) : (
             <div className="grid-slots">
               {slots.map((s) => (
-                <button key={s} data-testid={`slot-${s}`} onClick={() => setTime(s)}
-                  className={time === s ? "" : "clay-inset"}
-                  style={{ padding: "11px 0", borderRadius: 12, border: time === s ? "1px solid var(--ink)" : "1px solid transparent", cursor: "pointer",
-                    background: time === s ? "var(--ink)" : undefined, color: time === s ? "#fff" : "var(--text)", fontWeight: 500, fontSize: 13.5 }}>
-                  {s}
+                <button key={s.key} data-testid={`slot-${s.time}`} onClick={() => setTime(s.key)}
+                  className={time === s.key ? "" : "clay-inset"} title={local ? `${s.time} in India` : undefined}
+                  style={{ padding: "11px 0", borderRadius: 12, border: time === s.key ? "1px solid var(--ink)" : "1px solid transparent", cursor: "pointer",
+                    background: time === s.key ? "var(--ink)" : undefined, color: time === s.key ? "#fff" : "var(--text)", fontWeight: 500, fontSize: 13.5 }}>
+                  {s.label}
                 </button>
               ))}
             </div>
@@ -149,11 +155,11 @@ export default function Booking() {
               {bookings.map((b) => (
                 <div key={b.id} className="clay-inset" style={{ padding: "15px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                   <div style={{ width: 44, height: 44, borderRadius: 12, background: "var(--teal-soft)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--teal)" }}>
-                    <span style={{ fontSize: 16, fontWeight: 600, lineHeight: 1 }}>{new Date(b.date + "T12:00").getDate()}</span>
-                    <span style={{ fontSize: 10, fontWeight: 600 }}>{new Date(b.date + "T12:00").toLocaleDateString("en-US", { month: "short" })}</span>
+                    <span style={{ fontSize: 16, fontWeight: 600, lineHeight: 1 }}>{(local ? sessionStart(b) : new Date(b.date + "T12:00")).getDate()}</span>
+                    <span style={{ fontSize: 10, fontWeight: 600 }}>{(local ? sessionStart(b) : new Date(b.date + "T12:00")).toLocaleDateString("en-US", { month: "short" })}</span>
                   </div>
                   <div style={{ flex: 1, minWidth: 120 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600 }}>{b.trainer_name} · {b.time}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>{b.trainer_name} · {fmtSessionTime(b)}</div>
                     <div style={{ fontSize: 12, color: "var(--text-3)" }}>{b.specialty}</div>
                   </div>
                   {b.status === "requested" ? (
@@ -167,7 +173,7 @@ export default function Booking() {
                     <span className="chip chip-teal" data-testid={`paid-${b.id}`}><Icons.Check size={13} /> Paid</span>
                   ) : pay.enabled ? (
                     <button data-testid={`pay-${b.id}`} className="btn btn-primary" disabled={payingId === b.id} onClick={() => paySession(b)} style={{ padding: "8px 13px", fontSize: 12.5 }}>
-                      {payingId === b.id ? "..." : `Pay ₹${pay.price}`}
+                      {payingId === b.id ? "..." : `Pay ${money(pay.price)}`}
                     </button>
                   ) : (
                     <span className="chip chip-neutral">Unpaid</span>

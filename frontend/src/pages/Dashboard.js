@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
+import { fmtSessionTime, sessionStart } from "@/lib/locale";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { getFocus, hasFeature, askCoachPath, PLAN_LABEL, localDate } from "@/lib/focus";
@@ -121,7 +122,7 @@ export default function Dashboard() {
   const greet = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const weekAgo = Date.now() - 7 * 86400000;
   const today = localDate();
-  const startOf = (b) => (b.starts_at ? new Date(b.starts_at) : new Date(`${b.date}T${b.time}`));
+  const startOf = sessionStart;
   const upcoming = bookings.filter((b) => startOf(b) >= new Date(Date.now() - 60 * 60000)).sort((a, b) => startOf(a) - startOf(b));
   const next = upcoming[0];
   const hasCoach = !!(coaches?.fitness || coaches?.yoga);
@@ -131,7 +132,7 @@ export default function Dashboard() {
     const mins = Math.round((d - Date.now()) / 60000);
     if (mins <= 0) return "Happening now";
     if (mins < 60) return `In ${mins} min`;
-    return d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" }) + " · " + next.time;
+    return d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" }) + " · " + fmtSessionTime(next);
   })();
   const planTypes = [hasFeature(user?.focus, "workouts") && "workout", hasFeature(user?.focus, "yoga") && "yoga", hasFeature(user?.focus, "mealplan") && "meal"].filter(Boolean);
 

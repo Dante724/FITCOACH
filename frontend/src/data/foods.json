@@ -643,8 +643,7 @@
     "dairy"
    ],
    "aliases": [
-    "paneer",
-    "cottage cheese"
+    "paneer"
    ]
   },
   "palak_paneer": {
@@ -1500,6 +1499,168 @@
     "crisps",
     "wafers"
    ]
+  },
+  "cottage_cheese": {
+   "name": "Cottage cheese (Western)",
+   "unit": "cup (225 g)",
+   "grams": 225,
+   "kcal": 220,
+   "protein_g": 25,
+   "carbs_g": 8,
+   "fat_g": 9.7,
+   "tags": [
+    "veg",
+    "jain",
+    "dairy"
+   ],
+   "aliases": [
+    "cottage cheese"
+   ]
+  },
+  "tortilla": {
+   "name": "Whole-wheat tortilla",
+   "unit": "tortilla",
+   "grams": 45,
+   "kcal": 130,
+   "protein_g": 4,
+   "carbs_g": 22,
+   "fat_g": 3.5,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain",
+    "gluten",
+    "count"
+   ],
+   "aliases": [
+    "tortilla",
+    "whole wheat tortilla",
+    "wheat tortilla",
+    "whole wheat wrap"
+   ]
+  },
+  "quinoa": {
+   "name": "Quinoa (cooked)",
+   "unit": "katori (150 g)",
+   "grams": 150,
+   "kcal": 180,
+   "protein_g": 6.6,
+   "carbs_g": 32,
+   "fat_g": 2.9,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain"
+   ],
+   "aliases": [
+    "quinoa"
+   ]
+  },
+  "almond_milk": {
+   "name": "Almond milk (unsweetened)",
+   "unit": "glass (250 ml)",
+   "grams": 250,
+   "kcal": 40,
+   "protein_g": 1.5,
+   "carbs_g": 1.5,
+   "fat_g": 3,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain",
+    "nuts"
+   ],
+   "aliases": [
+    "almond milk"
+   ]
+  },
+  "soy_milk": {
+   "name": "Soy milk (unsweetened)",
+   "unit": "glass (250 ml)",
+   "grams": 250,
+   "kcal": 80,
+   "protein_g": 7,
+   "carbs_g": 4,
+   "fat_g": 4,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain",
+    "soy"
+   ],
+   "aliases": [
+    "soy milk",
+    "soya milk"
+   ]
+  },
+  "oat_milk": {
+   "name": "Oat milk",
+   "unit": "glass (250 ml)",
+   "grams": 250,
+   "kcal": 120,
+   "protein_g": 3,
+   "carbs_g": 16,
+   "fat_g": 5,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain"
+   ],
+   "aliases": [
+    "oat milk"
+   ]
+  },
+  "edamame": {
+   "name": "Edamame",
+   "unit": "katori (100 g)",
+   "grams": 100,
+   "kcal": 121,
+   "protein_g": 12,
+   "carbs_g": 9,
+   "fat_g": 5,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain",
+    "soy"
+   ],
+   "aliases": [
+    "edamame"
+   ]
+  },
+  "hummus": {
+   "name": "Hummus",
+   "unit": "2 tbsp (30 g)",
+   "grams": 30,
+   "kcal": 70,
+   "protein_g": 2,
+   "carbs_g": 4,
+   "fat_g": 5,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain_adapt"
+   ],
+   "aliases": [
+    "hummus"
+   ]
+  },
+  "avocado": {
+   "name": "Avocado",
+   "unit": "half (70 g)",
+   "grams": 70,
+   "kcal": 112,
+   "protein_g": 1.4,
+   "carbs_g": 6,
+   "fat_g": 10,
+   "tags": [
+    "veg",
+    "vegan",
+    "jain"
+   ],
+   "aliases": [
+    "avocado"
+   ]
   }
  },
  "unit_words": {
@@ -1566,5 +1727,194 @@
   "do": 2,
   "teen": 3,
   "aadha": 0.5
- }
+ },
+ "abroad_swaps": [
+  {
+   "for": [
+    "methi",
+    "fenugreek"
+   ],
+   "swap": "Frozen methi from an Indian grocery, or kasuri methi (dried) stirred into spinach.",
+   "why": "Fresh methi is hard to find outside India."
+  },
+  {
+   "for": [
+    "paneer"
+   ],
+   "swap": "Store-bought paneer (Indian grocery), or extra-firm tofu — similar protein, less fat.",
+   "why": "Fresh paneer is costly or hard to get abroad."
+  },
+  {
+   "for": [
+    "curd",
+    "dahi",
+    "raita"
+   ],
+   "swap": "Plain whole-milk yogurt; plain Greek yogurt for extra protein (no sugar or flavour added).",
+   "why": "Supermarket yogurt works the same as homemade dahi."
+  },
+  {
+   "for": [
+    "hung curd"
+   ],
+   "swap": "Plain Greek yogurt — it's already strained.",
+   "why": "Saves straining dahi overnight."
+  },
+  {
+   "for": [
+    "chaas",
+    "buttermilk",
+    "lassi"
+   ],
+   "swap": "Plain kefir, or yogurt whisked with water, salt and roasted jeera.",
+   "why": "Western \"buttermilk\" is different — check it's unsweetened."
+  },
+  {
+   "for": [
+    "roti",
+    "chapati",
+    "phulka"
+   ],
+   "swap": "Atta from an Indian grocery; on busy days a whole-wheat tortilla (check: no added sugar).",
+   "why": "Supermarket \"whole wheat flour\" is coarser — use a little less water."
+  },
+  {
+   "for": [
+    "besan",
+    "chilla",
+    "cheela"
+   ],
+   "swap": "Chickpea flour / gram flour (in most supermarkets' world-food aisle).",
+   "why": "Same thing, different name."
+  },
+  {
+   "for": [
+    "toor dal",
+    "arhar dal",
+    "dal"
+   ],
+   "swap": "Yellow split peas or red lentils (masoor) cook like dal and are in every supermarket.",
+   "why": "Toor dal may only be at Indian stores."
+  },
+  {
+   "for": [
+    "moong",
+    "sprouts"
+   ],
+   "swap": "Green mung beans (bulk / Asian aisle); store-bought bean sprouts are mung too.",
+   "why": "Easy to find under the name \"mung\"."
+  },
+  {
+   "for": [
+    "rajma",
+    "kidney beans"
+   ],
+   "swap": "Canned red kidney beans — rinse well to cut the salt.",
+   "why": "Skips overnight soaking."
+  },
+  {
+   "for": [
+    "chole",
+    "chana",
+    "chickpeas"
+   ],
+   "swap": "Canned chickpeas, rinsed; or dry chickpeas in a pressure cooker / Instant Pot.",
+   "why": "Quick weeknight option."
+  },
+  {
+   "for": [
+    "lauki",
+    "dudhi",
+    "tinda",
+    "turai"
+   ],
+   "swap": "Zucchini or yellow squash — same light, watery texture.",
+   "why": "Gourds are rare outside Indian stores."
+  },
+  {
+   "for": [
+    "bhindi",
+    "okra"
+   ],
+   "swap": "Frozen cut okra — cook from frozen on high heat so it doesn't go slimy.",
+   "why": "Fresh okra is seasonal abroad."
+  },
+  {
+   "for": [
+    "karela",
+    "bitter gourd"
+   ],
+   "swap": "Bitter melon at Asian grocery stores.",
+   "why": "Same vegetable."
+  },
+  {
+   "for": [
+    "sarson",
+    "saag",
+    "bathua"
+   ],
+   "swap": "Mustard greens, collard greens or kale (or frozen spinach).",
+   "why": "Close match for saag."
+  },
+  {
+   "for": [
+    "palak",
+    "spinach"
+   ],
+   "swap": "Frozen chopped spinach — just thaw and squeeze.",
+   "why": "Cheaper and keeps for weeks."
+  },
+  {
+   "for": [
+    "poha"
+   ],
+   "swap": "Poha from an Indian store; otherwise savoury oats made the same way (onion, peas, haldi).",
+   "why": "Similar quick breakfast."
+  },
+  {
+   "for": [
+    "idli",
+    "dosa"
+   ],
+   "swap": "Ready idli/dosa batter from Indian stores, or a rava (semolina) idli with no fermenting.",
+   "why": "Batter may not ferment in a cold kitchen."
+  },
+  {
+   "for": [
+    "jaggery",
+    "gud"
+   ],
+   "swap": "Use less sweetener overall; coconut sugar or a little brown sugar if needed.",
+   "why": "Jaggery is still sugar."
+  },
+  {
+   "for": [
+    "coconut"
+   ],
+   "swap": "Frozen grated coconut or unsweetened desiccated coconut.",
+   "why": "Fresh coconut is hard to crack abroad."
+  },
+  {
+   "for": [
+    "curry leaves",
+    "kadi patta"
+   ],
+   "swap": "Frozen curry leaves from Indian stores (keep a bag in the freezer), or leave them out.",
+   "why": "Fresh ones are rare."
+  },
+  {
+   "for": [
+    "ghee"
+   ],
+   "swap": "Ghee is sold in most big supermarkets; or clarify unsalted butter at home.",
+   "why": "Use the same small amount as in the plan."
+  },
+  {
+   "for": [
+    "sattu"
+   ],
+   "swap": "Roasted chickpea (chana) flour from an Indian store; or a scoop of plain pea protein.",
+   "why": "Sattu is rare outside India."
+  }
+ ]
 }

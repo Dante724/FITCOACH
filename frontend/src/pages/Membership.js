@@ -6,9 +6,12 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { payWithRazorpay, subscribeWithRazorpay } from "@/lib/payments";
+import { inrPrice, money } from "@/lib/locale";
 import { useMembership, membershipChanged } from "@/lib/membership";
 
 const inr = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
+const priceOf = (x) => x?.price || inrPrice(x?.price_inr || 0);
+const perSession = (pk) => { const pr = priceOf(pk); return { ...pr, amount: pr.currency === "INR" ? Math.round(pr.amount / pk.sessions) : Math.round((pr.amount / pk.sessions) * 100) / 100 }; };
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "");
 const TERM = (p) => {
   const unit = { weekly: "week", monthly: "month", yearly: "year" }[p.period] || "month";
@@ -106,7 +109,7 @@ export default function Membership() {
             style={{ padding: 26, animationDelay: `${i * 70}ms`, position: "relative", display: "flex", flexDirection: "column" }}>
             {p.featured && <span className="chip" style={{ position: "absolute", top: 20, right: 20, background: "rgba(201,164,92,0.18)", color: "var(--ink)" }}>Most popular</span>}
             <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-2)" }}>{p.name}</div>
-            <div className="display" style={{ fontSize: 40, fontWeight: 400, margin: "6px 0 0" }}>{inr(p.price_inr)}</div>
+            <div className="display" style={{ fontSize: 40, fontWeight: 400, margin: "6px 0 0" }}>{money(priceOf(p))}</div>
             <div style={{ fontSize: 12.5, color: "var(--text-3)", marginBottom: 16 }}>{TERM(p)}{p.blurb ? ` · ${p.blurb}` : ""}</div>
             <div style={{ height: 1, background: "var(--border)", marginBottom: 14 }} />
             <div className="stack" style={{ gap: 10, marginBottom: 20, flex: 1 }}>
@@ -114,13 +117,19 @@ export default function Membership() {
                 <div key={f} className="row" style={{ gap: 9, fontSize: 13.5, color: "var(--text-2)" }}><Icons.Check size={14} color="var(--gold)" style={{ flexShrink: 0 }} />{f}</div>
               ))}
             </div>
-            <button className="btn btn-primary" data-testid={`subscribe-${p.id}`} disabled={!config.enabled || !!busy || m?.auto_renew} onClick={() => subscribe(p)} style={{ width: "100%" }}>
-              {busy === `sub-${p.id}` ? "Opening…" : config.enabled ? <><Icons.RefreshCw size={15} /> Subscribe · renews automatically</> : "Coming soon"}
-            </button>
+            {p.auto_renew === false ? (
+              <div style={{ fontSize: 12.5, color: "var(--text-3)", marginBottom: 8 }} data-testid={`no-autorenew-${p.id}`}>
+                Paid in {priceOf(p).currency}, one period at a time (auto-renew is only for rupee payments). We'll remind you before it ends.
+              </div>
+            ) : (
+              <button className="btn btn-primary" data-testid={`subscribe-${p.id}`} disabled={!config.enabled || !!busy || m?.auto_renew} onClick={() => subscribe(p)} style={{ width: "100%" }}>
+                {busy === `sub-${p.id}` ? "Opening…" : config.enabled ? <><Icons.RefreshCw size={15} /> Subscribe · renews automatically</> : "Coming soon"}
+              </button>
+            )}
             {config.enabled && (
               <button className="btn btn-ghost" data-testid={`payonce-${p.id}`} disabled={!!busy} onClick={() => payOnce(p)}
                 style={{ width: "100%", marginTop: 8, ...(p.featured ? { background: "transparent", color: "var(--text)", borderColor: "var(--border-strong)" } : {}) }}>
-                {busy === `once-${p.id}` ? "Opening…" : "Pay once"}
+                {busy === `once-${p.id}` ? "Opening…" : p.auto_renew === false ? `Pay ${money(priceOf(p))}` : "Pay once"}
               </button>
             )}
           </div>
@@ -136,16 +145,16 @@ export default function Membership() {
         <div className="clay fade-up" style={{ padding: 22 }}>
           <div className="eyebrow" style={{ marginBottom: 6 }}>Session packs</div>
           <p style={{ fontSize: 13.5, color: "var(--text-2)", marginBottom: 14 }}>
-            Extra video sessions with your coach. Credits are used automatically when you book{config ? ` (single session ${inr(config.session_price_inr)})` : ""}.
+            Extra video sessions with your coach. Credits are used automatically when you book{config ? ` (single session ${config.session_price ? money(config.session_price) : inr(config.session_price_inr)})` : ""}.
           </p>
           <div className="stack" style={{ gap: 10 }}>
             {(config?.packs || []).map((pk) => (
               <div key={pk.id} className="clay-inset row" style={{ padding: "12px 14px", flexWrap: "wrap" }}>
                 <div className="min0" style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600 }}>{pk.name}</div>
-                  <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>{inr(Math.round(pk.price_inr / pk.sessions))} per session</div>
+                  <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>{money(perSession(pk))} per session</div>
                 </div>
-                <div className="display" style={{ fontSize: 22 }}>{inr(pk.price_inr)}</div>
+                <div className="display" style={{ fontSize: 22 }}>{money(priceOf(pk))}</div>
                 <button className="btn btn-primary" data-testid={`buy-${pk.id}`} disabled={!config.enabled || !!busy} onClick={() => buyPack(pk)}>
                   {busy === `pack-${pk.id}` ? "Opening…" : "Buy"}
                 </button>
@@ -181,7 +190,7 @@ export default function Membership() {
                   <div style={{ fontWeight: 600, fontSize: 14 }}>{TXN_LABEL[t.type] || "Payment"}{t.ref?.plan_name ? ` · ${t.ref.plan_name}` : t.ref?.pack_name ? ` · ${t.ref.pack_name}` : ""}</div>
                   <div style={{ fontSize: 12, color: "var(--text-3)" }}>{fmtDate(t.paid_at || t.created_at)}{t.payment_id ? ` · ${t.payment_id}` : ""}</div>
                 </div>
-                <div style={{ fontWeight: 600 }}>{inr(t.amount_inr)}</div>
+                <div style={{ fontWeight: 600 }}>{t.currency && t.currency !== "INR" ? money({ amount: t.amount, currency: t.currency }) : inr(t.amount_inr)}</div>
               </div>
             ))}
           </div>

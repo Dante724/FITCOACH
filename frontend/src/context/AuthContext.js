@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
 import { api, setToken, setUid, clearOfflineCache, rememberResponse } from "@/lib/api";
 import { syncPushForSignedInUser, detachPushOnLogout } from "@/lib/push";
+import { browserTz, guessCountry } from "@/lib/locale";
 
 const AuthContext = createContext(null);
 
@@ -25,6 +26,17 @@ export function AuthProvider({ children }) {
   useEffect(() => { checkAuth(); }, [checkAuth]);
   // keep the offline copy of the profile current (consent, goal, name changes made in the app)
   useEffect(() => { if (user?.user_id) rememberResponse("/auth/me", user); }, [user]);
+
+  // Where they are: country is guessed once from the device's time zone (they can change it in Profile); the time zone
+  // follows the device, so session reminders match their clock when they travel.
+  useEffect(() => {
+    if (!user?.user_id || !navigator.onLine) return;
+    const tz = browserTz();
+    if (user.country && user.timezone === tz) return;
+    api.put("/me/locale", { country: user.country || guessCountry(tz), timezone: tz })
+      .then((r) => setUser((u) => (u ? { ...u, country: r.data.country, timezone: r.data.timezone } : u)))
+      .catch(() => {});
+  }, [user?.user_id, user?.country, user?.timezone]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const signedIn = useCallback((data) => {
     const { access_token: token, ...profile } = data;

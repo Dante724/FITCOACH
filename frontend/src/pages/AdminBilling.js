@@ -3,9 +3,10 @@ import * as Icons from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { api, API, authHeaders } from "@/lib/api";
 import { useToast } from "@/context/ToastContext";
+import { money } from "@/lib/locale";
 
 const inr = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
-const BLANK_PLAN = { name: "", price_inr: 0, days: 30, period: "monthly", interval: 1, included_sessions: 0, unlimited_sessions: false,
+const BLANK_PLAN = { name: "", price_inr: 0, prices: {}, days: 30, period: "monthly", interval: 1, included_sessions: 0, unlimited_sessions: false,
   blurb: "", features: [], featured: false, active: true, sort: 10 };
 const thisMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
 
@@ -19,6 +20,34 @@ function Num({ label, value, onChange, suffix, testid, min = 0 }) {
         {suffix && <span style={{ fontSize: 13, color: "var(--text-3)", whiteSpace: "nowrap" }}>{suffix}</span>}
       </div>
     </label>
+  );
+}
+
+// Prices for clients abroad (NRIs). Blank = they pay the rupee price in INR.
+const ABROAD_CURRENCIES = ["USD", "GBP", "EUR", "AED", "SAR", "QAR", "CAD", "AUD", "NZD", "SGD"];
+function LocalPrices({ value, onChange, testid }) {
+  const v = value || {};
+  const set = (cur, amount) => {
+    const next = { ...v };
+    if (amount === "" || Number(amount) <= 0) delete next[cur]; else next[cur] = Number(amount);
+    onChange(next);
+  };
+  const count = Object.keys(v).length;
+  return (
+    <details style={{ gridColumn: "1 / -1" }} data-testid={testid}>
+      <summary style={{ cursor: "pointer", fontSize: 13.5, fontWeight: 600 }}>
+        Prices for clients abroad {count ? `(${count} set)` : <span style={{ fontWeight: 400, color: "var(--text-3)" }}>— optional</span>}
+      </summary>
+      <div style={{ fontSize: 12, color: "var(--text-3)", margin: "6px 0 10px" }}>
+        Clients living in these countries see and pay this price. Leave blank to charge them the rupee price (in ₹). Needs international payments switched on in Razorpay.
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 8 }}>
+        {ABROAD_CURRENCIES.map((cur) => (
+          <label key={cur}><span className="label">{cur}</span>
+            <input className="field" type="number" min={0} step="0.01" value={v[cur] ?? ""} onChange={(e) => set(cur, e.target.value)} data-testid={`${testid}-${cur}`} /></label>
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -57,6 +86,7 @@ function PlanModal({ plan, onClose, onSaved }) {
             </div>
           </label>
           <Num label="Included video sessions" value={f.included_sessions} onChange={set("included_sessions")} suffix="per period" />
+          <LocalPrices value={f.prices} onChange={set("prices")} testid="plan-prices" />
           <label style={{ gridColumn: "1 / -1" }}><span className="label">Short description</span><input className="field" value={f.blurb} onChange={(e) => set("blurb")(e.target.value)} /></label>
           <label style={{ gridColumn: "1 / -1" }}><span className="label">Features (one per line)</span>
             <textarea className="field" rows={4} value={Array.isArray(f.features) ? f.features.join("\n") : f.features} onChange={(e) => set("features")(e.target.value)} style={{ resize: "vertical" }} /></label>
@@ -91,6 +121,9 @@ function PlansTab() {
               <span className={`chip ${p.active ? "chip-teal" : "chip-neutral"}`}>{p.active ? "On sale" : "Hidden"}</span>
             </div>
             <div className="display" style={{ fontSize: 32, margin: "6px 0 2px" }}>{inr(p.price_inr)}</div>
+            {Object.keys(p.prices || {}).length > 0 && (
+              <div style={{ fontSize: 12, color: "var(--text-3)" }}>Abroad: {Object.entries(p.prices).map(([c, a]) => money({ amount: a, currency: c })).join(" · ")}</div>
+            )}
             <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>{p.days} days · renews every {p.interval > 1 ? `${p.interval} ` : ""}{p.period.replace("ly", "")}{p.interval > 1 ? "s" : ""}</div>
             <div style={{ fontSize: 13, color: "var(--text-2)", margin: "10px 0 14px" }}>
               {p.unlimited_sessions ? "Unlimited sessions" : `${p.included_sessions} session${p.included_sessions === 1 ? "" : "s"} included`} · {p.members} active member{p.members === 1 ? "" : "s"}
@@ -126,6 +159,7 @@ function SettingsTab() {
           <Num label="Grace period after expiry" value={s.grace_days} onChange={set("grace_days")} suffix="days" />
           <Num label="Single session price" value={s.session_price_inr} onChange={set("session_price_inr")} suffix="₹" />
         </div>
+        <div style={{ marginTop: 12 }}><LocalPrices value={s.session_prices} onChange={set("session_prices")} testid="session-prices" /></div>
       </div>
       <div className="clay" style={{ padding: 22 }} data-testid="trial-settings">
         <div className="eyebrow" style={{ marginBottom: 4 }}>What the free trial includes</div>
@@ -176,6 +210,7 @@ function SettingsTab() {
               <div style={{ flex: "1 1 110px" }}><Num label="Price" value={p.price_inr} onChange={(v) => setPack(i, { price_inr: v })} suffix="₹" /></div>
               <label className="row" style={{ gap: 6, fontSize: 13.5, paddingBottom: 10 }}><input type="checkbox" checked={p.active} onChange={(e) => setPack(i, { active: e.target.checked })} /> On sale</label>
               <button className="icon-btn" onClick={() => setS((x) => ({ ...x, packs: x.packs.filter((_, j) => j !== i) }))} aria-label="Remove pack"><Icons.Trash2 size={16} /></button>
+              <div style={{ flexBasis: "100%" }}><LocalPrices value={p.prices} onChange={(v) => setPack(i, { prices: v })} testid={`pack-prices-${i}`} /></div>
             </div>
           ))}
         </div>

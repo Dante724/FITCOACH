@@ -1,9 +1,11 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import * as Icons from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import ProgressPhotos from "@/pages/ProgressPhotos";
 import { api } from "@/lib/api";
 import { useToast } from "@/context/ToastContext";
+import { useAuth } from "@/context/AuthContext";
+import { fromCm, fromKg, lengthUnit, toCm, toKg, weightUnit } from "@/lib/locale";
 
 const FIELDS = [
   { id: "weight", label: "Weight", unit: "kg" },
@@ -33,8 +35,14 @@ export function Sparkline({ data }) {
   );
 }
 
+// Stored in kg / cm; shown and entered in the person's own units (lb / in for imperial).
+const KIND = { weight: "w", chest: "l", waist: "l", hips: "l", arms: "l" };
+const shownValue = (id, v, user) => (v == null ? v : KIND[id] === "w" ? fromKg(v, user) : KIND[id] === "l" ? fromCm(v, user) : v);
+const storedValue = (id, v, user) => (KIND[id] === "w" ? toKg(v, user) : KIND[id] === "l" ? toCm(v, user) : v);
+
 export default function Progress() {
   const { push } = useToast();
+  const { user } = useAuth();
   const [entries, setEntries] = useState([]);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({});
@@ -42,12 +50,14 @@ export default function Progress() {
   const [tab, setTab] = useState("measurements");
 
   const load = useCallback(() => api.get("/progress").then((r) => setEntries(r.data)).catch(() => {}), []);
+  const fields = useMemo(() => FIELDS.map((f) => ({ ...f, unit: f.unit === "kg" ? weightUnit(user) : f.unit === "cm" ? lengthUnit(user) : f.unit })), [user]);
+  const shown = useMemo(() => entries.map((e) => ({ ...e, ...Object.fromEntries(FIELDS.map((f) => [f.id, shownValue(f.id, e[f.id], user)])) })), [entries, user]);
   useEffect(() => { load(); }, [load]);
 
   const save = async () => {
     const payload = {};
     let has = false;
-    FIELDS.forEach((f) => { const v = parseFloat(form[f.id]); if (!isNaN(v)) { payload[f.id] = v; has = true; } });
+    FIELDS.forEach((f) => { const v = parseFloat(form[f.id]); if (!isNaN(v)) { payload[f.id] = storedValue(f.id, v, user); has = true; } });
     if (!has) { push("Enter at least one value.", "error"); return; }
     setSaving(true);
     try {
@@ -60,8 +70,8 @@ export default function Progress() {
 
   const remove = async (id) => { await api.delete(`/progress/${id}`).catch(() => {}); push("Entry deleted."); load(); };
 
-  const latest = entries[entries.length - 1] || {};
-  const prev = entries[entries.length - 2] || {};
+  const latest = shown[shown.length - 1] || {};
+  const prev = shown[shown.length - 2] || {};
 
   return (
     <div>
@@ -85,7 +95,7 @@ export default function Progress() {
       {tab === "measurements" && (<>
       <div className="grid-stats" style={{ marginBottom: 16 }}>
         {["weight", "body_fat", "waist", "chest"].map((fid, i) => {
-          const f = FIELDS.find((x) => x.id === fid);
+          const f = fields.find((x) => x.id === fid);
           const val = latest[fid], pv = prev[fid];
           const diff = (typeof val === "number" && typeof pv === "number") ? Math.round((val - pv) * 10) / 10 : null;
           const better = diff !== null && (["weight", "body_fat", "waist"].includes(fid) ? diff < 0 : diff > 0);
@@ -107,12 +117,12 @@ export default function Progress() {
         <div className="clay fade-up" style={{ padding: 26 }}>
           <div className="eyebrow" style={{ marginBottom: 6 }}>Trend</div>
           <h3 className="display" style={{ fontSize: 17, fontWeight: 600, marginBottom: 16 }}>Weight over time</h3>
-          <Sparkline data={entries} />
+          <Sparkline data={shown} />
         </div>
         <div className="clay fade-up" style={{ padding: 26, animationDelay: "80ms" }}>
           <div className="eyebrow" style={{ marginBottom: 14 }}>Latest measurements</div>
           <div style={{ display: "flex", flexDirection: "column" }}>
-            {FIELDS.map((f) => (
+            {fields.map((f) => (
               <div key={f.id} style={{ display: "flex", justifyContent: "space-between", padding: "11px 0", borderBottom: "1px solid rgba(139,150,172,0.16)" }}>
                 <span style={{ fontSize: 13.5, color: "var(--text-2)" }}>{f.label}</span>
                 <span style={{ fontSize: 13.5, fontWeight: 600 }}>{latest[f.id] != null ? `${latest[f.id]} ${f.unit}` : "—"}</span>
@@ -131,11 +141,11 @@ export default function Progress() {
           <div style={{ textAlign: "center", padding: "40px 0", color: "var(--text-3)", fontSize: 14 }}>No entries yet. Log your first measurement.</div>
         ) : (
           <div data-testid="progress-list">
-            {[...entries].reverse().map((e) => (
+            {[...shown].reverse().map((e) => (
               <div key={e.id} className="clay-inset history-row">
                 <span className="history-date">{new Date(e.date + "T12:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
                 <span className="history-vals">
-                  {[["weight", "kg"], ["body_fat", "%"], ["waist", "cm waist"], ["chest", "cm chest"]].filter(([k]) => e[k] != null).map(([k, u]) => (
+                  {[["weight", weightUnit(user)], ["body_fat", "%"], ["waist", `${lengthUnit(user)} waist`], ["chest", `${lengthUnit(user)} chest`]].filter(([k]) => e[k] != null).map(([k, u]) => (
                     <span key={k} className="chip chip-neutral">{e[k]} {u}</span>
                   ))}
                 </span>
@@ -155,7 +165,7 @@ export default function Progress() {
               <Icons.X size={20} style={{ cursor: "pointer", color: "var(--text-3)" }} onClick={() => setOpen(false)} />
             </div>
             <div className="grid-pair">
-              {FIELDS.map((f) => (
+              {fields.map((f) => (
                 <div key={f.id}>
                   <label className="label">{f.label} ({f.unit})</label>
                   <input type="number" step="0.1" className="field" data-testid={`input-${f.id}`} value={form[f.id] || ""} onChange={(e) => setForm({ ...form, [f.id]: e.target.value })} placeholder={f.unit} />

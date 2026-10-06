@@ -17,7 +17,7 @@ import binascii
 import base64
 from email.message import EmailMessage
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 
@@ -25,6 +25,7 @@ import bcrypt
 import jwt
 import httpx
 import engine
+import locale_info as L
 from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator
 
 ROOT_DIR = Path(__file__).parent
@@ -301,7 +302,8 @@ class User(BaseModel):
         if out.get("must_change_password") is not None and not isinstance(out["must_change_password"], bool):
             out["must_change_password"] = bool(out["must_change_password"])
         for k in ("name", "role", "picture", "focus", "specialty", "bio", "membership_plan", "membership_expires_at", "coach_type",
-                  "fitness_coach_id", "yoga_coach_id", "subscription_status", "referral_code", "created_at"):
+                  "fitness_coach_id", "yoga_coach_id", "subscription_status", "referral_code", "created_at",
+                  "country", "timezone", "units"):
             if out.get(k) is not None and not isinstance(out[k], str):
                 out[k] = str(out[k])
         if not out.get("name"):
@@ -331,6 +333,9 @@ class User(BaseModel):
     consents: Optional[dict] = None
     must_change_password: Optional[bool] = None
     created_at: Optional[str] = None
+    country: Optional[str] = None      # ISO code, e.g. IN, US, GB, AE (clients abroad = NRIs)
+    timezone: Optional[str] = None     # IANA, e.g. America/New_York — session times are shown in it
+    units: Optional[str] = None        # metric | imperial
 
 
 class AuthResponse(User):
@@ -363,6 +368,19 @@ class IntakeUpdate(BaseModel):
     diet: Optional[str] = None            # veg | non_veg | eggetarian | vegan | jain
     allergies: Optional[str] = None
     dislikes: Optional[str] = None
+    # health screening (all optional; numbers from their latest blood test)
+    waist_cm: Optional[float] = None
+    conditions: Optional[List[str]] = None   # diabetes | prediabetes | thyroid | bp | cholesterol | pcos | heart
+    hba1c: Optional[float] = None            # %
+    vitamin_d: Optional[float] = None        # ng/mL
+    b12: Optional[float] = None              # pg/mL
+    labs_date: Optional[str] = None
+
+
+class LocaleUpdate(BaseModel):
+    country: str
+    timezone: Optional[str] = None
+    units: Optional[str] = None
 
 
 class ProfileUpdate(BaseModel):
@@ -590,7 +608,7 @@ DEFAULT_PLANS = [
      "features": ["Everything in Quarterly", "Unlimited video sessions", "Quarterly assessments", "Best value"]},
 ]
 DEFAULT_BILLING = {
-    "session_price_inr": 1000, "trial_days": 7, "grace_days": 3,
+    "session_price_inr": 1000, "session_prices": {}, "trial_days": 7, "grace_days": 3,
     "referral_reward_days": 7, "referee_bonus_days": 7,
     "payout_per_client_inr": 0, "payout_per_session_inr": 0,
     "trial_features": ["workouts", "messages", "food"], "trial_session_credits": 1, "trial_intro_approval": True,
@@ -863,8 +881,24 @@ def app_url(request: Optional[Request] = None) -> str:
     return url.rstrip("/")
 
 
+def _client_when(b: dict) -> str:
+    """A session's time as the client should read it (their own time zone when abroad)."""
+    try:
+        return L.describe_time(booking_dt(b["date"], b["time"]), b.get("client_tz"))
+    except (ValueError, KeyError):
+        return f"{b.get('date')} at {b.get('time')}"
+
+
+def _both_when(b: dict) -> str:
+    """For coaches / shared messages: India time, plus the client's own time when they're abroad."""
+    home = f"{b.get('date')} at {b.get('time')}"
+    if (b.get("client_tz") or L.HOME_TZ) == L.HOME_TZ:
+        return home
+    return f"{home} IST — {_client_when(b)} for the client"
+
+
 async def send_booking_emails(booking: dict, app_origin: str):
-    when = f"{booking['date']} at {booking['time']}"
+    when = _client_when(booking)
     join = f"{app_origin}/call/{booking['id']}"
     await send_email(
         [booking.get("client_email")], "Your FitCoach session is confirmed",
@@ -877,9 +911,9 @@ async def send_booking_emails(booking: dict, app_origin: str):
     )
     await send_email(
         [booking.get("trainer_email")], "New session booked",
-        f"{booking.get('client_name')} booked a session for {when}.",
+        f"{booking.get('client_name')} booked a session for {_both_when(booking)}.",
         _email_shell("New booking",
-                     [f"<b>{booking.get('client_name')}</b> booked a session with you for <b>{when}</b>.",
+                     [f"<b>{booking.get('client_name')}</b> booked a session with you for <b>{_both_when(booking)}</b>.",
                       "Join the video call from your trainer dashboard when it's time."],
                      "Open trainer dashboard", f"{app_origin}/trainer"),
     )
@@ -899,7 +933,7 @@ async def send_due_reminders():
         if session_dt < datetime.now(timezone.utc):
             await db.bookings.update_one({"id": b["id"]}, {"$set": {"reminder_email_sent": True}})
             continue
-        when = f"{b['date']} at {b['time']}"
+        when = _both_when(b)
         await send_email(
             [b.get("client_email"), b.get("trainer_email")], "Reminder: your FitCoach session is coming up",
             f"Your session is scheduled for {when}.",
@@ -1214,6 +1248,55 @@ async def set_focus(payload: FocusUpdate, user: User = Depends(get_current_user)
     return User(**user_doc)
 
 
+# ── where the client lives: country (→ currency), time zone, units ──
+@api_router.get("/locale/options")
+async def locale_options():
+    return {"countries": [L.COUNTRY[c[0]] for c in L.COUNTRIES], "currencies": L.CURRENCIES, "conditions": L.CONDITIONS}
+
+
+def _locale_of(u: dict) -> dict:
+    country = (u.get("country") or "IN").upper()
+    return {"country": country, "timezone": L.valid_tz(u.get("timezone")) or L.HOME_TZ,
+            "units": u.get("units") if u.get("units") in L.UNITS else L.COUNTRY.get(country, L.COUNTRY["OTHER"])["units"],
+            "currency": L.currency_for(country), "abroad": country != "IN",
+            "country_name": L.COUNTRY.get(country, L.COUNTRY["OTHER"])["name"]}
+
+
+@api_router.get("/me/locale")
+async def get_locale(user: User = Depends(get_current_user)):
+    return _locale_of(user.model_dump())
+
+
+@api_router.put("/me/locale")
+async def set_locale(payload: LocaleUpdate, user: User = Depends(get_current_user)):
+    country = payload.country.upper()
+    if country not in L.COUNTRY:
+        raise HTTPException(status_code=400, detail="Choose your country from the list")
+    upd = {"country": country}
+    if payload.timezone is not None:
+        tz = L.valid_tz(payload.timezone)
+        if not tz:
+            raise HTTPException(status_code=400, detail="Unknown time zone")
+        upd["timezone"] = tz
+    if payload.units is not None:
+        if payload.units not in L.UNITS:
+            raise HTTPException(status_code=400, detail="Units must be metric or imperial")
+        upd["units"] = payload.units
+    await db.users.update_one({"user_id": user.user_id}, {"$set": upd})
+    return _locale_of({**user.model_dump(), **upd})
+
+
+async def _health_flags_for(u: dict) -> list:
+    latest = await db.progress.find({"user_id": u["user_id"], "weight": {"$gt": 0}}, {"_id": 0, "weight": 1, "date": 1}).sort("date", -1).to_list(1)
+    return L.health_flags(u.get("intake") or {}, latest[0]["weight"] if latest else None, L.is_abroad(u))
+
+
+@api_router.get("/me/health")
+async def my_health(user: User = Depends(require_role("client"))):
+    u = await db.users.find_one({"user_id": user.user_id}, {"_id": 0}) or {}
+    return {"flags": await _health_flags_for(u), "intake": u.get("intake") or {}}
+
+
 @api_router.put("/profile/intake", response_model=User)
 async def set_intake(payload: IntakeUpdate, user: User = Depends(require_role("client"))):
     if payload.focus not in VALID_FOCUS:
@@ -1222,6 +1305,11 @@ async def set_intake(payload: IntakeUpdate, user: User = Depends(require_role("c
     for k in ("injuries", "allergies", "dislikes"):
         if intake.get(k):
             intake[k] = intake[k].strip()[:300]
+    intake["conditions"] = [c for c in (intake.get("conditions") or []) if c in L.CONDITIONS][:8]
+    for k, hi in (("waist_cm", 250), ("hba1c", 20), ("vitamin_d", 200), ("b12", 3000)):
+        if intake.get(k) is not None and not (0 < intake[k] <= hi):
+            intake[k] = None
+    intake["labs_date"] = (intake.get("labs_date") or "")[:10] or None
     first_time = not user.focus
     await db.users.update_one({"user_id": user.user_id}, {"$set": {"focus": payload.focus, "intake": intake}})
     if payload.weight_kg and not await db.progress.find_one({"user_id": user.user_id}):
@@ -1317,20 +1405,14 @@ async def get_trainers(user: User = Depends(get_current_user)):
     return {"trainers": [_trainer_public(d) for d in docs]}
 
 
-@api_router.get("/trainers/{trainer_id}/slots")
-async def trainer_slots(trainer_id: str, date: str, user: User = Depends(get_current_user)):
-    trainer = await db.users.find_one({"user_id": trainer_id, "role": "trainer"}, {"_id": 0})
-    if not trainer:
-        raise HTTPException(status_code=404, detail="Trainer not found")
-    try:
-        weekday = datetime.strptime(date, "%Y-%m-%d").weekday()
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid date")
+async def _free_times(trainer: dict, date: str) -> List[str]:
+    """The coach's open times on one business-time (IST) date."""
+    weekday = datetime.strptime(date, "%Y-%m-%d").weekday()
     days = trainer.get("available_days") or DEFAULT_DAYS
     times = sorted(trainer.get("available_times") or DEFAULT_TIMES)
     if weekday not in days:
-        return {"slots": []}
-    booked = await db.bookings.find({"trainer_id": trainer_id, "date": date}, {"_id": 0, "time": 1}).to_list(200)
+        return []
+    booked = await db.bookings.find({"trainer_id": trainer["user_id"], "date": date}, {"_id": 0, "time": 1}).to_list(200)
     taken = {b["time"] for b in booked}
     soon = datetime.now(timezone.utc) + timedelta(minutes=15)  # don't offer times that have passed or start in a moment
 
@@ -1339,7 +1421,32 @@ async def trainer_slots(trainer_id: str, date: str, user: User = Depends(get_cur
             return booking_dt(date, t) > soon
         except ValueError:
             return False
-    return {"slots": [t for t in times if t not in taken and upcoming(t)]}
+    return [t for t in times if t not in taken and upcoming(t)]
+
+
+@api_router.get("/trainers/{trainer_id}/slots")
+async def trainer_slots(trainer_id: str, date: str, tz: Optional[str] = None, user: User = Depends(get_current_user)):
+    """Open times on `date`. With `tz` (someone abroad), `date` is a day in *their* time zone: the answer covers every
+    coach time that falls on it, as `options` with both the coach's (IST) date/time — used to book — and their local time."""
+    trainer = await db.users.find_one({"user_id": trainer_id, "role": "trainer"}, {"_id": 0})
+    if not trainer:
+        raise HTTPException(status_code=404, detail="Trainer not found")
+    try:
+        datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date")
+    zone = L.valid_tz(tz)
+    if not zone or zone == L.HOME_TZ:
+        return {"slots": await _free_times(trainer, date)}
+    options = []
+    for home_date in L.home_dates_for_local_day(date, zone):
+        for t in await _free_times(trainer, home_date):
+            local = booking_dt(home_date, t).astimezone(ZoneInfo(zone))
+            if local.date().isoformat() == date:
+                options.append({"date": home_date, "time": t, "starts_at": booking_dt(home_date, t).astimezone(timezone.utc).isoformat(),
+                                "local_time": local.strftime("%H:%M"), "label": local.strftime("%I:%M %p").lstrip("0")})
+    options.sort(key=lambda o: o["starts_at"])
+    return {"slots": [o["time"] for o in options], "options": options, "timezone": zone}
 
 
 @api_router.get("/bookings")
@@ -1377,6 +1484,7 @@ async def _create_booking(client_doc: dict, trainer: dict, date: str, time: str,
     doc["starts_at"] = session_dt.astimezone(timezone.utc).isoformat()
     doc["scheduled_by"] = scheduled_by.user_id if scheduled_by else client_doc["user_id"]
     fresh_client = await db.users.find_one({"user_id": client_doc["user_id"]}, {"_id": 0}) or client_doc
+    doc["client_tz"] = L.valid_tz(fresh_client.get("timezone")) or L.HOME_TZ
     paid_via = await pay_for_booking_from_balance(fresh_client, doc)
     if paid_via:
         doc.update({"paid": True, "paid_via": paid_via})
@@ -1385,18 +1493,18 @@ async def _create_booking(client_doc: dict, trainer: dict, date: str, time: str,
     needs_ok = (not scheduled_by and fresh_client.get("membership_plan") == "trial" and settings.get("trial_intro_approval", True))
     doc["status"] = booking.status = "requested" if needs_ok else "confirmed"
     await db.bookings.insert_one(doc)
-    when = f"{date} at {time}"
+    client_when = L.describe_time(session_dt, doc["client_tz"])
     if needs_ok:
-        await push_notification(client_doc["user_id"], "Intro session requested", f"{trainer.get('name')} will confirm {when} shortly.", "/booking")
-        await push_notification(trainer["user_id"], "Intro session request", f"{client_doc.get('name')} (free trial) asked for {when}. Confirm or decline.", "/trainer")
+        await push_notification(client_doc["user_id"], "Intro session requested", f"{trainer.get('name')} will confirm {client_when} shortly.", "/booking")
+        await push_notification(trainer["user_id"], "Intro session request", f"{client_doc.get('name')} (free trial) asked for {_both_when(doc)}. Confirm or decline.", "/trainer")
         return booking
     if scheduled_by:
-        await push_notification(client_doc["user_id"], "Session scheduled", f"{trainer.get('name')} scheduled a video session on {when}.", "/booking")
+        await push_notification(client_doc["user_id"], "Session scheduled", f"{trainer.get('name')} scheduled a video session on {client_when}.", "/booking")
     else:
-        await push_notification(client_doc["user_id"], "Session booked", f"With {booking.trainer_name} on {when}.", "/booking")
-        await push_notification(trainer["user_id"], "New booking", f"{client_doc.get('name')} booked {when}.", "/trainer")
+        await push_notification(client_doc["user_id"], "Session booked", f"With {booking.trainer_name} on {client_when}.", "/booking")
+        await push_notification(trainer["user_id"], "New booking", f"{client_doc.get('name')} booked {_both_when(doc)}.", "/trainer")
     origin = app_url(request)
-    background.add_task(send_booking_emails, booking.model_dump(), origin)
+    background.add_task(send_booking_emails, {**booking.model_dump(), "client_tz": doc["client_tz"]}, origin)
     return booking
 
 
@@ -1459,15 +1567,14 @@ async def decide_booking(booking_id: str, payload: BookingDecision, user: User =
     if not booking or (user.role == "trainer" and booking["trainer_id"] != user.user_id):
         raise HTTPException(status_code=404, detail="No pending request found")
     note = _txt(payload.note, 200)
-    when = f"{booking['date']} at {booking['time']}"
     if payload.approve:
         await db.bookings.update_one({"id": booking_id}, {"$set": {"status": "confirmed", "confirmed_at": _now_iso()}})
-        await push_notification(booking["user_id"], "Intro session confirmed", f"{booking['trainer_name']} will see you on {when}." + (f" “{note}”" if note else ""), "/booking")
+        await push_notification(booking["user_id"], "Intro session confirmed", f"{booking['trainer_name']} will see you on {_client_when(booking)}." + (f" “{note}”" if note else ""), "/booking")
         return {"ok": True, "status": "confirmed"}
     await db.bookings.delete_one({"id": booking_id})
     if booking.get("paid_via") == "credit":
         await db.users.update_one({"user_id": booking["user_id"]}, {"$inc": {"session_credits": 1}})
-    await push_notification(booking["user_id"], "Please pick another time", f"{booking['trainer_name']} can't do {when}. Your free session is back — book another slot."
+    await push_notification(booking["user_id"], "Please pick another time", f"{booking['trainer_name']} can't do {_client_when(booking)}. Your free session is back — book another slot."
                             + (f" “{note}”" if note else ""), "/booking")
     return {"ok": True, "status": "declined"}
 
@@ -1681,7 +1788,7 @@ async def list_notifications(user: User = Depends(get_current_user)):
             who = b.get("trainer_name") if b.get("user_id") == user.user_id else (b.get("client_name") or "your client")
             reminders.append({
                 "id": rid, "title": "Upcoming session",
-                "body": f"With {who} — {_humanize_until(dt)} ({b['date']} at {b['time']})",
+                "body": f"With {who} — {_humanize_until(dt)} ({_client_when(b) if b.get('user_id') == user.user_id else _both_when(b)})",
                 "link": f"/call/{b['id']}", "kind": "reminder",
             })
     reminders.sort(key=lambda r: r["body"])
@@ -2427,7 +2534,8 @@ async def coach_client_detail(client_id: str, user: User = Depends(require_role(
     upcoming = await db.bookings.find(bq, {"_id": 0}).sort("starts_at", 1).to_list(20)
     since = (datetime.now(APP_TZ).date() - timedelta(days=13)).isoformat()
     daily = await db.daily_logs.find({"user_id": client_id, "date": {"$gte": since}}, {"_id": 0}).sort("date", 1).to_list(20)
-    return {"client": c, "tracks": tracks, "coaches": coaches, "daily": daily, "today": _today(), "targets": c.get("daily_targets") or [], "brief": await _client_brief(c, _fitness_view(user, c)), "progress": progress, "pose_checks": pose_checks,
+    return {"health_flags": await _health_flags_for(c), "locale": _locale_of(c),
+            "client": c, "tracks": tracks, "coaches": coaches, "daily": daily, "today": _today(), "targets": c.get("daily_targets") or [], "brief": await _client_brief(c, _fitness_view(user, c)), "progress": progress, "pose_checks": pose_checks,
             "upcoming_sessions": upcoming,
             "photos": photos, "sessions": sessions, "food": foods, "plans": plans}
 
@@ -3380,17 +3488,27 @@ async def send_session_alerts():
         claim = {"id": b["id"], "alert_10_sent": {"$ne": True}} if "alert_10_sent" in flags else {"id": b["id"], "alert_60_sent": {"$ne": True}}
         if not (await db.bookings.update_one(claim, {"$set": flags})).modified_count:
             continue
-        for uid, other in ((b["user_id"], b.get("trainer_name")), (b["trainer_id"], b.get("client_name"))):
-            await push_notification(uid, f"Session {label}", f"Video session with {other} at {b['time']}. Join from the app.", f"/call/{b['id']}",
+        for uid, other, at in ((b["user_id"], b.get("trainer_name"), b["time"] if (b.get("client_tz") or L.HOME_TZ) == L.HOME_TZ else _client_when(b)), (b["trainer_id"], b.get("client_name"), b["time"])):
+            await push_notification(uid, f"Session {label}", f"Video session with {other} at {at}. Join from the app.", f"/call/{b['id']}",
                                     push={"tag": f"session-{b['id']}", "urgency": "high" if minutes_label_soon(label) else "normal"})
 
 # ── public + member endpoints ──
+def _priced(s: dict, plans: List[dict], currency: str) -> dict:
+    """Plans, packs and the single-session price in the visitor's currency. Each item gets `price` {amount, currency}:
+    the admin's local price when one is set, otherwise the rupee price (charged in INR)."""
+    currency = currency if currency in L.CURRENCIES else "INR"
+    plans = [{**p, "price": L.price_in(p["price_inr"], p.get("prices"), currency)} for p in plans]
+    packs = [{**p, "price": L.price_in(p["price_inr"], p.get("prices"), currency)} for p in s["packs"] if p.get("active")]
+    return {"plans": plans, "packs": packs, "currency": currency,
+            "session_price": L.price_in(s["session_price_inr"], s.get("session_prices"), currency)}
+
+
 @api_router.get("/plans")
-async def public_plans():
+async def public_plans(currency: Optional[str] = None, country: Optional[str] = None):
     s = await billing_settings()
-    return {"plans": await list_plans(), "session_price_inr": s["session_price_inr"], "trial_days": s["trial_days"],
-            "packs": [p for p in s["packs"] if p.get("active")], "referee_bonus_days": s["referee_bonus_days"],
-            "currency": "INR", "payments_enabled": PAYMENTS_ENABLED}
+    cur = (currency or (L.currency_for(country) if country else "INR")).upper()
+    return {**_priced(s, await list_plans(), cur), "session_price_inr": s["session_price_inr"], "trial_days": s["trial_days"],
+            "referee_bonus_days": s["referee_bonus_days"], "payments_enabled": PAYMENTS_ENABLED}
 
 
 @api_router.get("/me/membership")
@@ -3443,25 +3561,31 @@ def _require_payments():
 @api_router.get("/payments/config")
 async def payments_config(user: User = Depends(get_current_user)):
     s = await billing_settings()
-    return {"enabled": PAYMENTS_ENABLED, "key_id": RAZORPAY_KEY_ID if PAYMENTS_ENABLED else None, "plans": await list_plans(),
-            "session_price_inr": s["session_price_inr"], "packs": [p for p in s["packs"] if p.get("active")], "currency": "INR",
-            "auto_renew": PAYMENTS_ENABLED}
+    priced = _priced(s, await list_plans(), _locale_of(user.model_dump())["currency"])
+    # Razorpay auto-renew (subscriptions) runs in rupees; clients paying in another currency renew each period instead.
+    for p in priced["plans"]:
+        p["auto_renew"] = PAYMENTS_ENABLED and p["price"]["currency"] == "INR"
+    return {"enabled": PAYMENTS_ENABLED, "key_id": RAZORPAY_KEY_ID if PAYMENTS_ENABLED else None, **priced,
+            "session_price_inr": s["session_price_inr"], "auto_renew": PAYMENTS_ENABLED}
 
 
 @api_router.post("/payments/order")
 async def create_payment_order(payload: PaymentOrderRequest, user: User = Depends(get_current_user)):
     _require_payments()
     s = await billing_settings()
+    cur = _locale_of(user.model_dump())["currency"]
     if payload.type == "plan":
         plan = await get_plan(payload.plan_id)
         if not plan or not plan.get("active"):
             raise HTTPException(status_code=400, detail="Invalid plan")
         amount_inr, ref = plan["price_inr"], {"plan_id": plan["id"], "plan_name": plan["name"]}
+        price = L.price_in(plan["price_inr"], plan.get("prices"), cur)
     elif payload.type == "pack":
         pack = next((p for p in s["packs"] if p["id"] == payload.pack_id and p.get("active")), None)
         if not pack:
             raise HTTPException(status_code=400, detail="Invalid session pack")
         amount_inr, ref = pack["price_inr"], {"pack_id": pack["id"], "sessions": pack["sessions"], "pack_name": pack["name"]}
+        price = L.price_in(pack["price_inr"], pack.get("prices"), cur)
     elif payload.type == "session":
         booking = await db.bookings.find_one({"id": payload.booking_id, "user_id": user.user_id}, {"_id": 0})
         if not booking:
@@ -3469,20 +3593,27 @@ async def create_payment_order(payload: PaymentOrderRequest, user: User = Depend
         if booking.get("paid"):
             raise HTTPException(status_code=409, detail="This session is already paid")
         amount_inr, ref = s["session_price_inr"], {"booking_id": payload.booking_id}
+        price = L.price_in(s["session_price_inr"], s.get("session_prices"), cur)
     else:
         raise HTTPException(status_code=400, detail="Invalid payment type")
 
     receipt = f"fc_{uuid.uuid4().hex[:16]}"
+    minor = int(round(price["amount"] * 100))
     try:
         order = await asyncio.to_thread(_razorpay_client().order.create,
-                                        {"amount": int(amount_inr) * 100, "currency": "INR", "receipt": receipt, "payment_capture": 1,
+                                        {"amount": minor, "currency": price["currency"], "receipt": receipt, "payment_capture": 1,
                                          "notes": {"user_id": user.user_id, "type": payload.type}})
     except Exception:
         logger.exception("razorpay order failed")
-        raise HTTPException(status_code=502, detail="Could not start the payment. Please try again.")
+        detail = "Could not start the payment. Please try again."
+        if price["currency"] != "INR":
+            detail = f"Payments in {price['currency']} aren't available right now. Please try again later or contact us."
+        raise HTTPException(status_code=502, detail=detail)
+    # amount_inr = rupees received; for other currencies it's filled in from Razorpay's settlement amount once paid
     await db.transactions.insert_one({"id": str(uuid.uuid4()), "user_id": user.user_id, "order_id": order["id"], "type": payload.type,
-                                      "ref": ref, "amount_inr": amount_inr, "status": "created", "created_at": _now_iso()})
-    return {"order_id": order["id"], "amount": int(amount_inr) * 100, "currency": "INR", "key_id": RAZORPAY_KEY_ID, "receipt": receipt}
+                                      "ref": ref, "amount_inr": amount_inr if price["currency"] == "INR" else 0,
+                                      "amount": price["amount"], "currency": price["currency"], "status": "created", "created_at": _now_iso()})
+    return {"order_id": order["id"], "amount": minor, "currency": price["currency"], "key_id": RAZORPAY_KEY_ID, "receipt": receipt}
 
 
 @api_router.post("/payments/verify")
@@ -3494,7 +3625,15 @@ async def verify_payment(payload: PaymentVerifyRequest, user: User = Depends(get
     if not _hmac_ok(f"{payload.razorpay_order_id}|{payload.razorpay_payment_id}", payload.razorpay_signature, RAZORPAY_KEY_SECRET):
         await db.transactions.update_one({"id": txn["id"]}, {"$set": {"status": "failed"}})
         raise HTTPException(status_code=400, detail="Payment signature verification failed")
-    await db.transactions.update_one({"id": txn["id"]}, {"$set": {"status": "paid", "payment_id": payload.razorpay_payment_id, "paid_at": _now_iso()}})
+    paid = {"status": "paid", "payment_id": payload.razorpay_payment_id, "paid_at": _now_iso()}
+    if txn.get("currency", "INR") != "INR":
+        try:  # what we receive in rupees, for revenue reports
+            pay = await asyncio.to_thread(_razorpay_client().payment.fetch, payload.razorpay_payment_id)
+            if pay.get("base_currency") == "INR" and pay.get("base_amount"):
+                paid["amount_inr"] = int(pay["base_amount"]) // 100
+        except Exception:
+            logger.warning("could not read rupee amount for %s", payload.razorpay_payment_id)
+    await db.transactions.update_one({"id": txn["id"]}, {"$set": paid})
     await record_payment_effects({**txn, "payment_id": payload.razorpay_payment_id})
     return {"status": "success"}
 
@@ -3531,6 +3670,8 @@ async def create_subscription(payload: SubscriptionRequest, user: User = Depends
     doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0}) or {}
     if doc.get("subscription_status") == "active":
         raise HTTPException(status_code=409, detail="You already have an auto-renewing membership. Cancel it first to switch plans.")
+    if L.price_in(plan["price_inr"], plan.get("prices"), _locale_of(doc)["currency"])["currency"] != "INR":
+        raise HTTPException(status_code=400, detail="Auto-renew works for payments in rupees. Pay for this period instead — we'll remind you before it ends.")
     try:
         rp_plan = await _razorpay_plan_id(plan)
         cycles = {"weekly": 520, "monthly": 120, "yearly": 10}[plan["period"]] // int(plan["interval"] or 1)
@@ -3627,6 +3768,7 @@ async def payment_history(user: User = Depends(get_current_user)):
 class PlanIn(BaseModel):
     name: str
     price_inr: int
+    prices: Dict[str, float] = {}   # local prices for clients abroad, e.g. {"USD": 49, "GBP": 39}
     days: int
     period: str = "monthly"
     interval: int = 1
@@ -3644,11 +3786,13 @@ class PackIn(BaseModel):
     name: str
     sessions: int
     price_inr: int
+    prices: Dict[str, float] = {}
     active: bool = True
 
 
 class BillingSettingsIn(BaseModel):
     session_price_inr: int
+    session_prices: Optional[Dict[str, float]] = None
     trial_days: int
     grace_days: int
     referral_reward_days: int
@@ -3670,7 +3814,7 @@ def _clean_plan_in(p: PlanIn) -> dict:
         raise HTTPException(status_code=400, detail="Check the plan name, price and duration")
     if p.period not in PERIODS or not (1 <= p.interval <= 12):
         raise HTTPException(status_code=400, detail="Billing period must be weekly, monthly or yearly")
-    return {"name": p.name.strip(), "price_inr": int(p.price_inr), "days": int(p.days), "period": p.period, "interval": int(p.interval),
+    return {"name": p.name.strip(), "price_inr": int(p.price_inr), "prices": L.clean_prices(p.prices), "days": int(p.days), "period": p.period, "interval": int(p.interval),
             "included_sessions": max(0, int(p.included_sessions)), "unlimited_sessions": bool(p.unlimited_sessions),
             "blurb": _txt(p.blurb, 120), "features": [_txt(f, 80) for f in p.features if _txt(f, 80)][:8],
             "featured": bool(p.featured), "active": bool(p.active), "sort": int(p.sort)}
@@ -3717,12 +3861,15 @@ async def admin_put_billing(payload: BillingSettingsIn, user: User = Depends(req
     for p in payload.packs[:10]:
         if not p.name.strip() or p.sessions < 1 or p.price_inr < 0:
             raise HTTPException(status_code=400, detail="Each pack needs a name, at least 1 session and a price")
-        packs.append({"id": p.id or _slug(p.name), "name": _txt(p.name, 40), "sessions": int(p.sessions), "price_inr": int(p.price_inr), "active": bool(p.active)})
+        packs.append({"id": p.id or _slug(p.name), "name": _txt(p.name, 40), "sessions": int(p.sessions), "price_inr": int(p.price_inr),
+                      "prices": L.clean_prices(p.prices), "active": bool(p.active)})
     if payload.trial_features is not None and not set(payload.trial_features) <= set(TRIAL_FEATURES):
         raise HTTPException(status_code=400, detail="Unknown trial feature")
     if payload.trial_session_credits is not None and not 0 <= payload.trial_session_credits <= 10:
         raise HTTPException(status_code=400, detail="Free intro sessions must be between 0 and 10")
     doc = {**payload.model_dump(exclude={"packs"}, exclude_none=True), "packs": packs}
+    if payload.session_prices is not None:
+        doc["session_prices"] = L.clean_prices(payload.session_prices)
     await db.app_settings.update_one({"_id": "billing"}, {"$set": doc}, upsert=True)
     return await billing_settings()
 
@@ -4114,13 +4261,30 @@ async def coach_response_times(since: datetime) -> List[dict]:
     return out
 
 
+async def _abroad_stats(paid: List[dict]) -> dict:
+    """Clients living outside India (NRIs) and what they paid in their own currencies over the last 30 days."""
+    by_country: Dict[str, int] = {}
+    async for u in db.users.find({"role": "client", "country": {"$nin": [None, "IN"]}}, {"_id": 0, "country": 1}):
+        by_country[u["country"]] = by_country.get(u["country"], 0) + 1
+    since = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    foreign: Dict[str, float] = {}
+    for t in paid:
+        cur = t.get("currency") or "INR"
+        if cur != "INR" and (t.get("paid_at") or "") >= since:
+            foreign[cur] = round(foreign.get(cur, 0) + float(t.get("amount") or 0), 2)
+    countries = [{"code": k, "name": L.COUNTRY.get(k, {}).get("name", k), "clients": v}
+                 for k, v in sorted(by_country.items(), key=lambda kv: -kv[1])]
+    return {"clients": sum(by_country.values()), "countries": countries, "payments_30d": foreign}
+
+
 @api_router.get("/admin/insights")
 async def admin_insights(user: User = Depends(require_role("admin"))):
     now = datetime.now(timezone.utc)
     settings = await billing_settings()
     clients = await db.users.find({"role": "client"}, {"_id": 0, "user_id": 1, "name": 1, "created_at": 1, "membership_plan": 1,
                                                        "membership_expires_at": 1, "trial_granted": 1, "subscription_status": 1}).to_list(100000)
-    paid = await db.transactions.find({"status": "paid"}, {"_id": 0, "user_id": 1, "type": 1, "amount_inr": 1, "paid_at": 1}).to_list(100000)
+    paid = await db.transactions.find({"status": "paid"}, {"_id": 0, "user_id": 1, "type": 1, "amount_inr": 1, "paid_at": 1,
+                                                          "amount": 1, "currency": 1}).to_list(100000)
     plan_paid = sorted([t for t in paid if t["type"] in ("plan", "subscription")], key=lambda t: t.get("paid_at") or "")
     first_paid: dict = {}
     for t in plan_paid:
@@ -4191,6 +4355,7 @@ async def admin_insights(user: User = Depends(require_role("admin"))):
         "renewal_rate": round(100 * renewals / renew_base) if renew_base else None,
         "dropoffs": {"paid": paid_dropoffs[:20], "trial": trial_dropoffs[:20], "paid_count": len(paid_dropoffs), "trial_count": len(trial_dropoffs)},
         "revenue": {"this_month": month_revenue(0), "last_month": month_revenue(1)},
+        "abroad": await _abroad_stats(paid),
         "leads": {"counts": lead_counts, "last_30d": leads_30d},
         "coaches": await coach_response_times(month_ago),
     }

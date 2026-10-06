@@ -4,6 +4,7 @@ import PageHeader from "@/components/PageHeader";
 import AppSettingsCard from "@/components/AppSettingsCard";
 import { PrivacyCard } from "@/components/Privacy";
 import PasswordCard from "@/components/PasswordCard";
+import LocaleCard from "@/components/LocaleCard";
 import { api, fileSrc } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
@@ -99,6 +100,7 @@ export default function Profile() {
           </button>
         </div>
 
+        <LocaleCard />
         <PasswordCard />
         <AppSettingsCard />
         <PrivacyCard />

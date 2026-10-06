@@ -5,6 +5,8 @@ import { api } from "@/lib/api";
 import { GOAL_LABEL } from "@/lib/focus";
 import { weekTiles } from "@/lib/week";
 import { useToast } from "@/context/ToastContext";
+import { useAuth } from "@/context/AuthContext";
+import { weightUnit } from "@/lib/locale";
 
 const W = 1080, H = 1350;
 const SERIF = "Fraunces, Georgia, serif";
@@ -72,7 +74,7 @@ export function drawWeekCard(ctx, w) {
     ctx.fillText(`Working towards ${GOAL_LABEL[w.focus].toLowerCase()}`, 100, 445);
   }
 
-  const tiles = weekTiles(w);
+  const tiles = weekTiles(w, w.unit);
   const tw = (W - 200 - 30) / 2, th = tiles.length <= 2 ? 330 : 270;
   tiles.forEach((t, i) => {
     const x = 100 + (i % 2) * (tw + 30), y = 520 + Math.floor(i / 2) * (th + 30);
@@ -99,6 +101,8 @@ export function drawWeekCard(ctx, w) {
 
 export default function WeekCard({ onClose }) {
   const { push } = useToast();
+  const { user } = useAuth();
+  const unit = weightUnit(user);
   const canvasRef = useRef(null);
   const [week, setWeek] = useState(null);
   const [blob, setBlob] = useState(null);
@@ -113,7 +117,7 @@ export default function WeekCard({ onClose }) {
     (document.fonts?.ready || Promise.resolve()).then(() => {
       if (cancelled) return;
       const c = canvasRef.current;
-      drawWeekCard(c.getContext("2d"), week);
+      drawWeekCard(c.getContext("2d"), { ...week, unit });
       c.toBlob((b) => {
         if (cancelled || !b) return;
         made = URL.createObjectURL(b);
@@ -122,7 +126,7 @@ export default function WeekCard({ onClose }) {
       }, "image/png");
     });
     return () => { cancelled = true; if (made) URL.revokeObjectURL(made); };
-  }, [week]);
+  }, [week, unit]);
 
   const file = blob && new File([blob], "my-fitcoach-week.png", { type: "image/png" });
   const canShare = !!(file && navigator.canShare?.({ files: [file] }));

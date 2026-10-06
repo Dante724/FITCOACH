@@ -6,11 +6,13 @@ import { localDate } from "@/lib/focus";
 import { compressImage } from "@/lib/image";
 import { useAuth } from "@/context/AuthContext";
 import { PhotoConsentCard } from "@/components/Privacy";
+import { fmtWeight, toKg, weightUnit } from "@/lib/locale";
 
 const today = () => localDate();
 const fmtDate = (d) => { try { return new Date(d + "T00:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }); } catch { return d; } };
 
 function CompareBar({ photos, onClose }) {
+  const { user } = useAuth();
   const [a, b] = photos;
   return (
     <div className="glass fade-up" data-testid="compare-panel" style={{ padding: 22, marginBottom: 18 }}>
@@ -29,7 +31,7 @@ function CompareBar({ photos, onClose }) {
             </div>
             <div style={{ marginTop: 8, textAlign: "center" }}>
               <div style={{ fontSize: 13.5, fontWeight: 600 }}>{fmtDate(p.date)}</div>
-              {p.weight != null && <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>{p.weight} kg</div>}
+              {p.weight != null && <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>{fmtWeight(p.weight, user)}</div>}
             </div>
           </div>
         ))}
@@ -80,7 +82,7 @@ export default function ProgressPhotos() {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("date", form.date || today());
-      if (form.weight) fd.append("weight", form.weight);
+      if (form.weight) fd.append("weight", toKg(form.weight, user));
       if (form.note) fd.append("note", form.note);
       await api.post("/progress/photos", fd, { headers: { "Content-Type": "multipart/form-data" } });
       push("Progress photo added.", "success");
@@ -162,7 +164,7 @@ export default function ProgressPhotos() {
                 </div>
                 <div style={{ padding: "10px 4px 2px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: 12.5, fontWeight: 600 }}>{fmtDate(p.date)}</span>
-                  {p.weight != null && <span className="chip chip-neutral" style={{ fontSize: 11 }}>{p.weight} kg</span>}
+                  {p.weight != null && <span className="chip chip-neutral" style={{ fontSize: 11 }}>{fmtWeight(p.weight, user)}</span>}
                 </div>
                 {p.note && <div style={{ fontSize: 11.5, color: "var(--text-3)", padding: "0 4px 4px", lineHeight: 1.5 }}>{p.note}</div>}
               </div>
@@ -189,7 +191,7 @@ export default function ProgressPhotos() {
                 <input type="date" className="field" data-testid="photo-date-input" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
               </div>
               <div>
-                <label className="label">Weight (kg)</label>
+                <label className="label">Weight ({weightUnit(user)})</label>
                 <input type="number" step="0.1" className="field" data-testid="photo-weight-input" value={form.weight} onChange={(e) => setForm({ ...form, weight: e.target.value })} placeholder="optional" />
               </div>
             </div>

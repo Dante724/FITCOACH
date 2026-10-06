@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import * as Icons from "lucide-react";
 import Logo from "@/components/Logo";
 import ConsultForm from "@/components/ConsultForm";
+import { guessCountry, money } from "@/lib/locale";
 
 const IMG = {
   strength: "https://images.unsplash.com/photo-1637430308606-86576d8fef3c?crop=entropy&cs=srgb&fm=jpg&q=80&w=800",
@@ -25,6 +26,13 @@ const STEPS = [
   { n: "03", title: "Follow an approved plan", desc: "It's drafted in minutes from your goal, food habits and schedule. Your coach checks and approves every plan, then adjusts it as you progress." },
 ];
 
+const ABROAD = [
+  ["UtensilsCrossed", "Indian food, wherever you live", "Plans built on dal, roti and sabzi — with easy swaps for what your local supermarket sells: frozen methi, Greek yogurt, canned chickpeas."],
+  ["Clock", "Sessions on your clock", "Book and get reminders in your own time zone — no more converting from IST. Your coach sees both times."],
+  ["Wallet", "Pay in your currency", "See prices in dollars, pounds, dirhams and more, and pay by international card."],
+  ["HeartPulse", "Health checks made for Indians", "Indian BMI and waist limits, and reminders to test vitamin D, B12 and blood sugar — all common problems for Indians abroad."],
+];
+
 const FALLBACK_PLANS = [
   { name: "Monthly", price: "15,000", period: "per month", features: ["Your own assigned coach", "Food tracking", "1 video session a week", "Progress tracking"] },
   { name: "Quarterly", price: "30,000", period: "per 3 months", featured: true, features: ["Everything in Monthly", "Coach-approved nutrition plan", "2 video sessions a week", "Priority booking"] },
@@ -40,14 +48,15 @@ const FACTS = [
 export default function Landing() {
   const navigate = useNavigate();
   const go = () => navigate("/login");
-  const [pricing, setPricing] = useState({ plans: FALLBACK_PLANS, session: 1000, trial: 7 });
+  const [pricing, setPricing] = useState({ plans: FALLBACK_PLANS.map((p) => ({ ...p, price: `₹${p.price}` })), session: "₹1,000", trial: 7 });
   useEffect(() => {
-    api.get("/plans").then(({ data }) => {
+    const country = guessCountry();
+    api.get("/plans", { params: country === "IN" ? {} : { country } }).then(({ data }) => {
       if (!data.plans?.length) return;
       const term = (p) => { const u = { weekly: "week", monthly: "month", yearly: "year" }[p.period] || "month"; return p.interval > 1 ? `per ${p.interval} ${u}s` : `per ${u}`; };
       setPricing({
-        plans: data.plans.map((p) => ({ name: p.name, price: Number(p.price_inr).toLocaleString("en-IN"), period: term(p), featured: p.featured, features: p.features || [] })),
-        session: data.session_price_inr, trial: data.trial_days,
+        plans: data.plans.map((p) => ({ name: p.name, price: money(p.price || { amount: p.price_inr, currency: "INR" }), period: term(p), featured: p.featured, features: p.features || [] })),
+        session: data.session_price ? money(data.session_price) : `₹${Number(data.session_price_inr).toLocaleString("en-IN")}`, trial: data.trial_days,
       });
     }).catch(() => {});
   }, []);
@@ -60,6 +69,7 @@ export default function Landing() {
           <nav className="site-links">
             <a href="#programs">Programmes</a>
             <a href="#how">How it works</a>
+            <a href="#abroad">Outside India</a>
             <a href="#pricing">Pricing</a>
             <a href="#consult">Free consultation</a>
           </nav>
@@ -114,6 +124,28 @@ export default function Landing() {
         </div>
       </section>
 
+      <section id="abroad" className="site-section" data-testid="abroad-section">
+        <div className="site-wrap">
+          <h2>Living outside India?</h2>
+          <p style={{ color: "var(--text-2)", marginBottom: 32, maxWidth: 640 }}>
+            Western apps don't understand dal, roti or fasting days, and Indian apps assume Indian groceries, Indian time and rupees.
+            FitCoach is built for Indians everywhere — in the US, UK, Gulf, Canada, Australia and beyond.
+          </p>
+          <div className="site-grid-4">
+            {ABROAD.map(([icon, title, desc]) => {
+              const Icon = Icons[icon] || Icons.Globe;
+              return (
+                <div key={title} style={{ borderTop: "1px solid var(--ink)", paddingTop: 16 }}>
+                  <Icon size={22} color="var(--gold)" />
+                  <div style={{ fontFamily: "var(--serif)", fontSize: 20, marginTop: 8 }}>{title}</div>
+                  <div style={{ fontSize: 14, color: "var(--text-2)", marginTop: 6, lineHeight: 1.6 }}>{desc}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
       <section id="how" className="site-section band-dark">
         <div className="site-wrap">
           <h2>How it works</h2>
@@ -160,7 +192,7 @@ export default function Landing() {
         <div className="site-wrap">
           <h2>Pricing</h2>
           <p style={{ color: "var(--text-2)", marginBottom: 32 }}>
-            {pricing.trial > 0 ? `Start with a ${pricing.trial}-day free trial, including an intro video session. ` : ""}Extra sessions are ₹{Number(pricing.session).toLocaleString("en-IN")} each.
+            {pricing.trial > 0 ? `Start with a ${pricing.trial}-day free trial, including an intro video session. ` : ""}Extra sessions are {pricing.session} each.
           </p>
           <div className="site-grid-3">
             {pricing.plans.map((p) => (
@@ -170,7 +202,7 @@ export default function Landing() {
                   {p.featured && <span className="chip" style={{ background: "rgba(201,164,92,0.18)", color: "var(--ink)" }}>Most popular</span>}
                 </div>
                 <div style={{ marginTop: 18 }}>
-                  <span style={{ fontFamily: "var(--serif)", fontSize: 40, fontWeight: 400 }}>₹{p.price}</span>
+                  <span style={{ fontFamily: "var(--serif)", fontSize: 40, fontWeight: 400 }}>{p.price}</span>
                   <span style={{ fontSize: 14, color: "var(--text-3)", marginLeft: 6 }}>{p.period}</span>
                 </div>
                 <ul style={{ listStyle: "none", margin: "20px 0 24px", display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>

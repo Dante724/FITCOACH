@@ -1,4 +1,5 @@
 import * as Icons from "lucide-react";
+import AbroadSwaps from "@/components/AbroadSwaps";
 
 export function MealPlanView({ content }) {
   const totals = [
@@ -34,6 +35,7 @@ export function MealPlanView({ content }) {
           </div>
         ))}
       </div>
+      <AbroadSwaps texts={(content.meals || []).flatMap((m) => [m.name, ...(m.items || [])])} />
     </div>
   );
 }

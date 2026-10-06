@@ -5,6 +5,7 @@ import PageHeader from "@/components/PageHeader";
 import { api } from "@/lib/api";
 import { timeAgo } from "@/lib/focus";
 import StorageCard from "@/components/StorageCard";
+import { money } from "@/lib/locale";
 
 const inr = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 const pct = (n) => (n == null ? "—" : `${n}%`);
@@ -128,6 +129,26 @@ export default function AdminInsights() {
           ))}
         </div>
       </div>
+
+      {d.abroad && (
+        <div className="clay fade-up" style={{ padding: 20, marginBottom: 16 }} data-testid="abroad-insights">
+          <div className="row" style={{ justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+            <div className="eyebrow">Clients outside India</div>
+            <span className="chip chip-neutral">{d.abroad.clients} client{d.abroad.clients === 1 ? "" : "s"}</span>
+          </div>
+          {d.abroad.clients === 0 ? <div style={{ fontSize: 13.5, color: "var(--text-3)" }}>No clients abroad yet. Set local prices under Billing so they see dollars, pounds or dirhams.</div> : (
+            <div className="row-wrap" style={{ gap: 8 }}>
+              {d.abroad.countries.map((c) => <span key={c.code} className="chip chip-teal">{c.name} · {c.clients}</span>)}
+            </div>
+          )}
+          {Object.keys(d.abroad.payments_30d || {}).length > 0 && (
+            <div style={{ fontSize: 13, color: "var(--text-2)", marginTop: 12 }}>
+              Paid in other currencies (30 days): {Object.entries(d.abroad.payments_30d).map(([c, a]) => money({ amount: a, currency: c })).join(" · ")}
+              <span style={{ color: "var(--text-3)" }}> — counted in revenue above at the rupee amount Razorpay settled.</span>
+            </div>
+          )}
+        </div>
+      )}
 
       <StorageCard />
 

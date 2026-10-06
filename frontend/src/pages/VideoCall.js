@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import useCall from "@/lib/useCall";
 import { initials } from "@/lib/focus";
 import { MODEL_LABEL, resumeAllAudio } from "@/lib/noise";
+import { fmtSessionTime } from "@/lib/locale";
 import { cornerPos, nearestCorner, savedCorner, saveCorner, TAP_SLOP } from "@/lib/pip";
 
 // onBlocked: the browser refused to start sound (it wants a tap first) — we show a "tap to turn on sound" button.
@@ -166,7 +167,7 @@ function CallRoom({ callId }) {
               <div className="truncate" style={{ fontFamily: "var(--serif)", fontSize: 18 }}>{peer}</div>
               <div style={{ fontSize: 12.5, opacity: 0.7 }}>
                 {c.phase === "connected" && c.connectedAt ? <><span className="live-dot" /> Live · <Timer since={c.connectedAt} /></> : STATUS[c.phase]}
-                {c.call?.kind === "scheduled" && c.call?.time ? ` · booked ${c.call.time}` : ""}
+                {c.call?.kind === "scheduled" && c.call?.time ? ` · booked ${fmtSessionTime(c.call)}` : ""}
               </div>
             </div>
           </div>

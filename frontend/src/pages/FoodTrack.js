@@ -2,6 +2,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "rea
 import { useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
 import PageHeader from "@/components/PageHeader";
+import AbroadSwaps from "@/components/AbroadSwaps";
 import { api, isOfflineError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
@@ -279,6 +280,7 @@ export default function FoodTrack() {
               Works offline: {FOOD_COUNT} everyday foods are built into the app, plus any you add. Estimates use typical home-style portions — add amounts (2 roti, 1 bowl, 150 g) for better accuracy; your coach can correct anything.
             </div>
           </div>
+          <AbroadSwaps title="Cooking Indian food abroad" collapsed />
         </div>
       </div>
     </div>

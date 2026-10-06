@@ -13,10 +13,13 @@ import { useToast } from "@/context/ToastContext";
 import { startCall } from "@/lib/calls";
 import { GOAL_LABEL, PLAN_LABEL, timeAgo, localDate } from "@/lib/focus";
 import { WeeklySummary, WellbeingCard, TargetsEditor, PlanSourcePicker, SaveTemplateButton } from "@/components/CoachTools";
+import HealthFlags from "@/components/HealthFlags";
+import { sessionStart, timeIn, tzCity } from "@/lib/locale";
 
 const TRACK_TYPES = { fitness: ["workout", "meal"], yoga: ["yoga"] };
 const INTAKE_LABELS = [["age", "Age"], ["sex", "Sex"], ["height_cm", "Height", "cm"], ["weight_kg", "Start weight", "kg"], ["target_weight_kg", "Target", "kg"],
-  ["experience", "Experience"], ["days_per_week", "Days / week"], ["equipment", "Equipment"], ["diet", "Diet"], ["injuries", "Injuries"], ["allergies", "Allergies"], ["dislikes", "Dislikes"]];
+  ["experience", "Experience"], ["days_per_week", "Days / week"], ["equipment", "Equipment"], ["diet", "Diet"], ["injuries", "Injuries"], ["allergies", "Allergies"], ["dislikes", "Dislikes"],
+  ["waist_cm", "Waist", "cm"], ["conditions", "Conditions"], ["hba1c", "HbA1c", "%"], ["vitamin_d", "Vitamin D", "ng/mL"], ["b12", "Vitamin B12", "pg/mL"], ["labs_date", "Blood test date"]];
 
 function Card({ title, children, action, style }) {
   return (
@@ -241,6 +244,12 @@ export default function ClientDetail() {
         <div className="min0">
           <h1 className="truncate" style={{ fontSize: 28, fontWeight: 600 }}>{client.name}</h1>
           <div style={{ fontSize: 13.5, color: "var(--text-2)" }}>{GOAL_LABEL[client.focus] || "No goal yet"} · {client.email}</div>
+          {data.locale?.abroad && (
+            <div className="row" style={{ gap: 6, marginTop: 6 }} data-testid="client-abroad">
+              <span className="chip chip-teal"><Icons.Globe size={12} /> Lives in {data.locale.country_name || data.locale.country}</span>
+              <span className="chip chip-neutral"><Icons.Clock size={12} /> {timeIn(data.locale.timezone)} there now ({tzCity(data.locale.timezone)})</span>
+            </div>
+          )}
         </div>
       </div>
       {isCoach && (
@@ -249,7 +258,7 @@ export default function ClientDetail() {
           <button className="btn btn-ghost" onClick={() => setScheduling(true)} data-testid="schedule-client"><Icons.CalendarPlus size={16} /> Schedule session</button>
           {data.upcoming_sessions?.map((b) => (
             <button key={b.id} className="chip chip-neutral" onClick={() => navigate(`/call/${b.id}`)} style={{ border: "none", cursor: "pointer", padding: "6px 11px" }} title="Join this session">
-              <Icons.Video size={13} /> {b.date} · {b.time}
+              <Icons.Video size={13} /> {b.date} · {b.time}{data.locale?.abroad ? ` (${timeIn(data.locale.timezone, sessionStart(b))} their time)` : ""}
             </button>
           ))}
         </div>
@@ -283,12 +292,13 @@ export default function ClientDetail() {
           </div>
           <div className="stack" style={{ gap: 18 }}>
           <TargetsEditor key={clientId} clientId={clientId} targets={data.targets} onSaved={(targets) => setData((d) => ({ ...d, targets }))} />
+          <HealthFlags flags={data.health_flags} forCoach />
           <Card title="Intake">
             <div className="stack" style={{ gap: 0 }}>
-              {INTAKE_LABELS.filter(([k]) => intake[k] !== undefined && intake[k] !== null && intake[k] !== "").map(([k, label, unit]) => (
+              {INTAKE_LABELS.filter(([k]) => intake[k] !== undefined && intake[k] !== null && intake[k] !== "" && !(Array.isArray(intake[k]) && !intake[k].length)).map(([k, label, unit]) => (
                 <div key={k} className="row" style={{ justifyContent: "space-between", padding: "9px 0", borderBottom: "1px solid rgba(139,150,172,0.16)", fontSize: 13.5 }}>
                   <span style={{ color: "var(--text-2)" }}>{label}</span>
-                  <span style={{ fontWeight: 600, textAlign: "right" }}>{String(intake[k]).replace("_", " ")}{unit ? ` ${unit}` : ""}</span>
+                  <span style={{ fontWeight: 600, textAlign: "right" }}>{(Array.isArray(intake[k]) ? intake[k].join(", ") : String(intake[k])).replace("_", " ")}{unit ? ` ${unit}` : ""}</span>
                 </div>
               ))}
               {Object.keys(intake).length === 0 && <div className="empty">The client hasn't filled in the questionnaire yet.</div>}
