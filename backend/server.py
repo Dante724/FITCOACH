@@ -3111,7 +3111,7 @@ async def unread_messages(user: User = Depends(get_current_user)):
 # connection messages (offer / answer / ICE candidates) and tracks who is in the room.
 PRESENCE_TTL = timedelta(seconds=9)
 RING_TIMEOUT = timedelta(seconds=45)
-SIGNAL_TYPES = {"offer", "answer", "ice", "bye", "ready"}
+SIGNAL_TYPES = {"offer", "answer", "ice", "bye", "ready", "state"}  # state = e.g. {"screen": true} while sharing
 
 
 class InstantCallRequest(BaseModel):

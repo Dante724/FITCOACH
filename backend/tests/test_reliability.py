@@ -185,3 +185,15 @@ def test_slots_never_offer_times_that_have_passed(api):
             assert server.booking_dt(d.isoformat(), t) > datetime.now(server.timezone.utc), (d, t)
     past = (today - timedelta(days=1)).isoformat()
     assert api.get(f"/api/trainers/{coach['user_id']}/slots", params={"date": past}, headers=h).json()["slots"] == []
+
+
+# ── calls: screen-share status reaches the other person ─────
+def test_screen_share_state_is_relayed(api):
+    h, me, coach_h, coach, *_ = new_client(api)
+    call = api.post("/api/calls/instant", json={"peer_id": me["user_id"]}, headers=coach_h).json()
+    api.post(f"/api/calls/{call['id']}/join", headers=h)
+    api.post(f"/api/calls/{call['id']}/join", headers=coach_h)
+    api.get(f"/api/calls/{call['id']}/signals", headers=h)  # clear anything already waiting
+    assert api.post(f"/api/calls/{call['id']}/signal", json={"type": "state", "payload": {"screen": True}}, headers=coach_h).status_code == 200
+    got = api.get(f"/api/calls/{call['id']}/signals", headers=h).json()["signals"]
+    assert [(s["type"], s["payload"]) for s in got] == [("state", {"screen": True})]

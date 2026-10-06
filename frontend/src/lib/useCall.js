@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, API, authHeaders } from "@/lib/api";
-import { aiNoiseSupported, getMic, NOISE_MODES } from "@/lib/noise";
+import { getMic, trackContext, audioLocked } from "@/lib/noise";
 import { rateQuality } from "@/lib/callQuality";
 
 // In-app 1:1 video calls over WebRTC. Media goes browser-to-browser (or through a TURN relay on networks that
 // block direct connections); our API only relays offer/answer/ICE messages and presence. The coach always makes
 // the offer, so the two sides never race; every offer carries an `attempt` id so late messages from an old
-// attempt are ignored. Dropped connections are repaired with an ICE restart, and the microphone is cleaned by
-// on-device AI noise removal (see lib/noise.js).
+// attempt are ignored. Dropped connections are repaired with an ICE restart, the microphone is always cleaned by
+// on-device AI noise removal (see lib/noise.js), and laptops can share their screen with sound.
 
 const POLL_MS = 1000;
 // Leaving is deferred briefly so a quick remount of the same call (React dev mode, route refresh) doesn't end it.
@@ -35,12 +35,12 @@ function placeholderTrack(name) {
   return track;
 }
 
-async function getMedia(noiseMode, facingMode, name) {
+async function getMedia(facingMode, name) {
   const notes = [];
   const stream = new MediaStream();
   let mic = null;
   try {
-    mic = await getMic(noiseMode);
+    mic = await getMic();
     stream.addTrack(mic.track);
   } catch {
     notes.push("microphone");
@@ -64,7 +64,11 @@ export default function useCall(callId) {
   const [remoteStream, setRemoteStream] = useState(null);
   const [mic, setMic] = useState(true);
   const [cam, setCam] = useState(true);
-  const [noiseMode, setNoiseModeState] = useState(aiNoiseSupported() ? "ai" : "standard");
+  const [noiseModel, setNoiseModel] = useState(null); // gtcrn | rnnoise | basic — always on
+  const [sharing, setSharing] = useState(false);         // I'm sharing my screen
+  const [shareAudio, setShareAudio] = useState(false);   // …with its sound
+  const [peerSharing, setPeerSharing] = useState(false); // they're sharing theirs
+  const [audioBlocked, setAudioBlocked] = useState(false);
   const [facing, setFacing] = useState("user");
   const [connectedAt, setConnectedAt] = useState(null);
   const [relay, setRelay] = useState(false);
@@ -120,7 +124,11 @@ export default function useCall(callId) {
       if (st.pc !== pc) return;
       const s = pc.connectionState;
       clearTimeout(st.restartTimer);
-      if (s === "connected") { setPhase("connected"); setConnectedAt((t) => t || Date.now()); }
+      if (s === "connected") {
+        setPhase("connected");
+        setConnectedAt((t) => t || Date.now());
+        if (st.share) signal("state", { screen: true });
+      }
       else if (s === "disconnected") {
         setPhase("reconnecting");
         st.restartTimer = setTimeout(() => { if (st.pc === pc && pc.connectionState !== "connected") repair(); }, RESTART_AFTER_MS);
@@ -176,10 +184,13 @@ export default function useCall(callId) {
       }
     } else if (msg.type === "ready" && st.role === "offerer") {
       await makeOffer(Boolean(p.repair));
+    } else if (msg.type === "state") {
+      setPeerSharing(Boolean(p.screen));
     } else if (msg.type === "bye") {
       closePc();
       setConnectedAt(null);
       setQuality(null);
+      setPeerSharing(false);
       setPhase(p.reason === "declined" ? "declined" : "left");
     }
   }, [createPc, drainIce, makeOffer, signal, closePc]);
@@ -201,11 +212,11 @@ export default function useCall(callId) {
         st.role = info.role;
         setRelay(ice.relay);
         setCall(info);
-        const { stream, notes, mic: micInfo } = await getMedia(aiNoiseSupported() ? "ai" : "standard", "user", info.me === info.coach_id ? info.coach_name : info.client_name);
+        const { stream, notes, mic: micInfo } = await getMedia("user", info.me === info.coach_id ? info.coach_name : info.client_name);
         if (!alive()) { stream.getTracks().forEach((t) => t.stop()); micInfo?.raw?.stop(); micInfo?.suppressor?.stop(); return; }
         st.local = stream;
         st.mic = micInfo;
-        if (micInfo) setNoiseModeState(micInfo.mode);
+        if (micInfo) setNoiseModel(micInfo.model);
         setLocalStream(stream);
         setDeviceNotes(notes);
         if (notes.includes("camera")) setCam(false);
@@ -285,23 +296,40 @@ export default function useCall(callId) {
       st.local?.getTracks().forEach((t) => t.stop());
       st.mic?.raw?.stop();
       st.mic?.suppressor?.stop();
+      if (st.share) { st.share.display.getTracks().forEach((t) => t.stop()); st.share.mixer?.release(); st.share.cam?.stop(); st.share = null; }
       pendingLeave[callId] = setTimeout(leaveBeacon, 600);
     };
   }, [callId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const replaceTrack = async (kind, track) => {
+  const senderFor = (kind) => {
+    const pc = r.current.pc;
+    if (!pc) return null;
+    return pc.getTransceivers?.().find((t) => t.receiver?.track?.kind === kind)?.sender || pc.getSenders().find((s) => s.track?.kind === kind) || null;
+  };
+  // Send a different track of this kind (no renegotiation). With stopOld, the previous one is released.
+  const swapSending = async (kind, track, stopOld = false) => {
     const st = r.current;
     const old = st.local.getTracks().find((t) => t.kind === kind);
-    const sender = st.pc?.getSenders().find((s) => s.track?.kind === kind) || st.pc?.getSenders().find((s) => !s.track);
+    const sender = senderFor(kind);
     if (sender) await sender.replaceTrack(track);
-    if (old) { st.local.removeTrack(old); old.stop(); }
-    st.local.addTrack(track);
+    if (old && old !== track) { st.local.removeTrack(old); if (stopOld) old.stop(); }
+    if (!st.local.getTracks().includes(track)) st.local.addTrack(track);
     setLocalStream(new MediaStream(st.local.getTracks()));
   };
+  const replaceTrack = (kind, track) => swapSending(kind, track, true);
 
+  // Browsers may block sound until the person taps the page (e.g. a call answered from a notification).
+  useEffect(() => {
+    const update = () => setAudioBlocked(audioLocked());
+    window.addEventListener("fc:audio-state", update);
+    const t = setInterval(update, 1500);
+    return () => { window.removeEventListener("fc:audio-state", update); clearInterval(t); };
+  }, []);
+
+  // Mutes the voice only — shared-screen sound keeps playing.
   const toggleMic = () => {
     const st = r.current;
-    const t = st.local?.getAudioTracks()[0];
+    const t = st.mic?.track || st.local?.getAudioTracks()[0];
     if (!t) return;
     t.enabled = !t.enabled;
     if (st.mic?.raw && st.mic.raw !== t) st.mic.raw.enabled = t.enabled;
@@ -309,34 +337,76 @@ export default function useCall(callId) {
   };
 
   const toggleCam = () => {
-    const t = r.current.local?.getVideoTracks()[0];
+    const st = r.current;
+    const t = st.share ? st.share.cam : st.local?.getVideoTracks()[0];
     if (!t || t.isPlaceholder) return;
     t.enabled = !t.enabled;
     setCam(t.enabled);
   };
 
-  // Switch noise handling (AI → basic → off) and hot-swap the microphone into the call without reconnecting.
-  const setNoiseMode = async (mode) => {
+  // Screen sharing (laptops/desktops): sends the chosen screen, window or tab instead of the camera, and mixes its
+  // sound with the (noise-cleaned) voice. Stopping — from our button or the browser's "Stop sharing" — restores the camera.
+  const shareSupported = typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getDisplayMedia)
+    && !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+  const stopShare = async () => {
     const st = r.current;
-    if (!st.local) return;
-    try {
-      const next = await getMic(mode);
-      next.track.enabled = mic;
-      if (next.raw !== next.track) next.raw.enabled = mic;
-      const prev = st.mic;
-      await replaceTrack("audio", next.track);
-      prev?.raw?.stop();
-      prev?.suppressor?.stop();
-      st.mic = next;
-      setNoiseModeState(next.mode);
-    } catch { /* keep the current microphone */ }
+    const sh = st.share;
+    if (!sh) return;
+    st.share = null;
+    if (sh.cam) await swapSending("video", sh.cam);
+    if (sh.sendAudio && sh.voice) await swapSending("audio", sh.voice);
+    sh.display.getTracks().forEach((t) => t.stop());
+    if (sh.sendAudio && sh.sendAudio !== sh.screenAudio) sh.sendAudio.stop();
+    sh.mixer?.release();
+    setSharing(false);
+    setShareAudio(false);
+    signal("state", { screen: false });
   };
-  const cycleNoise = () => {
-    const modes = aiNoiseSupported() ? NOISE_MODES : NOISE_MODES.filter((m) => m !== "ai");
-    setNoiseMode(modes[(modes.indexOf(noiseMode) + 1) % modes.length]);
+
+  const startShare = async () => {
+    const st = r.current;
+    if (!st.local || st.share || !shareSupported) return false;
+    let display;
+    try {
+      display = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: { ideal: 15, max: 30 } },
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }, // keep music/video sound natural
+        systemAudio: "include", selfBrowserSurface: "exclude", surfaceSwitching: "include",
+      });
+    } catch {
+      return false; // cancelled
+    }
+    const screenVideo = display.getVideoTracks()[0];
+    try { screenVideo.contentHint = "detail"; } catch { /* older browsers */ }
+    const screenAudio = display.getAudioTracks()[0] || null;
+    const voice = st.local.getAudioTracks()[0] || null;
+    let sendAudio = null;
+    let mixer = null;
+    if (screenAudio && voice) {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      const ctx = new Ctx({ sampleRate: 48000 });
+      const release = trackContext(ctx);
+      const dest = ctx.createMediaStreamDestination();
+      ctx.createMediaStreamSource(new MediaStream([voice])).connect(dest);
+      ctx.createMediaStreamSource(new MediaStream([screenAudio])).connect(dest);
+      sendAudio = dest.stream.getAudioTracks()[0];
+      mixer = { release };
+    } else if (screenAudio) {
+      sendAudio = screenAudio;
+    }
+    st.share = { display, screenVideo, screenAudio, sendAudio, mixer, voice, cam: st.local.getVideoTracks()[0] || null };
+    await swapSending("video", screenVideo);
+    if (sendAudio) await swapSending("audio", sendAudio);
+    screenVideo.addEventListener("ended", () => { stopShare(); });
+    setSharing(true);
+    setShareAudio(Boolean(screenAudio));
+    signal("state", { screen: true });
+    return true;
   };
 
   const flipCamera = async () => {
+    if (r.current.share) return;
     const next = facing === "user" ? "environment" : "user";
     try {
       const s = await navigator.mediaDevices.getUserMedia({ video: videoConstraints(next) });
@@ -351,6 +421,7 @@ export default function useCall(callId) {
     const st = r.current;
     st.run = null;
     closePc();
+    if (st.share) { st.share.display.getTracks().forEach((t) => t.stop()); st.share.mixer?.release(); st.share.cam?.stop(); st.share = null; }
     st.local?.getTracks().forEach((t) => t.stop());
     st.mic?.raw?.stop();
     st.mic?.suppressor?.stop();
@@ -358,6 +429,6 @@ export default function useCall(callId) {
     setPhase("ended");
   };
 
-  return { call, phase, error, deviceNotes, localStream, remoteStream, mic, cam, noiseMode, noiseCancel: noiseMode !== "off", facing,
-    connectedAt, relay, quality, viaRelay, toggleMic, toggleCam, setNoiseMode, cycleNoise, flipCamera, hangUp };
+  return { call, phase, error, deviceNotes, localStream, remoteStream, mic, cam, noiseModel, facing, connectedAt, relay, quality, viaRelay,
+    sharing, shareAudio, peerSharing, shareSupported, audioBlocked, toggleMic, toggleCam, startShare, stopShare, flipCamera, hangUp };
 }

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { api } from "@/lib/api";
-import { aiNoiseSupported, getMic, NOISE_LABEL } from "@/lib/noise";
+import { getMic, MODEL_LABEL } from "@/lib/noise";
 import { networkVerdict } from "@/lib/callQuality";
 
 function useLevel(track) {
@@ -41,7 +41,6 @@ export default function CallCheck() {
   const [camErr, setCamErr] = useState("");
   const [micErr, setMicErr] = useState("");
   const [micInfo, setMicInfo] = useState(null);
-  const [mode, setMode] = useState(aiNoiseSupported() ? "ai" : "standard");
   const [net, setNet] = useState(null); // null = testing
   const level = useLevel(micInfo?.track);
 
@@ -56,12 +55,12 @@ export default function CallCheck() {
   useEffect(() => {
     let cur = null;
     let cancelled = false;
-    getMic(mode).then((m) => {
+    getMic().then((m) => {
       if (cancelled) { m.raw.stop(); m.suppressor?.stop(); return; }
       cur = m; setMicInfo(m); setMicErr("");
     }).catch(() => setMicErr("We couldn't open your microphone. Allow microphone access in your browser settings."));
     return () => { cancelled = true; cur?.raw.stop(); cur?.suppressor?.stop(); };
-  }, [mode]);
+  }, []);
 
   const testNetwork = useCallback(async () => {
     setNet(null);
@@ -112,12 +111,14 @@ export default function CallCheck() {
               <>
                 <div style={{ fontSize: 13, color: "var(--text-2)", marginBottom: 8 }}>Say something — the bar should jump when you speak and stay low when you're quiet, even with a fan or traffic nearby.</div>
                 <div className="meter" style={{ height: 10 }} aria-label="Microphone level"><span style={{ width: `${Math.round(level * 100)}%`, transition: "width .08s linear", background: level > 0.05 ? "var(--teal)" : "var(--ink)" }} /></div>
-                <div className="row-wrap" style={{ gap: 6, marginTop: 12 }}>
-                  {(aiNoiseSupported() ? ["ai", "standard", "off"] : ["standard", "off"]).map((m) => (
-                    <button key={m} className={`pill${mode === m ? " on" : ""}`} onClick={() => setMode(m)} aria-pressed={mode === m} data-testid={`check-noise-${m}`}>{NOISE_LABEL[m]}</button>
-                  ))}
-                </div>
-                {micInfo && mode === "ai" && micInfo.mode !== "ai" && <div style={{ fontSize: 12.5, color: "var(--amber)", marginTop: 8 }}>AI noise removal isn't supported on this browser — using the basic filter.</div>}
+                {micInfo && (
+                  <div className="row" style={{ gap: 8, marginTop: 12, fontSize: 13 }} data-testid="check-noise">
+                    <Icons.AudioLines size={16} color={micInfo.model === "basic" ? "var(--amber)" : "var(--teal)"} />
+                    <span><strong>{MODEL_LABEL[micInfo.model]}</strong> — always on. {micInfo.model === "basic"
+                      ? "This browser can't run the AI filter; try Chrome for the best sound."
+                      : "Traffic, horns and voices further away are removed on this device."}</span>
+                  </div>
+                )}
               </>
             )}
           </div>

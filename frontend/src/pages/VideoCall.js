@@ -4,12 +4,78 @@ import * as Icons from "lucide-react";
 import { api } from "@/lib/api";
 import useCall from "@/lib/useCall";
 import { initials } from "@/lib/focus";
-import { NOISE_LABEL } from "@/lib/noise";
+import { MODEL_LABEL, resumeAllAudio } from "@/lib/noise";
+import { cornerPos, nearestCorner, savedCorner, saveCorner, TAP_SLOP } from "@/lib/pip";
 
-function Video({ stream, muted, mirror, className, testid }) {
+// onBlocked: the browser refused to start sound (it wants a tap first) — we show a "tap to turn on sound" button.
+function Video({ stream, muted, mirror, className, testid, onBlocked }) {
   const ref = useRef(null);
-  useEffect(() => { if (ref.current && ref.current.srcObject !== stream) ref.current.srcObject = stream || null; }, [stream]);
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    if (v.srcObject !== stream) v.srcObject = stream || null;
+    if (stream && !muted) v.play?.()?.catch?.(() => onBlocked?.());
+  }, [stream]); // eslint-disable-line react-hooks/exhaustive-deps
   return <video ref={ref} autoPlay playsInline muted={muted} className={className} data-testid={testid} style={mirror ? { transform: "scaleX(-1)" } : undefined} />;
+}
+
+// The small floating tile (like WhatsApp): drag it anywhere and it snaps to the nearest corner, which is remembered.
+// A tap swaps it with the big view.
+function FloatingTile({ stageRef, onTap, children, testid }) {
+  const ref = useRef(null);
+  const [corner, setCorner] = useState(savedCorner);
+  const [pos, setPos] = useState(null);
+  const [dragging, setDragging] = useState(false);
+  const drag = useRef(null);
+  const margins = () => (window.innerWidth <= 620 ? { top: 76, side: 12, bottom: 12 } : undefined);
+  const place = (c) => {
+    const st = stageRef.current, el = ref.current;
+    if (!st || !el) return;
+    setPos(cornerPos(c, st.clientWidth, st.clientHeight, el.offsetWidth, el.offsetHeight, margins()));
+  };
+  useEffect(() => {
+    place(corner);
+    const ro = typeof ResizeObserver === "function" ? new ResizeObserver(() => place(corner)) : null;
+    if (ro && stageRef.current) ro.observe(stageRef.current);
+    const onResize = () => place(corner);
+    window.addEventListener("resize", onResize);
+    return () => { ro?.disconnect(); window.removeEventListener("resize", onResize); };
+  }, [corner]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const down = (e) => {
+    if (!pos) return;
+    ref.current.setPointerCapture?.(e.pointerId);
+    drag.current = { sx: e.clientX, sy: e.clientY, x: pos.x, y: pos.y, moved: false };
+  };
+  const move = (e) => {
+    const d = drag.current;
+    if (!d) return;
+    const dx = e.clientX - d.sx, dy = e.clientY - d.sy;
+    if (!d.moved && Math.hypot(dx, dy) < TAP_SLOP) return;
+    d.moved = true;
+    setDragging(true);
+    const st = stageRef.current, el = ref.current;
+    setPos({ x: Math.min(Math.max(0, d.x + dx), st.clientWidth - el.offsetWidth), y: Math.min(Math.max(0, d.y + dy), st.clientHeight - el.offsetHeight) });
+  };
+  const up = () => {
+    const d = drag.current;
+    drag.current = null;
+    if (!d) return;
+    if (!d.moved) { onTap?.(); return; }
+    setDragging(false);
+    const st = stageRef.current, el = ref.current;
+    const c = nearestCorner(pos.x, pos.y, st.clientWidth, st.clientHeight, el.offsetWidth, el.offsetHeight);
+    saveCorner(c);
+    if (c === corner) place(c); else setCorner(c);
+  };
+  return (
+    <div ref={ref} className={`call-self${dragging ? " dragging" : ""}`} data-testid={testid} data-corner={corner}
+      style={pos ? { transform: `translate(${pos.x}px, ${pos.y}px)` } : { visibility: "hidden" }}
+      onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
+      title="Drag to move · tap to swap">
+      {children}
+    </div>
+  );
 }
 
 function Timer({ since }) {
@@ -49,6 +115,28 @@ function CallRoom({ callId }) {
   const done = ["declined", "noanswer", "ended", "error"].includes(c.phase);
   const remoteHasVideo = c.remoteStream?.getVideoTracks().some((t) => t.readyState === "live");
   const isMobile = typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const stageRef = useRef(null);
+  const [swapped, setSwapped] = useState(false); // true: me big, them small
+  const [soundBlocked, setSoundBlocked] = useState(false);
+  const needsTap = soundBlocked || c.audioBlocked;
+  const turnOnSound = () => {
+    resumeAllAudio();
+    document.querySelectorAll(".call-room video").forEach((v) => { if (!v.muted) v.play().catch(() => {}); });
+    setSoundBlocked(false);
+  };
+  const firstName = (peer || "").split(" ")[0] || "They";
+  const showRemote = Boolean(c.remoteStream && c.phase !== "waiting");
+  const remoteView = (cls) => (
+    <Video stream={c.remoteStream} className={`${cls}${c.peerSharing ? " sharing" : ""}`} testid="remote-video" onBlocked={() => setSoundBlocked(true)} />
+  );
+  const localView = (cls) => (
+    <>
+      <Video stream={c.localStream} muted mirror={c.facing === "user" && !c.sharing} className={`${cls}${c.sharing ? " sharing" : ""}`} testid="local-video" />
+      {!c.cam && !c.sharing && <div className="call-self-off"><Icons.VideoOff size={18} /></div>}
+      {!c.mic && <div className="call-self-mute"><Icons.MicOff size={12} /></div>}
+    </>
+  );
+  const bigIsLocal = swapped && showRemote && c.localStream;
 
   useEffect(() => { if (c.phase === "noanswer") c.hangUp(); }, [c.phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -56,11 +144,9 @@ function CallRoom({ callId }) {
 
   return (
     <div className="call-room" data-testid="call-room">
-      <div className="call-stage">
-        {c.remoteStream && c.phase !== "waiting" ? (
-          <Video stream={c.remoteStream} className="call-remote" testid="remote-video" />
-        ) : null}
-        {(!c.remoteStream || !remoteHasVideo || c.phase !== "connected") && (
+      <div className="call-stage" ref={stageRef}>
+        {bigIsLocal ? <div className="call-remote-wrap">{localView("call-remote")}</div> : showRemote ? remoteView("call-remote") : null}
+        {!bigIsLocal && (!c.remoteStream || !remoteHasVideo || c.phase !== "connected") && (
           <div className="call-placeholder">
             <div className={`call-avatar${["ringing", "connecting", "waiting"].includes(c.phase) ? " pulse" : ""}`}>{initials(peer)}</div>
             <div className="call-peer">{peer || "…"}</div>
@@ -90,16 +176,31 @@ function CallRoom({ callId }) {
                 <QualityBars level={c.quality} /> {{ good: "Good connection", fair: "Fair connection", poor: "Weak connection" }[c.quality]}
               </span>
             )}
-            <span className="call-chip" data-testid="noise-chip"><Icons.AudioLines size={13} /> {NOISE_LABEL[c.noiseMode]}</span>
+            {c.noiseModel && <span className="call-chip" data-testid="noise-chip" title="Always on — cleaned on this device"><Icons.AudioLines size={13} /> {MODEL_LABEL[c.noiseModel]}</span>}
           </div>
         </div>
 
         {c.localStream && !done && (
-          <div className="call-self">
-            <Video stream={c.localStream} muted mirror={c.facing === "user"} className="call-self-video" testid="local-video" />
-            {!c.cam && <div className="call-self-off"><Icons.VideoOff size={18} /></div>}
-            {!c.mic && <div className="call-self-mute"><Icons.MicOff size={12} /></div>}
+          <FloatingTile stageRef={stageRef} onTap={() => showRemote && setSwapped((v) => !v)} testid="call-pip">
+            {bigIsLocal ? (
+              <>
+                {remoteView("call-self-video")}
+                {!remoteHasVideo && <div className="call-self-off" style={{ fontFamily: "var(--serif)", fontSize: 22 }}>{initials(peer)}</div>}
+              </>
+            ) : localView("call-self-video")}
+          </FloatingTile>
+        )}
+
+        {(c.sharing || c.peerSharing) && !done && (
+          <div className="call-share-banner" data-testid="share-banner">
+            <Icons.ScreenShare size={14} />
+            {c.sharing ? <>You're sharing your screen{c.shareAudio ? " and its sound" : ""}</> : <>{firstName} is sharing their screen</>}
+            {c.sharing && <button className="btn btn-ghost" onClick={c.stopShare} data-testid="share-stop">Stop</button>}
           </div>
+        )}
+
+        {needsTap && !done && (
+          <button className="call-sound" onClick={turnOnSound} data-testid="call-sound"><Icons.Volume2 size={18} /> Tap to turn on sound</button>
         )}
 
         {c.phase === "connected" && c.quality === "poor" && c.cam && !done && (
@@ -119,8 +220,12 @@ function CallRoom({ callId }) {
         <div className="call-bar">
           <CtrlBtn on={c.mic} label={c.mic ? "Mute" : "Unmute"} onClick={c.toggleMic} testid="call-mic">{c.mic ? <Icons.Mic size={20} /> : <Icons.MicOff size={20} />}</CtrlBtn>
           <CtrlBtn on={c.cam} label={c.cam ? "Camera off" : "Camera on"} onClick={c.toggleCam} testid="call-cam">{c.cam ? <Icons.Video size={20} /> : <Icons.VideoOff size={20} />}</CtrlBtn>
-          <CtrlBtn on={c.noiseMode !== "off"} label={{ ai: "AI noise: on", standard: "Noise: basic", off: "Noise: off" }[c.noiseMode]} onClick={c.cycleNoise} testid="call-nc"><Icons.AudioLines size={20} /></CtrlBtn>
-          {isMobile && <CtrlBtn label="Flip" onClick={c.flipCamera} testid="call-flip"><Icons.SwitchCamera size={20} /></CtrlBtn>}
+          {c.shareSupported && (
+            <CtrlBtn on={!c.sharing} label={c.sharing ? "Stop sharing" : "Share screen"} onClick={c.sharing ? c.stopShare : c.startShare} testid="call-share">
+              {c.sharing ? <Icons.ScreenShareOff size={20} /> : <Icons.ScreenShare size={20} />}
+            </CtrlBtn>
+          )}
+          {isMobile && !c.sharing && <CtrlBtn label="Flip" onClick={c.flipCamera} testid="call-flip"><Icons.SwitchCamera size={20} /></CtrlBtn>}
           <CtrlBtn danger label="End" onClick={leave} testid="call-end"><Icons.PhoneOff size={20} /></CtrlBtn>
         </div>
       )}
