@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, API, authHeaders } from "@/lib/api";
 import { getMic, trackContext, audioLocked } from "@/lib/noise";
+import { compressImage } from "@/lib/image";
 import { rateQuality } from "@/lib/callQuality";
 
 // In-app 1:1 video calls over WebRTC. Media goes browser-to-browser (or through a TURN relay on networks that
@@ -68,6 +69,8 @@ export default function useCall(callId) {
   const [sharing, setSharing] = useState(false);         // I'm sharing my screen
   const [shareAudio, setShareAudio] = useState(false);   // …with its sound
   const [peerSharing, setPeerSharing] = useState(false); // they're sharing theirs
+  const [myShow, setMyShow] = useState(null);     // a photo/screenshot I'm showing (works on phones too)
+  const [peerShow, setPeerShow] = useState(null); // the photo they're showing me
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [facing, setFacing] = useState("user");
   const [connectedAt, setConnectedAt] = useState(null);
@@ -128,6 +131,7 @@ export default function useCall(callId) {
         setPhase("connected");
         setConnectedAt((t) => t || Date.now());
         if (st.share) signal("state", { screen: true });
+        if (st.showing) signal("state", { show: st.showing });
       }
       else if (s === "disconnected") {
         setPhase("reconnecting");
@@ -185,12 +189,14 @@ export default function useCall(callId) {
     } else if (msg.type === "ready" && st.role === "offerer") {
       await makeOffer(Boolean(p.repair));
     } else if (msg.type === "state") {
-      setPeerSharing(Boolean(p.screen));
+      if ("screen" in p) setPeerSharing(Boolean(p.screen));
+      if ("show" in p) setPeerShow(p.show || null);
     } else if (msg.type === "bye") {
       closePc();
       setConnectedAt(null);
       setQuality(null);
       setPeerSharing(false);
+      setPeerShow(null);
       setPhase(p.reason === "declined" ? "declined" : "left");
     }
   }, [createPc, drainIce, makeOffer, signal, closePc]);
@@ -346,8 +352,8 @@ export default function useCall(callId) {
 
   // Screen sharing (laptops/desktops): sends the chosen screen, window or tab instead of the camera, and mixes its
   // sound with the (noise-cleaned) voice. Stopping — from our button or the browser's "Stop sharing" — restores the camera.
-  const shareSupported = typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getDisplayMedia)
-    && !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  // Phone browsers can't share their screen today; if one adds support, the button simply appears.
+  const shareSupported = typeof navigator !== "undefined" && typeof navigator.mediaDevices?.getDisplayMedia === "function";
 
   const stopShare = async () => {
     const st = r.current;
@@ -405,6 +411,23 @@ export default function useCall(callId) {
     return true;
   };
 
+  // Show a photo or screenshot to the other person (a diet chart, a lab report…) — works on every phone.
+  const showPhoto = async (picked) => {
+    if (!picked) return false;
+    const file = await compressImage(picked, { maxSide: 1600 });
+    const fd = new FormData();
+    fd.append("file", file);
+    const { data } = await api.post(`/calls/${callId}/show`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+    r.current.showing = data.url;
+    setMyShow(data.url);
+    return true;
+  };
+  const stopShow = () => {
+    r.current.showing = null;
+    setMyShow(null);
+    signal("state", { show: null });
+  };
+
   const flipCamera = async () => {
     if (r.current.share) return;
     const next = facing === "user" ? "environment" : "user";
@@ -430,5 +453,6 @@ export default function useCall(callId) {
   };
 
   return { call, phase, error, deviceNotes, localStream, remoteStream, mic, cam, noiseModel, facing, connectedAt, relay, quality, viaRelay,
-    sharing, shareAudio, peerSharing, shareSupported, audioBlocked, toggleMic, toggleCam, startShare, stopShare, flipCamera, hangUp };
+    sharing, shareAudio, peerSharing, shareSupported, audioBlocked, myShow, peerShow, toggleMic, toggleCam, startShare, stopShare,
+    showPhoto, stopShow, flipCamera, hangUp };
 }

@@ -20,7 +20,8 @@ async function decode(file) {
 }
 
 export async function compressImage(file, { maxSide = 1600, quality = 0.82 } = {}) {
-  if (!file || !/^image\/(jpeg|png|webp)$/.test(file.type)) return file; // GIFs (animation) and unknown types go as they are
+  const heic = /^image\/hei[cf]$/.test(file?.type || "") || /\.hei[cf]$/i.test(file?.name || ""); // iPhone photos: always convert
+  if (!file || (!heic && !/^image\/(jpeg|png|webp)$/.test(file.type))) return file; // GIFs (animation) and unknown types go as they are
   try {
     const img = await decode(file);
     const { width, height } = fitWithin(img.width, img.height, maxSide);
@@ -28,7 +29,7 @@ export async function compressImage(file, { maxSide = 1600, quality = 0.82 } = {
     canvas.getContext("2d").drawImage(img, 0, 0, width, height);
     img.close?.();
     const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", quality));
-    if (!blob || blob.size >= file.size) return file; // already small
+    if (!blob || (!heic && blob.size >= file.size)) return file; // already small
     return new File([blob], (file.name || "photo").replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg", lastModified: Date.now() });
   } catch {
     return file;

@@ -3401,6 +3401,21 @@ async def send_signal(call_id: str, payload: SignalRequest, user: User = Depends
     return {"ok": True}
 
 
+@api_router.post("/calls/{call_id}/show")
+async def show_in_call(call_id: str, file: UploadFile = File(...), user: User = Depends(get_current_user)):
+    """Show a photo or screenshot to the other person in the call — the phone-friendly stand-in for screen sharing
+    (phone browsers can't share their screen). Only the two people on the call can open it."""
+    call = await _call_for(call_id, user)
+    record = await store_image(file, user.user_id, "call")
+    allowed = [call["coach_id"], call["client_id"]]
+    await db.files.update_one({"id": record["id"]}, {"$set": {"allowed": allowed}})
+    url = file_url(record["storage_path"])
+    to = call["client_id"] if user.user_id == call["coach_id"] else call["coach_id"]
+    await db.call_signals.insert_one({"id": str(uuid.uuid4()), "call_id": call_id, "from": user.user_id, "to": to,
+                                      "type": "state", "payload": {"show": url}, "created_at": _now_iso()})
+    return {"url": url}
+
+
 @api_router.get("/calls/{call_id}/signals")
 async def poll_signals(call_id: str, user: User = Depends(get_current_user)):
     """Heartbeat + mailbox: marks me present and returns (and removes) messages addressed to me."""

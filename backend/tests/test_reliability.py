@@ -197,3 +197,21 @@ def test_screen_share_state_is_relayed(api):
     assert api.post(f"/api/calls/{call['id']}/signal", json={"type": "state", "payload": {"screen": True}}, headers=coach_h).status_code == 200
     got = api.get(f"/api/calls/{call['id']}/signals", headers=h).json()["signals"]
     assert [(s["type"], s["payload"]) for s in got] == [("state", {"screen": True})]
+
+
+def test_show_a_photo_in_a_call(api):
+    h, me, coach_h, coach, *_ = new_client(api)
+    call = api.post("/api/calls/instant", json={"peer_id": me["user_id"]}, headers=coach_h).json()
+    api.post(f"/api/calls/{call['id']}/join", headers=h)
+    api.post(f"/api/calls/{call['id']}/join", headers=coach_h)
+    api.get(f"/api/calls/{call['id']}/signals", headers=coach_h)
+    png = b"\\x89PNG\\r\\n\\x1a\\n" + b"0" * 64
+    r = api.post(f"/api/calls/{call['id']}/show", files={"file": ("plan.png", png, "image/png")}, headers=h)
+    assert r.status_code == 200, r.text
+    url = r.json()["url"]
+    got = api.get(f"/api/calls/{call['id']}/signals", headers=coach_h).json()["signals"]
+    assert [(s["type"], s["payload"]) for s in got] == [("state", {"show": url})]
+    assert api.get(url, headers=coach_h).status_code == 200          # the other person can open it
+    other_h, _ = login(api, "mike.trainer@fitcoach.com")
+    assert api.get(url, headers=other_h).status_code == 404          # nobody else can
+    assert api.post(f"/api/calls/{call['id']}/show", files={"file": ("x.exe", b"MZ", "application/octet-stream")}, headers=h).status_code == 400

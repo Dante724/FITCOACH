@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import * as Icons from "lucide-react";
-import { api } from "@/lib/api";
+import { api, fileSrc } from "@/lib/api";
+import { useToast } from "@/context/ToastContext";
 import useCall from "@/lib/useCall";
 import { initials } from "@/lib/focus";
 import { MODEL_LABEL, resumeAllAudio } from "@/lib/noise";
@@ -119,6 +120,19 @@ function CallRoom({ callId }) {
   const stageRef = useRef(null);
   const [swapped, setSwapped] = useState(false); // true: me big, them small
   const [soundBlocked, setSoundBlocked] = useState(false);
+  const photoRef = useRef(null);
+  const { push } = useToast();
+  const [hiddenShow, setHiddenShow] = useState(null); // a shown photo I've closed on my side
+  const [sendingPhoto, setSendingPhoto] = useState(false);
+  const peerPhoto = c.peerShow && c.peerShow !== hiddenShow ? c.peerShow : null;
+  const pickPhoto = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    setSendingPhoto(true);
+    try { await c.showPhoto(f); } catch (err) { push(err?.response?.data?.detail || "Couldn't send the photo. Try again.", "error"); }
+    setSendingPhoto(false);
+  };
   const needsTap = soundBlocked || c.audioBlocked;
   const turnOnSound = () => {
     resumeAllAudio();
@@ -192,6 +206,21 @@ function CallRoom({ callId }) {
           </FloatingTile>
         )}
 
+        {peerPhoto && !done && (
+          <div className="call-shown" data-testid="peer-photo">
+            <img src={fileSrc(peerPhoto)} alt={`Shown by ${firstName}`} />
+          </div>
+        )}
+
+        {(c.myShow || peerPhoto) && !done && (
+          <div className="call-share-banner" data-testid="photo-banner" style={c.sharing || c.peerSharing ? { top: 120 } : undefined}>
+            <Icons.Image size={14} />
+            {c.myShow ? <>You're showing a photo</> : <>{firstName} is showing a photo</>}
+            {c.myShow ? <button className="btn btn-ghost" onClick={c.stopShow} data-testid="photo-stop">Stop</button>
+              : <button className="btn btn-ghost" onClick={() => setHiddenShow(c.peerShow)} data-testid="photo-hide">Close</button>}
+          </div>
+        )}
+
         {(c.sharing || c.peerSharing) && !done && (
           <div className="call-share-banner" data-testid="share-banner">
             <Icons.ScreenShare size={14} />
@@ -221,8 +250,13 @@ function CallRoom({ callId }) {
         <div className="call-bar">
           <CtrlBtn on={c.mic} label={c.mic ? "Mute" : "Unmute"} onClick={c.toggleMic} testid="call-mic">{c.mic ? <Icons.Mic size={20} /> : <Icons.MicOff size={20} />}</CtrlBtn>
           <CtrlBtn on={c.cam} label={c.cam ? "Camera off" : "Camera on"} onClick={c.toggleCam} testid="call-cam">{c.cam ? <Icons.Video size={20} /> : <Icons.VideoOff size={20} />}</CtrlBtn>
+          <input ref={photoRef} type="file" accept="image/*" hidden onChange={pickPhoto} data-testid="photo-input" />
+          <CtrlBtn on={!c.myShow} label={sendingPhoto ? "Sending…" : c.myShow ? "Stop photo" : "Photo"}
+            onClick={c.myShow ? c.stopShow : () => photoRef.current?.click()} testid="call-photo">
+            {c.myShow ? <Icons.ImageOff size={20} /> : <Icons.ImageUp size={20} />}
+          </CtrlBtn>
           {c.shareSupported && (
-            <CtrlBtn on={!c.sharing} label={c.sharing ? "Stop sharing" : "Share screen"} onClick={c.sharing ? c.stopShare : c.startShare} testid="call-share">
+            <CtrlBtn on={!c.sharing} label={c.sharing ? "Stop sharing" : "Screen"} onClick={c.sharing ? c.stopShare : c.startShare} testid="call-share">
               {c.sharing ? <Icons.ScreenShareOff size={20} /> : <Icons.ScreenShare size={20} />}
             </CtrlBtn>
           )}
