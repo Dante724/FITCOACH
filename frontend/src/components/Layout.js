@@ -30,6 +30,7 @@ export default function Layout() {
     nav = [
       { feature: "trainer", path: "/trainer", label: "Clients & Today", icon: "LayoutDashboard", end: true },
       { feature: "availability", path: "/trainer/availability", label: "Availability", icon: "CalendarClock" },
+      { feature: "library", path: "/library", label: "Exercise Library", icon: "LibraryBig" },
       { feature: "callcheck", path: "/call-check", label: "Test call setup", icon: "MonitorCheck" },
     ];
   } else {

@@ -3,6 +3,10 @@ import { useNavigate, useParams } from "react-router-dom";
 import * as Icons from "lucide-react";
 import { api, fileSrc } from "@/lib/api";
 import { useToast } from "@/context/ToastContext";
+import { createPortal } from "react-dom";
+import { ExerciseCard } from "@/components/ExerciseCard";
+import { LibraryGrid } from "@/pages/Library";
+import { loadLibrary, search, TABS } from "@/lib/library";
 import useCall from "@/lib/useCall";
 import { initials } from "@/lib/focus";
 import { MODEL_LABEL, resumeAllAudio } from "@/lib/noise";
@@ -125,6 +129,15 @@ function CallRoom({ callId }) {
   const [hiddenShow, setHiddenShow] = useState(null); // a shown photo I've closed on my side
   const [sendingPhoto, setSendingPhoto] = useState(false);
   const peerPhoto = c.peerShow && c.peerShow !== hiddenShow ? c.peerShow : null;
+  // "Show" menu: a photo/screenshot, or an exercise / yoga pose card from the library on both screens
+  const [menu, setMenu] = useState(null); // null | "choose" | "exercise"
+  const [lib, setLib] = useState(null);
+  const [q, setQ] = useState("");
+  const [libTab, setLibTab] = useState("home");
+  useEffect(() => { if (menu === "exercise" || c.peerExercise || c.myExercise) loadLibrary().then(setLib).catch(() => {}); }, [menu, c.peerExercise, c.myExercise]);
+  const shownEx = lib && (c.myExercise || (c.peerExercise !== hiddenShow && c.peerExercise)) ? lib.byId.get(c.myExercise || c.peerExercise) : null;
+  const showingSomething = Boolean(c.myShow || c.myExercise);
+  const stopShowing = () => { if (c.myShow) c.stopShow(); if (c.myExercise) c.stopExercise(); };
   const pickPhoto = async (e) => {
     const f = e.target.files?.[0];
     e.target.value = "";
@@ -212,12 +225,20 @@ function CallRoom({ callId }) {
           </div>
         )}
 
-        {(c.myShow || peerPhoto) && !done && (
+        {shownEx && !done && (
+          <div className="call-shown call-shown-card" data-testid="shown-exercise">
+            <div className="clay call-card-panel"><ExerciseCard e={shownEx} big showPoseCheck={false} /></div>
+          </div>
+        )}
+
+        {(c.myShow || peerPhoto || shownEx) && !done && (
           <div className="call-share-banner" data-testid="photo-banner" style={c.sharing || c.peerSharing ? { top: 120 } : undefined}>
-            <Icons.Image size={14} />
-            {c.myShow ? <>You're showing a photo</> : <>{firstName} is showing a photo</>}
-            {c.myShow ? <button className="btn btn-ghost" onClick={c.stopShow} data-testid="photo-stop">Stop</button>
-              : <button className="btn btn-ghost" onClick={() => setHiddenShow(c.peerShow)} data-testid="photo-hide">Close</button>}
+            {shownEx ? <Icons.Dumbbell size={14} /> : <Icons.Image size={14} />}
+            {c.myExercise && shownEx ? <>You're showing {shownEx.name}</>
+              : c.myShow ? <>You're showing a photo</>
+              : shownEx ? <>{firstName} is showing {shownEx.name}</> : <>{firstName} is showing a photo</>}
+            {showingSomething ? <button className="btn btn-ghost" onClick={stopShowing} data-testid="photo-stop">Stop</button>
+              : <button className="btn btn-ghost" onClick={() => setHiddenShow(c.peerExercise || c.peerShow)} data-testid="photo-hide">Close</button>}
           </div>
         )}
 
@@ -251,9 +272,9 @@ function CallRoom({ callId }) {
           <CtrlBtn on={c.mic} label={c.mic ? "Mute" : "Unmute"} onClick={c.toggleMic} testid="call-mic">{c.mic ? <Icons.Mic size={20} /> : <Icons.MicOff size={20} />}</CtrlBtn>
           <CtrlBtn on={c.cam} label={c.cam ? "Camera off" : "Camera on"} onClick={c.toggleCam} testid="call-cam">{c.cam ? <Icons.Video size={20} /> : <Icons.VideoOff size={20} />}</CtrlBtn>
           <input ref={photoRef} type="file" accept="image/*" hidden onChange={pickPhoto} data-testid="photo-input" />
-          <CtrlBtn on={!c.myShow} label={sendingPhoto ? "Sending…" : c.myShow ? "Stop photo" : "Photo"}
-            onClick={c.myShow ? c.stopShow : () => photoRef.current?.click()} testid="call-photo">
-            {c.myShow ? <Icons.ImageOff size={20} /> : <Icons.ImageUp size={20} />}
+          <CtrlBtn on={!showingSomething} label={sendingPhoto ? "Sending…" : showingSomething ? "Stop" : "Show"}
+            onClick={showingSomething ? stopShowing : () => setMenu("choose")} testid="call-photo">
+            {showingSomething ? <Icons.SquareX size={20} /> : <Icons.Presentation size={20} />}
           </CtrlBtn>
           {c.shareSupported && (
             <CtrlBtn on={!c.sharing} label={c.sharing ? "Stop sharing" : "Screen"} onClick={c.sharing ? c.stopShare : c.startShare} testid="call-share">
@@ -263,6 +284,42 @@ function CallRoom({ callId }) {
           {isMobile && !c.sharing && <CtrlBtn label="Flip" onClick={c.flipCamera} testid="call-flip"><Icons.SwitchCamera size={20} /></CtrlBtn>}
           <CtrlBtn danger label="End" onClick={leave} testid="call-end"><Icons.PhoneOff size={20} /></CtrlBtn>
         </div>
+      )}
+      {menu && createPortal(
+        <div className="modal-backdrop" style={{ zIndex: 400 }} onClick={() => setMenu(null)}>
+          <div className="glass modal fade-up" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520, maxHeight: "86vh", overflowY: "auto" }} data-testid="show-menu">
+            <div className="row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
+              <h3 style={{ fontSize: 20 }}>{menu === "exercise" ? "Show an exercise or pose" : `Show ${firstName || "them"} something`}</h3>
+              <button className="icon-btn" onClick={() => setMenu(null)} aria-label="Close"><Icons.X size={18} /></button>
+            </div>
+            {menu === "choose" ? (
+              <div className="stack" style={{ gap: 10 }}>
+                <button className="clay-inset row lib-item" onClick={() => { setMenu(null); photoRef.current?.click(); }} data-testid="show-photo">
+                  <Icons.ImageUp size={22} /> <span style={{ textAlign: "left" }}><strong>A photo or screenshot</strong><br /><span style={{ fontSize: 13, color: "var(--text-2)" }}>Diet chart, lab report, anything on your phone</span></span>
+                </button>
+                <button className="clay-inset row lib-item" onClick={() => setMenu("exercise")} data-testid="show-exercise">
+                  <Icons.Dumbbell size={22} /> <span style={{ textAlign: "left" }}><strong>An exercise or yoga pose</strong><br /><span style={{ fontSize: 13, color: "var(--text-2)" }}>Opens the how-to card with the movement on both screens</span></span>
+                </button>
+              </div>
+            ) : (
+              <>
+                <input className="field" autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search — squat, baithak, tadasana, kamar dard…" data-testid="show-search" />
+                {!q && (
+                  <div className="row-wrap" style={{ gap: 6, margin: "10px 0" }}>
+                    {TABS.map((t) => <button key={t.key} className={`pill${libTab === t.key ? " on" : ""}`} onClick={() => setLibTab(t.key)}>{t.label}</button>)}
+                  </div>
+                )}
+                {!lib ? <div className="spinner" style={{ margin: "30px auto" }} /> : (
+                  <div style={{ marginTop: 10 }}>
+                    <LibraryGrid compact items={search(lib, q, q ? {} : { category: libTab }).slice(0, 40)}
+                      onPick={(e) => { c.showExercise(e.id); setMenu(null); setQ(""); }} />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

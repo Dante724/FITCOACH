@@ -1,5 +1,9 @@
 import * as Icons from "lucide-react";
+import { useEffect, useState } from "react";
 import AbroadSwaps from "@/components/AbroadSwaps";
+import StickFigure from "@/components/StickFigure";
+import ExerciseModal from "@/components/ExerciseCard";
+import { findByName, loadLibrary } from "@/lib/library";
 
 export function MealPlanView({ content }) {
   const totals = [
@@ -44,6 +48,9 @@ export function MealPlanView({ content }) {
 export function DaysPlanView({ content, yoga, done, onToggle, day, onDay }) {
   const days = content.days || [];
   const current = days[day] || days[0];
+  const [lib, setLib] = useState(null);
+  const [open, setOpen] = useState(null);
+  useEffect(() => { loadLibrary().then(setLib).catch(() => {}); }, []);
   return (
     <div>
       {days.length > 1 && (
@@ -59,8 +66,10 @@ export function DaysPlanView({ content, yoga, done, onToggle, day, onDay }) {
         <div className="stack">
           {current.exercises.map((ex, i) => {
             const checked = !!done?.[i];
+            const info = findByName(lib, ex.name);
             return (
-              <button key={`${day}-${i}`} data-testid={`exercise-${i}`} onClick={() => onToggle?.(i)} disabled={!onToggle}
+              <div key={`${day}-${i}`} className="row" style={{ gap: 8, alignItems: "stretch" }}>
+              <button data-testid={`exercise-${i}`} style={{ flex: 1, minWidth: 0 }} onClick={() => onToggle?.(i)} disabled={!onToggle}
                 className="clay-inset" style={{ border: "none", cursor: onToggle ? "pointer" : "default", padding: "13px 14px", display: "flex", gap: 12, textAlign: "left", alignItems: "flex-start", color: "var(--text)" }}>
                 {!onToggle && <span className="ex-index">{i + 1}</span>}
                 {onToggle && (
@@ -70,6 +79,7 @@ export function DaysPlanView({ content, yoga, done, onToggle, day, onDay }) {
                 )}
                 <div className="min0" style={{ flex: 1 }}>
                   <div style={{ fontSize: 14.5, fontWeight: 600, textDecoration: checked ? "line-through" : "none", color: checked ? "var(--text-3)" : "var(--text)" }}>{ex.name}</div>
+                  {info?.hindi && <div style={{ fontSize: 12.5, color: "var(--text-3)" }} lang="hi">{info.hindi}</div>}
                   {ex.notes && <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 3, lineHeight: 1.5 }}>{ex.notes}</div>}
                 </div>
                 <div style={{ textAlign: "right", flexShrink: 0 }}>
@@ -77,11 +87,20 @@ export function DaysPlanView({ content, yoga, done, onToggle, day, onDay }) {
                   {ex.rest && ex.rest !== "—" && <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>rest {ex.rest}</div>}
                 </div>
               </button>
+              {info && (
+                <button type="button" className="clay-inset" onClick={() => setOpen(info)} title={`How to do ${info.name}`} aria-label={`How to do ${info.name}`}
+                  data-testid={`howto-${i}`} style={{ border: "none", cursor: "pointer", padding: 4, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--text-3)", fontSize: 10.5 }}>
+                  <StickFigure figure={info.figure} size={40} title={info.name} />
+                  How to
+                </button>
+              )}
+              </div>
             );
           })}
           {current.exercises.length === 0 && <div className="empty">Rest day.</div>}
         </div>
       )}
+      {open && <ExerciseModal e={open} onClose={() => setOpen(null)} />}
     </div>
   );
 }

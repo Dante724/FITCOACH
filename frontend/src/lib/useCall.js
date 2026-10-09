@@ -71,6 +71,8 @@ export default function useCall(callId) {
   const [peerSharing, setPeerSharing] = useState(false); // they're sharing theirs
   const [myShow, setMyShow] = useState(null);     // a photo/screenshot I'm showing (works on phones too)
   const [peerShow, setPeerShow] = useState(null); // the photo they're showing me
+  const [myExercise, setMyExercise] = useState(null);     // library entry id I'm showing on both screens
+  const [peerExercise, setPeerExercise] = useState(null); // …or the one they're showing
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [facing, setFacing] = useState("user");
   const [connectedAt, setConnectedAt] = useState(null);
@@ -132,6 +134,7 @@ export default function useCall(callId) {
         setConnectedAt((t) => t || Date.now());
         if (st.share) signal("state", { screen: true });
         if (st.showing) signal("state", { show: st.showing });
+        if (st.exercise) signal("state", { exercise: st.exercise });
       }
       else if (s === "disconnected") {
         setPhase("reconnecting");
@@ -190,13 +193,15 @@ export default function useCall(callId) {
       await makeOffer(Boolean(p.repair));
     } else if (msg.type === "state") {
       if ("screen" in p) setPeerSharing(Boolean(p.screen));
-      if ("show" in p) setPeerShow(p.show || null);
+      if ("show" in p) { setPeerShow(p.show || null); if (p.show) setPeerExercise(null); }
+      if ("exercise" in p) { setPeerExercise(p.exercise || null); if (p.exercise) setPeerShow(null); }
     } else if (msg.type === "bye") {
       closePc();
       setConnectedAt(null);
       setQuality(null);
       setPeerSharing(false);
       setPeerShow(null);
+      setPeerExercise(null);
       setPhase(p.reason === "declined" ? "declined" : "left");
     }
   }, [createPc, drainIce, makeOffer, signal, closePc]);
@@ -420,7 +425,20 @@ export default function useCall(callId) {
     const { data } = await api.post(`/calls/${callId}/show`, fd, { headers: { "Content-Type": "multipart/form-data" } });
     r.current.showing = data.url;
     setMyShow(data.url);
+    if (r.current.exercise) { r.current.exercise = null; setMyExercise(null); }
     return true;
+  };
+  // Open an exercise / yoga pose card from the library on both screens (works on every phone).
+  const showExercise = (id) => {
+    r.current.exercise = id;
+    setMyExercise(id);
+    if (r.current.showing) { r.current.showing = null; setMyShow(null); }
+    signal("state", { exercise: id, show: null });
+  };
+  const stopExercise = () => {
+    r.current.exercise = null;
+    setMyExercise(null);
+    signal("state", { exercise: null });
   };
   const stopShow = () => {
     r.current.showing = null;
@@ -453,6 +471,6 @@ export default function useCall(callId) {
   };
 
   return { call, phase, error, deviceNotes, localStream, remoteStream, mic, cam, noiseModel, facing, connectedAt, relay, quality, viaRelay,
-    sharing, shareAudio, peerSharing, shareSupported, audioBlocked, myShow, peerShow, toggleMic, toggleCam, startShare, stopShare,
-    showPhoto, stopShow, flipCamera, hangUp };
+    sharing, shareAudio, peerSharing, shareSupported, audioBlocked, myShow, peerShow, myExercise, peerExercise, toggleMic, toggleCam,
+    startShare, stopShare, showPhoto, stopShow, showExercise, stopExercise, flipCamera, hangUp };
 }

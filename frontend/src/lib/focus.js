@@ -57,6 +57,7 @@ export const FEATURE_META = {
   progress: { path: "/progress", label: "Progress", icon: "TrendingUp" },
   booking: { path: "/booking", label: "Book Session", icon: "CalendarDays" },
   messages: { path: "/messages", label: "Messages", icon: "MessageCircle" },
+  library: { path: "/library", label: "Exercise Library", icon: "LibraryBig" },
   membership: { path: "/membership", label: "Membership", icon: "CreditCard" },
 };
 
@@ -76,12 +77,12 @@ export function hasFeature(focusKey, feature) {
 export function navForFocus(key) {
   const focus = getFocus(key);
   const feats = focus ? focus.features : [];
-  const items = ["dashboard", ...feats, "membership"];
+  const items = ["dashboard", ...feats, "library", "membership"];
   return items.map((f) => ({ feature: f, ...FEATURE_META[f] }));
 }
 
 export function focusAllowsPath(key, pathname) {
-  if (pathname.startsWith("/dashboard") || pathname.startsWith("/membership") || pathname.startsWith("/profile")) return true;
+  if (["/dashboard", "/membership", "/profile", "/library"].some((p) => pathname.startsWith(p))) return true;
   const focus = getFocus(key);
   if (!focus) return false;
   return focus.features.some((f) => pathname.startsWith(FEATURE_META[f].path));
