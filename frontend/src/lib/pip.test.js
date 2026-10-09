@@ -47,16 +47,28 @@ describe("voice focus", () => {
     expect(db(rms(y, SR * 0.05) / rms(quiet, 0, quiet.length - SR * 0.05))).toBeGreaterThan(-0.5);
   });
 
-  test("turns down a voice much quieter than the speaker, once the speaker pauses", () => {
-    const vf = new VoiceFocus(SR, { range: 6, ratio: 4, hold: 25 });
+  const GENTLE = { range: 14, ratio: 3, hold: 60, floor: -10 }; // what calls use (lib/noise.js)
+
+  test("softens a much quieter voice once the speaker has paused for a while", () => {
+    const vf = new VoiceFocus(SR, GENTLE);
     run(vf, tone(2, 0.1));                       // the speaker (−23 dBFS)
     const far = tone(2, 0.01, 330);              // someone 20 dB quieter
     const y = run(vf, far);
-    expect(db(rms(y, SR) / rms(far, SR))).toBeLessThan(-25);
+    const cut = db(rms(y, SR) / rms(far, SR));
+    expect(cut).toBeLessThan(-8);
+    expect(cut).toBeGreaterThan(-11);            // never more than ~10 dB — background is softened, not muted
+  });
+
+  test("never clips quiet word endings or short gaps between words", () => {
+    const vf = new VoiceFocus(SR, GENTLE);
+    run(vf, tone(1.5, 0.1));                     // talking
+    const tail = tone(0.5, 0.012, 300);          // a soft word ending / short pause, 18 dB down
+    const y = run(vf, tail);
+    expect(db(rms(y, 960) / rms(tail, 960))).toBeGreaterThan(-1);   // within the 0.6 s hold: untouched
   });
 
   test("keeps the speaker's own voice untouched", () => {
-    const vf = new VoiceFocus(SR, { range: 6, ratio: 4, hold: 25 });
+    const vf = new VoiceFocus(SR, GENTLE);
     const near = tone(3, 0.1);
     const y = run(vf, near);
     expect(Math.abs(db(rms(y, SR) / rms(near, SR)))).toBeLessThan(0.5);

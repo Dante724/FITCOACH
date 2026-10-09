@@ -25,7 +25,11 @@ export const MODEL_LABEL = {
   basic: "Basic noise filter",
 };
 // Voice-focus settings per model (DFN3 already removes much of the distant speech, so it needs a gentler focus).
-export const FOCUS = { dfn3: { range: 8, ratio: 4, hold: 25 }, gtcrn: { range: 6, ratio: 4, hold: 25 }, rnnoise: { range: 6, ratio: 4, hold: 25 } };
+// Gentle on purpose: on phones the voice level swings a lot (distance, the phone's own volume control), and a strict
+// gate clips the starts and ends of words. Hold 0.6 s keeps every word whole; at most −10 dB in longer pauses.
+const GENTLE = { range: 14, ratio: 3, hold: 60, floor: -10 };
+export const FOCUS = { dfn3: GENTLE, gtcrn: GENTLE, rnnoise: GENTLE };
+export const isPhone = () => typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
 
 export function aiNoiseSupported() {
   return typeof window !== "undefined" && typeof window.AudioWorkletNode === "function" && typeof WebAssembly === "object"
@@ -43,7 +47,8 @@ export function preferredModel() {
 const SLOW_KEY = "fc_dfn3_slow";
 // Whether to try DFN3 here: needs 4+ cores and 3+ GB (when the browser says), and hasn't been too slow before.
 export function dfn3Capable() {
-  if (preferredModel() !== "gtcrn" || typeof DecompressionStream !== "function") return false;
+  // Phones stay on GTCRN: DFN3 can fall behind on a phone's CPU (choppy sound, growing delay).
+  if (isPhone() || preferredModel() !== "gtcrn" || typeof DecompressionStream !== "function") return false;
   try { if (localStorage.getItem(SLOW_KEY)) return false; } catch { /* private mode */ }
   const cores = navigator.hardwareConcurrency || 4;
   const memory = navigator.deviceMemory || 4;
@@ -160,7 +165,18 @@ export async function createNoiseSuppressor(rawTrack, model, { onModel } = {}) {
       if (!focus) {
         await ctx.audioWorklet.addModule("/worklets/voiceFocus.js");
         focus = new AudioWorkletNode(ctx, "voice-focus", { outputChannelCount: [1], processorOptions: FOCUS[name] });
-        focus.connect(dest);
+        // Leveller: evens out loud and soft speech, then lifts the voice ~5 dB so it isn't quiet on the other phone.
+        const level = ctx.createDynamicsCompressor();
+        level.threshold.value = -26;
+        level.knee.value = 12;
+        level.ratio.value = 3;
+        level.attack.value = 0.004;
+        level.release.value = 0.25;
+        const makeup = ctx.createGain();
+        makeup.gain.value = 1.8;
+        focus.connect(level);
+        level.connect(makeup);
+        makeup.connect(dest);
       } else {
         focus.port.postMessage({ type: "settings", ...FOCUS[name] });
       }

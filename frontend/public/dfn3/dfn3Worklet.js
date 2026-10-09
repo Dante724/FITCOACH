@@ -442,6 +442,11 @@ class DeepFilterProcessor extends AudioWorkletProcessor {
     const inp = inputs[0]?.[0];
     if (!this.ok) { if (inp) out.set(inp); else out.fill(0); return true; }
     if (inp) for (let i = 0; i < inp.length; i += 1) { this.inBuf[this.inW] = inp[i]; this.inW = (this.inW + 1) % this.size; }
+    // Falling behind: drop the oldest input rather than letting the ring wrap (which garbles the sound and grows delay)
+    if (this.avail(this.inW, this.inR) > this.size - 2 * this.hop) {
+      this.inR = (this.inW - this.hop + this.size) % this.size;
+      this.port.postMessage({ type: "SLOW" });
+    }
     while (this.avail(this.inW, this.inR) >= this.hop) {
       for (let i = 0; i < this.hop; i += 1) { this.frame[i] = this.inBuf[this.inR]; this.inR = (this.inR + 1) % this.size; }
       const t0 = Date.now();

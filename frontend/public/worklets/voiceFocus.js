@@ -86,6 +86,7 @@ if (typeof registerProcessor === "function") {
         if (d.range != null) this.vf.range = d.range;
         if (d.ratio != null) this.vf.ratio = d.ratio;
         if (d.hold != null) this.vf.holdFrames = d.hold;
+        if (d.floor != null) this.vf.floor = d.floor;
       };
     }
 
