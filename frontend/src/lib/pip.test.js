@@ -74,11 +74,15 @@ describe("voice focus", () => {
     expect(Math.abs(db(rms(y, SR) / rms(near, SR)))).toBeLessThan(0.5);
   });
 
-  test("caps a sudden blast far louder than the speaker", () => {
-    const vf = new VoiceFocus(SR);
-    run(vf, tone(2, 0.05));                      // speaker ~−29 dBFS
-    const horn = tone(0.5, 0.9, 420);            // horn ~25 dB louder
-    const y = run(vf, horn);
-    expect(db(rms(y, SR * 0.1) / rms(horn, SR * 0.1))).toBeLessThan(-10);
+  test("after a long quiet spell (listening), the speaker's first words come back at full volume", () => {
+    // The coach talks, then listens for 20 s with a little room noise, then talks again. Their voice must not be
+    // turned down and then swell back up ("going far and coming close").
+    const vf = new VoiceFocus(SR, GENTLE);
+    run(vf, tone(2, 0.1));
+    run(vf, tone(20, 0.003, 500));               // faint background while listening
+    const again = tone(2, 0.1);
+    const y = run(vf, again);
+    expect(db(rms(y, 960, SR * 0.3) / rms(again, 0, SR * 0.3 - 960))).toBeGreaterThan(-1);   // first 0.3 s
+    expect(db(rms(y, SR) / rms(again, SR))).toBeGreaterThan(-0.5);                            // and after
   });
 });

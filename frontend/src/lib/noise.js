@@ -165,15 +165,16 @@ export async function createNoiseSuppressor(rawTrack, model, { onModel } = {}) {
       if (!focus) {
         await ctx.audioWorklet.addModule("/worklets/voiceFocus.js");
         focus = new AudioWorkletNode(ctx, "voice-focus", { outputChannelCount: [1], processorOptions: FOCUS[name] });
-        // Leveller: evens out loud and soft speech, then lifts the voice ~5 dB so it isn't quiet on the other phone.
+        // Leveller: lifts the voice ~4 dB and only gently tames the loudest moments. Kept slow and mild on purpose —
+        // anything that rides the volume quickly makes the voice seem to "come close and go far" (pumping).
         const level = ctx.createDynamicsCompressor();
-        level.threshold.value = -26;
-        level.knee.value = 12;
-        level.ratio.value = 3;
-        level.attack.value = 0.004;
-        level.release.value = 0.25;
+        level.threshold.value = -18;
+        level.knee.value = 20;
+        level.ratio.value = 2;
+        level.attack.value = 0.01;
+        level.release.value = 0.5;
         const makeup = ctx.createGain();
-        makeup.gain.value = 1.8;
+        makeup.gain.value = 1.6;
         focus.connect(level);
         level.connect(makeup);
         makeup.connect(dest);
