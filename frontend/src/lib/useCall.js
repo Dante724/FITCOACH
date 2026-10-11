@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, API, authHeaders } from "@/lib/api";
-import { getMic, trackContext, audioLocked } from "@/lib/noise";
+import { getMic, trackContext, audioLocked, resumeAllAudio } from "@/lib/noise";
 import { compressImage } from "@/lib/image";
 import { rateQuality } from "@/lib/callQuality";
 
@@ -35,6 +35,21 @@ function placeholderTrack(name) {
   track.isPlaceholder = true;
   return track;
 }
+
+// A timer that keeps ticking when the app is minimised. Phones slow a hidden page's own timers to once a minute, which
+// would stop the "I'm still here" check-ins; a worker's timer isn't slowed the same way.
+function makeTicker(ms, fn) {
+  try {
+    const url = URL.createObjectURL(new Blob([`setInterval(() => postMessage(0), ${ms});`], { type: "text/javascript" }));
+    const w = new Worker(url);
+    w.onmessage = fn;
+    return () => { w.terminate(); URL.revokeObjectURL(url); };
+  } catch {
+    const t = setInterval(fn, ms);
+    return () => clearInterval(t);
+  }
+}
+const GONE_AFTER_MS = 40000; // no check-ins and no connection for this long = they've really left
 
 async function getMedia(facingMode, name, onModel) {
   const notes = [];
@@ -73,6 +88,7 @@ export default function useCall(callId) {
   const [peerShow, setPeerShow] = useState(null); // the photo they're showing me
   const [myExercise, setMyExercise] = useState(null);     // library entry id I'm showing on both screens
   const [peerExercise, setPeerExercise] = useState(null); // …or the one they're showing
+  const [peerAway, setPeerAway] = useState(false);        // their app is minimised (audio carries on)
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [facing, setFacing] = useState("user");
   const [connectedAt, setConnectedAt] = useState(null);
@@ -195,6 +211,7 @@ export default function useCall(callId) {
       if ("screen" in p) setPeerSharing(Boolean(p.screen));
       if ("show" in p) { setPeerShow(p.show || null); if (p.show) setPeerExercise(null); }
       if ("exercise" in p) { setPeerExercise(p.exercise || null); if (p.exercise) setPeerShow(null); }
+      if ("away" in p) setPeerAway(Boolean(p.away));
     } else if (msg.type === "bye") {
       closePc();
       setConnectedAt(null);
@@ -202,6 +219,7 @@ export default function useCall(callId) {
       setPeerSharing(false);
       setPeerShow(null);
       setPeerExercise(null);
+      setPeerAway(false);
       setPhase(p.reason === "declined" ? "declined" : "left");
     }
   }, [createPc, drainIce, makeOffer, signal, closePc]);
@@ -214,7 +232,7 @@ export default function useCall(callId) {
     st.run = run; // a fresh token per mount; async work from an older mount checks it and bails out
     const alive = () => st.run === run;
     clearTimeout(pendingLeave[callId]);
-    let timer;
+    let stopTicker = () => {};
     let statsTimer;
     (async () => {
       try {
@@ -246,6 +264,16 @@ export default function useCall(callId) {
             const { data } = await api.get(`/calls/${callId}/signals`);
             st.peerPresent = data.peer_present;
             for (const m of data.signals) await handle(m);
+            // They closed the app without saying goodbye (no check-ins and no connection for a while): show "left".
+            // A minimised app keeps its connection, so it never trips this.
+            st.goneSince = data.peer_present ? 0 : (st.goneSince || Date.now());
+            if (st.pc && st.pc.connectionState !== "connected" && st.goneSince && Date.now() - st.goneSince > GONE_AFTER_MS) {
+              closePc();
+              setConnectedAt(null);
+              setQuality(null);
+              setPeerAway(false);
+              setPhase("left");
+            }
             setPhase((ph) => {
               if (["declined", "ended", "noanswer", "error"].includes(ph)) return ph;
               if (ph === "ringing" && Date.now() - st.startedAt > RING_TIMEOUT_MS && !data.peer_present) return "noanswer";
@@ -258,7 +286,8 @@ export default function useCall(callId) {
             if (e?.response?.status === 404) { setError("This call is no longer available."); setPhase("error"); }
           } finally { st.polling = false; }
         };
-        timer = setInterval(poll, POLL_MS);
+        st.poll = poll;
+        stopTicker = makeTicker(POLL_MS, poll);
         poll();
 
         // Connection quality, every 2 s.
@@ -296,13 +325,16 @@ export default function useCall(callId) {
     const leaveBeacon = () => {
       fetch(`${API}/calls/${callId}/leave`, { method: "POST", keepalive: true, headers: authHeaders() }).catch(() => {});
     };
-    window.addEventListener("pagehide", leaveBeacon);
+    // Only a real close/refresh says goodbye. Minimising the app or switching apps must NOT end the call: on phones
+    // "pagehide" can fire for those too, so it isn't used; if the app is killed, the other side notices within ~40 s.
+    window.addEventListener("beforeunload", leaveBeacon);
     return () => {
       if (st.run === run) st.run = null;
-      clearInterval(timer);
+      stopTicker();
+      st.poll = null;
       clearInterval(statsTimer);
       window.removeEventListener("online", onOnline);
-      window.removeEventListener("pagehide", leaveBeacon);
+      window.removeEventListener("beforeunload", leaveBeacon);
       closePc();
       st.local?.getTracks().forEach((t) => t.stop());
       st.mic?.raw?.stop();
@@ -328,6 +360,73 @@ export default function useCall(callId) {
     setLocalStream(new MediaStream(st.local.getTracks()));
   };
   const replaceTrack = (kind, track) => swapSending(kind, track, true);
+
+  // ── Minimising the app must not break the call ──
+  // 1) The cleaned-voice track goes silent when the phone pauses our audio engine in the background, so send the plain
+  //    microphone until the engine runs again. 2) Tell the other person we're in the background. 3) On return: wake the
+  //    audio engine, check in at once, repair the connection if it dropped, and restart a camera/mic the phone stopped.
+  useEffect(() => {
+    if (!callId) return undefined;
+    const st = r.current;
+    let lock = null;
+    const keepAwake = async () => {
+      try { if (document.visibilityState === "visible" && navigator.wakeLock) lock = await navigator.wakeLock.request("screen"); } catch { /* not allowed */ }
+    };
+    const pickMic = async () => {
+      const m = st.mic;
+      if (!m?.suppressor || !st.local || st.share?.mixer) return;
+      const want = m.suppressor.running ? m.track : m.raw;
+      const cur = st.local.getAudioTracks()[0];
+      if (cur && want && cur !== want && want.readyState === "live") await swapSending("audio", want).catch(() => {});
+    };
+    const revive = async () => {
+      // the phone may have ended the camera or microphone while we were away
+      const cam = st.share ? st.share.cam : st.local?.getVideoTracks()[0];
+      if (cam && !cam.isPlaceholder && cam.readyState === "ended" && !st.share) {
+        try {
+          const v = await navigator.mediaDevices.getUserMedia({ video: videoConstraints(cam.getSettings?.().facingMode || "user") });
+          await swapSending("video", v.getVideoTracks()[0], true);
+        } catch { /* camera still busy */ }
+      }
+      if (st.mic?.raw?.readyState === "ended") {
+        try {
+          const fresh = await getMic({ onModel: setNoiseModel });
+          const old = st.mic;
+          fresh.track.enabled = fresh.raw.enabled = old.track.enabled;
+          st.mic = fresh;
+          await swapSending("audio", fresh.track);
+          old.suppressor?.stop();
+        } catch { /* microphone still busy */ }
+      }
+    };
+    const onVisibility = async () => {
+      if (!st.run) return;
+      if (document.visibilityState === "hidden") {
+        signal("state", { away: true });
+        setTimeout(pickMic, 400); // give the phone a moment to pause the engine, then switch if it did
+        return;
+      }
+      signal("state", { away: false });
+      resumeAllAudio();
+      await st.mic?.suppressor?.resume?.();
+      await revive();
+      await pickMic();
+      st.poll?.();
+      if (st.pc && st.pc.connectionState !== "connected") repair();
+      keepAwake();
+    };
+    const onAudioState = () => { pickMic(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pageshow", onVisibility);
+    window.addEventListener("fc:audio-state", onAudioState);
+    keepAwake(); // keep the screen on during the call so the phone doesn't lock mid-session
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pageshow", onVisibility);
+      window.removeEventListener("fc:audio-state", onAudioState);
+      lock?.release?.().catch(() => {});
+    };
+  }, [callId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Browsers may block sound until the person taps the page (e.g. a call answered from a notification).
   useEffect(() => {
@@ -471,6 +570,6 @@ export default function useCall(callId) {
   };
 
   return { call, phase, error, deviceNotes, localStream, remoteStream, mic, cam, noiseModel, facing, connectedAt, relay, quality, viaRelay,
-    sharing, shareAudio, peerSharing, shareSupported, audioBlocked, myShow, peerShow, myExercise, peerExercise, toggleMic, toggleCam,
+    sharing, shareAudio, peerSharing, shareSupported, audioBlocked, myShow, peerShow, myExercise, peerExercise, peerAway, toggleMic, toggleCam,
     startShare, stopShare, showPhoto, stopShow, showExercise, stopExercise, flipCamera, hangUp };
 }

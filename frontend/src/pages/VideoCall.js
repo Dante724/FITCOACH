@@ -250,6 +250,12 @@ function CallRoom({ callId }) {
           </div>
         )}
 
+        {c.peerAway && c.phase === "connected" && !done && (
+          <div className="call-note" data-testid="peer-away" style={{ bottom: "auto", top: 76 }}>
+            <Icons.Smartphone size={14} /> {firstName} has switched to another app — they can still hear you; their video is paused.
+          </div>
+        )}
+
         {needsTap && !done && (
           <button className="call-sound" onClick={turnOnSound} data-testid="call-sound"><Icons.Volume2 size={18} /> Tap to turn on sound</button>
         )}

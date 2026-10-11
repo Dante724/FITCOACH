@@ -155,6 +155,10 @@ export async function createNoiseSuppressor(rawTrack, model, { onModel } = {}) {
   const chain = {
     track: dest.stream.getAudioTracks()[0],
     get model() { return current?.name || null; },
+    // false while the phone has paused our audio engine (app in the background, an incoming phone call…): the cleaned
+    // track is silent then, so the call falls back to the plain microphone until this is true again.
+    get running() { return ctx.state === "running"; },
+    resume() { return ctx.resume().catch(() => {}); },
     async use(name) {
       const made = await makeModelNode(ctx, name, () => {
         // This device can't run DFN3 in real time: go back to GTCRN and don't try DFN3 here again.
